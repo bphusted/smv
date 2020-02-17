@@ -112,7 +112,6 @@ int ReadSMV(char *smvfile){
       Match(buffer,"SLCF") == 1||
       Match(buffer,"SLCC") == 1||
       Match(buffer, "SLCD") == 1 ||
-      Match(buffer, "SLFL") == 1 ||
       Match(buffer,"SLCT") == 1
       ){
       nsliceinfo++;
@@ -308,18 +307,6 @@ int ReadSMV(char *smvfile){
         strcpy(GLOBendianfile,GLOBsourcedir);
         strcat(GLOBendianfile,buffer);
       }
-      endianstream=fopen(GLOBendianfile,"rb");
-      if(endianstream!=NULL){
-        FSEEK(endianstream,4,SEEK_CUR);
-        fread(&one,4,1,endianstream);
-        if(one==1){
-          endianswitch=0;
-        }
-        else{
-          endianswitch=1;
-        }
-        fclose(endianstream);
-      }
       continue;
     }
 
@@ -355,22 +342,6 @@ int ReadSMV(char *smvfile){
       if(fgets(buffer,BUFFERSIZE,streamsmv)==NULL)break;
       GLOBsyst=1;
       TrimBack(buffer);
-      if(Match(buffer,"SGI") == 1||Match(buffer,"AIX")==1){
-        if(GetEndian()==0){
-          endianswitch=1;
-        }
-        else{
-          endianswitch=0;
-        }
-      }
-      else{
-        if(GetEndian()==0){
-          endianswitch=0;
-        }
-        else{
-          endianswitch=1;
-        }
-      }
       continue;
     }
   /*
@@ -695,7 +666,6 @@ int ReadSMV(char *smvfile){
       Match(buffer,"SLCF") == 1||
       Match(buffer,"SLCC") == 1||
       Match(buffer, "SLCD") == 1 ||
-      Match(buffer, "SLFL") == 1 ||
       Match(buffer,"SLCT") == 1)
     {
       int version_local=0,dummy;

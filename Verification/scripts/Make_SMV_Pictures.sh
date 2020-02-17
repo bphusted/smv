@@ -95,18 +95,15 @@ else
   PLATFORM=linux
 fi
 
-if [ "$JOBPREFIX" == "" ]; then
-  JOBPREFIX=SMV_
-fi
 COMPILER=intel
 DEBUG=
 TEST=
-use_installed="0"
+use_installed=
 RUN_SMV=1
 RUN_WUI=1
 QUEUE=batch
 
-while getopts 'dghiI:q:tWY' OPTION
+while getopts 'dghiI:j:q:tWY' OPTION
 do
 case $OPTION  in
   d)
@@ -116,10 +113,13 @@ case $OPTION  in
    usage;
    ;;
   i)
-   use_installed="1"
+   use_installed="-i"
    ;;
   I)
    COMPILER="$OPTARG" 
+   ;;
+  j)
+   JOBPREFIX="$OPTARG" 
    ;;
   q)
    QUEUE="$OPTARG" 
@@ -138,6 +138,10 @@ case $OPTION  in
 esac
 done
 shift $(($OPTIND-1))
+
+if [ "$JOBPREFIX" == "" ]; then
+  JOBPREFIX=SMV_
+fi
 
 VERSION=$PLATFORM${TEST}_64$DEBUG
 VERSION2=${PLATFORM}_64
@@ -158,31 +162,27 @@ else
   export SMOKEZIP=$SVNROOT/smv/Build/smokezip/${COMPILER}_$VERSION2/smokezip_$VERSION2
   export SMOKEDIFF=$SVNROOT/smv/Build/smokediff/${COMPILER}_$VERSION2/smokediff_$VERSION2
   export WIND2FDS=$SVNROOT/smv/Build/wind2fds/${COMPILER}_$VERSION2/wind2fds_$VERSION2
-  export BACKGROUND=$SVNROOT/smv/Build/background/${COMPILER}_$VERSION2/background
+  export BACKGROUND=$SVNROOT/smv/Build/background/${COMPILER}_$VERSION2/background_$VERSION2
   export DEM2FDS=$SVNROOT/smv/Build/dem2fds/${COMPILER}_$VERSION2/dem2fds_$VERSION2
 fi
 SMOKEBOT=$SVNROOT/bot/Smokebot/run_smokebot.sh
 FIREBOT=$SVNROOT/bot/Firebot/run_firebot.sh
 CFASTBOT=$SVNROOT/bot/Cfastbot/run_cfastbot.sh
 
-BINDIR="$SVNROOT/bot/Bundle/smv/for_bundle"
-export SMVBINDIR="-bindir $BINDIR"
-
 echo Generating smokeview images using:
 echo background: $BACKGROUND
 echo    dem2fds: $DEM2FDS
 echo smokediff : $SMOKEDIFF
-echo smokeview : $SMV $SMVBINDIR
+echo smokeview : $SMV
 echo smokezip  : $SMOKEZIP
 echo
 
-RUNSMV="$SVNROOT/smv/Utilities/Scripts/qsmv.sh -j $JOBPREFIX -b $BINDIR -q $QUEUE"
+RUNSMV="$SVNROOT/smv/Utilities/Scripts/qsmv.sh -j $JOBPREFIX $use_installed -q $QUEUE"
 export QFDS=$RUNSMV
 export RUNCFAST=$RUNSMV
 
 export FDSUG=$SVNROOT/fds/Manuals/FDS_User_Guide
 export SMVUG=$SVNROOT/smv/Manuals/SMV_User_Guide
-export SMVUTILG=$SVNROOT/smv/Manuals/SMV_Utilities_Guide
 export SMVVG=$SVNROOT/smv/Manuals/SMV_Verification_Guide
 SUMMARY=$SVNROOT/smv/Manuals/SMV_Summary
 
@@ -194,7 +194,6 @@ is_file_installed $DEM2FDS
 is_file_installed $WIND2FDS
 
 make_helpinfo_files $SMVUG/SCRIPT_FIGURES
-make_helpinfo_files $SMVUTILG/SCRIPT_FIGURES
 
 rm -f $SUMMARY/images/*.png
 
@@ -219,12 +218,12 @@ if [ "$RUN_SMV" == "1" ]; then
 
   cd $SVNROOT/smv/Verification/Visualization
   echo Converting particles to isosurfaces in case plumeiso
-  $QFDS -C "$SMOKEZIP -r -part2iso plumeiso"
+  $QFDS -C "$SMOKEZIP -part2iso plumeiso"
 
   cd $SVNROOT/smv/Verification/WUI
   echo Converting particles to isosurfaces in case pine_tree
   if  [ -e pine_tree.smv ]; then
-    $QFDS -C "$SMOKEZIP -r -part2iso pine_tree"
+    $QFDS -C "$SMOKEZIP -part2iso pine_tree"
   fi
 
 # difference plume5c and thouse5
@@ -259,6 +258,3 @@ wait_cases_end
 
 cp $SMVUG/SCRIPT_FIGURES/*.png $SUMMARY/images/.
 cp $SMVVG/SCRIPT_FIGURES/*.png $SUMMARY/images/.
-
-# copy files to utilities script directory for now
-cp $SMVUG/SCRIPT_FIGURES/*.png $SMVUTILG/SCRIPT_FIGURES/.

@@ -11,6 +11,10 @@
 #include "update.h"
 #include "smokeviewvars.h"
 #include "compress.h"
+#include "IOscript.h"
+#include "glui_smoke.h"
+#include "glui_motion.h"
+#include "glui_wui.h"
 
 /* ------------------ CompareFloat ------------------------ */
 
@@ -258,6 +262,10 @@ void UpdateFrameNumber(int changetime){
 void UpdateFileLoad(void){
   int i;
 
+// remove following directive when update_fileload has been set everywhere that a file has been loaded or unloaded
+#ifdef pp_UPDATE_FILELOAD
+  update_fileload = 0;
+#endif
   npartloaded = 0;
   nevacloaded = 0;
   for(i = 0; i<npartinfo; i++){
@@ -347,7 +355,7 @@ void UpdateShow(void){
   int slicecolorbarflag;
   int shooter_flag;
 
-  UpdateFileLoad();
+  if(update_fileload==1)UpdateFileLoad();
   have_fire = HaveFire();
   showtime=0;
   showtime2=0;
@@ -719,7 +727,7 @@ void UpdateShow(void){
     num_colorbars++;
   }
   if(ReadPlot3dFile==1&&num_colorbars==0)num_colorbars=1;
-  
+
   // note: animated iso-contours do not need a colorbar, so we don't test for isosurface files
 
   if ((showtime == 1 || showplot3d == 1) && (visColorbarVertical == 1|| visColorbarHorizontal == 1)) {
@@ -1802,8 +1810,6 @@ void UpdateShowScene(void){
   }
   if(update_smoketype_vals==1){
     update_smoketype_vals = 0;
-#define SMOKE_NEW 77
-#define SMOKE_DELTA_MULTIPLE 78
     Smoke3dCB(SMOKE_NEW);
     Smoke3dCB(SMOKE_DELTA_MULTIPLE);
   }
@@ -1847,7 +1853,6 @@ void UpdateShowScene(void){
   if(update_gslice == 1){
     UpdateGsliceParms();
   }
-#define MESH_LIST 4
   if(update_rotation_center == 1){
     camera_current->rotation_index = glui_rotation_index;
     SceneMotionCB(MESH_LIST);
@@ -1881,11 +1886,11 @@ void UpdateShowScene(void){
   }
   if(convert_ini == 1){
     WriteIni(SCRIPT_INI, ini_to);
-    exit(0);
+    SMV_EXIT(0);
   }
   if(convert_ssf==1||update_ssf==1){
     ConvertSsf();
-    exit(0);
+    SMV_EXIT(0);
   }
   UpdateShow();
   if(global_times!=NULL&&updateUpdateFrameRateMenu==1)FrameRateMenu(frameratevalue);
@@ -1915,12 +1920,33 @@ void UpdateFlippedColorbar(void){
   }
 }
 
+/* ------------------ GetColorbarState ------------------------ */
+
+int GetColorbarState(void){
+  if(visColorbarVertical==1&&visColorbarHorizontal==0){
+    return COLORBAR_SHOW_VERTICAL;
+  }
+  else if(visColorbarVertical==0&&visColorbarHorizontal==1){
+    return COLORBAR_SHOW_HORIZONTAL;
+  }
+  // if colorbars are hidden then research mode needs to be off
+  visColorbarVertical = 0;
+  visColorbarHorizontal = 0;
+  visColorbarVertical_save = 0;
+  visColorbarHorizontal_save = 0;
+  research_mode = 0;
+  return COLORBAR_HIDDEN;
+}
+
 /* ------------------ UpdateDisplay ------------------------ */
-#define TERRAIN_FIRE_LINE_UPDATE 39
 
 void UpdateDisplay(void){
 
   LOCK_IBLANK;
+  if(update_fire_alpha==1){
+    update_fire_alpha=0;
+    UpdateFireAlpha();
+  }
   if(update_texturebar==1){
     update_texturebar = 0;
     UpdateTexturebar();
@@ -2015,14 +2041,11 @@ void UpdateDisplay(void){
     update_visColorbars = 0;
     visColorbarVertical = visColorbarVertical_val;
     visColorbarHorizontal = visColorbarHorizontal_val;
-    if(visColorbarVertical==1&&visColorbarHorizontal==0){
-      toggle_colorbar = 1;
-    }
-    else if(visColorbarVertical==0&&visColorbarHorizontal==1){
-      toggle_colorbar = 2;
-    }
-    else {
-      toggle_colorbar = 0;
+    vis_colorbar = GetColorbarState();
+    if(visColorbarHorizontal==0&&visColorbarVertical==0){
+      research_mode = 0;
+     // update_research_mode = 1;
+      SliceBoundCB(RESEARCH_MODE);
     }
     updatemenu = 1;
   }
@@ -2031,3 +2054,34 @@ void UpdateDisplay(void){
     DeviceData2WindRose(nr_windrose, ntheta_windrose);
   }
 }
+
+/* ------------------ ShiftColorbars ------------------------ */
+
+#ifdef pp_SHIFT_COLORBARS
+void ShiftColorbars(void){
+  int i;
+
+#define BASE_EPS 0.0001
+
+  if(ABS(colorbar_shift-1.0)<BASE_EPS)return;
+  for(i=0;i<MAXRGB;i++){
+    float factor;
+    float *color1, *color2, color_index, *color_new;
+    int color1_index;
+
+    color_index = SHIFT_VAL(i, 0, MAXRGB-1, colorbar_shift);
+    color1_index = CLAMP((int)color_index,0,MAXRGB-2);
+    factor = color_index - color1_index;
+
+    color1 = rgb_full[color1_index];
+    color2 = rgb_full[color1_index+1];
+    color_new = rgb_slice + 4*i;
+
+    color_new[0] = (1.0-factor)*color1[0] + factor*color2[0];
+    color_new[1] = (1.0-factor)*color1[1] + factor*color2[1];
+    color_new[2] = (1.0-factor)*color1[2] + factor*color2[2];
+    color_new[3] = (1.0-factor)*color1[3] + factor*color2[3];
+  }
+  CheckMemory;
+}
+#endif

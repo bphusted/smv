@@ -1,10 +1,36 @@
 #ifndef SMOKEVIEWDEFS_H_DEFINED
 #define SMOKEVIEWDEFS_H_DEFINED
-#ifdef _DEBUG
+#ifdef SNIFF_ERROR
 void _Sniff_Errors(char *whereat, char *file, int line);
 #define SNIFF_ERRORS(f) _Sniff_Errors(f,__FILE__,__LINE__)
 #else
 #define SNIFF_ERRORS(f)
+#endif
+
+#ifdef pp_SHIFT_COLORBARS
+#define COLORBAR_SHIFT_MIN          0.1
+#define COLORBAR_SHIFT_MAX         10.0
+#endif
+
+#define COLORBAR_NDECIMALS_MIN        1
+#define COLORBAR_NDECIMALS_MAX        3
+
+#define COLORBAR_SELECTION_WIDTH_MIN  1
+#define COLORBAR_SELECTION_WIDTH_MAX 10
+
+#define MESH_INT  0
+#define MESH_EXT  1
+#define MESH_BOTH 2
+
+#define MESHEPS 0.001
+
+#define PART_BOUND_UNDEFINED 0
+#define PART_BOUND_COMPUTING 1
+#define PART_BOUND_DEFINED   2
+
+#ifdef pp_SELECT_GEOM
+#define VERTEX1 1
+#define VERTEX2 2
 #endif
 
 #define PART_SIZING  0
@@ -14,6 +40,10 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 
 #define VR_NO  0
 #define VR_YES 1
+
+#define FILE_UNLOADED 0
+#define FILE_LOADING  1
+#define FILE_LOADED   2
 
 #define MLEFT 0
 #define MFRONT 1
@@ -49,6 +79,12 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define RENDER_START 3
 #define RENDER_START_NORMAL 12
 #define RENDER_START_360 10
+
+#define RESEARCH_MODE 114
+
+#define COLORBAR_HIDDEN          0
+#define COLORBAR_SHOW_VERTICAL   1
+#define COLORBAR_SHOW_HORIZONTAL 2
 
 #define COLORBAR_SET 18
 #define COLORBAR_RGB 2
@@ -101,9 +137,10 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define PARTFILE_MAP  0
 #define PARTFILE_REMAP 1
 
-#define PARTFILE_LOADALL -11
+#define PARTFILE_LOADALL   -11
 #define PARTFILE_RELOADALL -12
-#define EVACFILE_LOADALL -11
+#define EVACFILE_LOADALL   -11
+#define EVACFILE_RELOADALL -12
 
 #define FIRST_TIME 1
 #define NOT_FIRST_TIME 2
@@ -138,8 +175,9 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define UNCOMPRESSED_BYFRAME 1
 #define COMPRESSED_ALLFRAMES 2
 
-#define UNCOMPRESSED 0
+#define UNCOMPRESSED    0
 #define COMPRESSED_ZLIB 1
+#define COMPRESSED_RLE  2
 
 #define DISABLE 0
 #define ENABLE 1
@@ -275,10 +313,11 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define TYPE_INI 1
 #endif
 
-#define CLIP_OFF 0
+#define CLIP_OFF            0
 #define CLIP_BLOCKAGES_DATA 1
-#define CLIP_BLOCKAGES 2
-#define CLIP_DATA 3
+#define CLIP_BLOCKAGES      2
+#define CLIP_DATA           3
+#define CLIP_MAX            3
 
 #define UNCLIP SetClipPlanes(NULL,CLIP_OFF)
 #define CLIP SetClipPlanes(&clipinfo,CLIP_ON)
@@ -351,7 +390,6 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 
 #define SLICE_NODE_CENTER 1
 #define SLICE_CELL_CENTER 2
-#define SLICE_FIRELINE 3
 #define SLICE_TERRAIN 4
 #define SLICE_FACE_CENTER 5
 #define SLICE_GEOM 6
@@ -380,81 +418,6 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 
 #define DOUBLE_BUFFER 2
 #define SINGLE_BUFFER 1
-
-#define SCRIPT_RENDERONCE        101
-#ifdef pp_HTML
-#define SCRIPT_RENDERHTMLONCE    102
-#define SCRIPT_RENDERHTMLALL     105
-#define SCRIPT_RENDERHTMLDIR     109
-#define SCRIPT_RENDERHTMLGEOM    123
-#define SCRIPT_RENDERHTMLOBST    124
-#define SCRIPT_RENDERHTMLSLICE   125
-#endif
-#define SCRIPT_RENDERDOUBLEONCE  103
-#define SCRIPT_RENDERALL         104
-#define SCRIPT_RENDER360ALL      106
-#define SCRIPT_VOLSMOKERENDERALL 107
-#define SCRIPT_RENDERDIR         108
-#define SCRIPT_RENDERCLIP        110
-#define SCRIPT_SCENECLIP         111
-#define SCRIPT_XSCENECLIP        112
-#define SCRIPT_YSCENECLIP        113
-#define SCRIPT_ZSCENECLIP        114
-#define SCRIPT_CBARFLIP          115
-#define SCRIPT_CBARNORMAL        116
-#define SCRIPT_RENDERSTART       117
-#define SCRIPT_MAKEMOVIE         118
-#define SCRIPT_RENDERTYPE        119
-#define SCRIPT_RENDERSIZE        120
-#define SCRIPT_MOVIETYPE         121
-#define SCRIPT_ISORENDERALL      122
-
-#define SCRIPT_LOADFILE 201
-#define SCRIPT_LOADVFILE 202
-#define SCRIPT_LOADBOUNDARY 203
-#define SCRIPT_LOAD3DSMOKE 204
-#define SCRIPT_LOADISO 205
-#define SCRIPT_LOADPARTICLES 206
-#define SCRIPT_LOADSLICE 207
-#define SCRIPT_LOADVSLICE 208
-#define SCRIPT_LOADTOUR 209
-#define SCRIPT_UNLOADTOUR 210
-#define SCRIPT_PARTCLASSCOLOR 211
-#define SCRIPT_PARTCLASSTYPE 212
-#define SCRIPT_LOADINIFILE 213
-#define SCRIPT_LOADPLOT3D 214
-#define SCRIPT_SHOWPLOT3DDATA 215
-#define SCRIPT_PLOT3DPROPS 216
-#define SCRIPT_LOADVOLSMOKE 217
-#define SCRIPT_LOADVOLSMOKEFRAME 218
-#define SCRIPT_LOADISOM 219
-#define SCRIPT_LOADBOUNDARYM 220
-#define SCRIPT_LOADSLICEM 221
-#define SCRIPT_LOADVSLICEM 222
-#define SCRIPT_SHOWSMOKESENSORS 223
-#define SCRIPT_SMOKEFRAMES    224
-#define SCRIPT_RGBTEST        225
-#define SCRIPT_POSVIEW        226
-
-#define SCRIPT_SETTIMEVAL 301
-#define SCRIPT_SETVIEWPOINT 302
-#define SCRIPT_UNLOADALL 303
-#define SCRIPT_KEYBOARD 304
-#define SCRIPT_GSLICEVIEW 305
-#define SCRIPT_GSLICEPOS 306
-#define SCRIPT_GSLICEORIEN 307
-#define SCRIPT_SETTOURVIEW 308
-#define SCRIPT_SETTOURKEYFRAME 39
-#define SCRIPT_EXIT 310
-#define SCRIPT_LABEL 311
-
-#define SCRIPT_SLICE_FILE 0
-#define SCRIPT_BOUNDARY_FILE 1
-#define SCRIPT_SMOKE3D_FILE 2
-#define SCRIPT_PART_FILE 3
-#define SCRIPT_ISO_FILE 4
-
-#define SCRIPT_UNKNOWN -1
 
 #define PROJECTION 24
 
@@ -535,8 +498,10 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 
 #ifdef pp_SELECT_GEOM
 #define GEOM_PROP_NONE     0
-#define GEOM_PROP_VERTEX   1
-#define GEOM_PROP_TRIANGLE 2
+#define GEOM_PROP_VERTEX1  1
+#define GEOM_PROP_VERTEX2  2
+#define GEOM_PROP_TRIANGLE 3
+#define GEOM_PROP_SURF     4
 #endif
 
 #define TEMP_IGNITION_MAX 100000.
@@ -782,10 +747,12 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define RenderLABELtime 979
 #define MENU_RENDER_SETTINGS 900
 #ifdef pp_HTML
-#define RenderHTML 985
-#define RenderHTMLALL 984
-#define HTML_CURRENT_TIME 0
-#define HTML_ALL_TIMES 1
+#define RenderJSON        982
+#define RenderJSONALL     983
+#define RenderHTML        984
+#define RenderHTMLALL     985
+#define HTML_CURRENT_TIME   0
+#define HTML_ALL_TIMES      1
 #endif
 
 #define ShowEXTERIORwallmenu -1
@@ -882,39 +849,43 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define DRAW_OPAQUE 0
 #define DRAW_TRANSPARENT 1
 
-#define VOL_READALL -1
-#define VOL_UNLOAD -2
+#define VOL_READALL  -1
+#define VOL_UNLOAD   -2
 #define VOL_READNONE -3
 
-#define MENU_LABEL_colorbar_vertical 0
-#define MENU_LABEL_colorbar_horizontal 24
-#define MENU_LABEL_timebar 1
-#define MENU_LABEL_title 2
-#define MENU_LABEL_framerate 3
-#define MENU_LABEL_axis 6
-#define MENU_LABEL_textlabels 7
-#define MENU_LABEL_timelabel 8
-#define MENU_LABEL_meshlabel 10
-#define MENU_LABEL_memload 11
-#define MENU_LABEL_memusage 19
-#define MENU_LABEL_fdsticks 12
-#define MENU_LABEL_hmslabel 13
-#define MENU_LABEL_grid 14
-#define MENU_LABEL_sliceaverage 15
-#define MENU_LABEL_firecutoff 17
-#define MENU_LABEL_userticks 18
-#define MENU_LABEL_gversion 20
-#define MENU_LABEL_ShowAll 4
-#define MENU_LABEL_HideAll 5
-#define MENU_LABEL_framelabel 9
-#define MENU_LABEL_hrr 16
-#define MENU_LABEL_northangle 21
-#define MENU_LABEL_chid 22
-#define MENU_LABEL_SETTINGS 23
+#define MENU_LABEL_colorbar_vertical    0
+#define MENU_LABEL_colorbar_horizontal  1
+#define MENU_LABEL_timebar              2
+#define MENU_LABEL_framerate            3
+#define MENU_LABEL_axis                 4
+#define MENU_LABEL_textlabels           5
+#define MENU_LABEL_timelabel            6
+#define MENU_LABEL_meshlabel            7
+#define MENU_LABEL_memload              8
+#define MENU_LABEL_memusage             9
+#define MENU_LABEL_fdsticks            10
+#define MENU_LABEL_hmslabel            11
+#define MENU_LABEL_grid                12
+#define MENU_LABEL_sliceaverage        13
+#define MENU_LABEL_firecutoff          14
+#define MENU_LABEL_userticks           15
+#define MENU_LABEL_ShowAll             16
+#define MENU_LABEL_HideAll             17
+#define MENU_LABEL_framelabel          18
+#define MENU_LABEL_hrr                 19
+#define MENU_LABEL_northangle          20
+#define MENU_LABEL_SETTINGS            21
+
+#define MENU_TITLE_title_smv_version    0
+#define MENU_TITLE_title_fds            1
+#define MENU_TITLE_chid                 2
+#define MENU_TITLE_gversion             3
+#define MENU_TITLE_show_all             4
+#define MENU_TITLE_hide_all             5
 
 #define MENU_TRAINER_smoke 1
-#define MENU_TRAINER_temp 2
-#define MENU_TRAINER_oxy 3
+#define MENU_TRAINER_temp  2
+#define MENU_TRAINER_oxy   3
 
 #define ON 1
 #define OFF 0

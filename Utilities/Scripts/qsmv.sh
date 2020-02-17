@@ -12,10 +12,10 @@ function usage {
   echo "    [default: $REPOROOT/smv/Build/smokeview/intel_linux_64/smokeview_intel_linux_64]"
   echo " -h   - show commonly used options"
   echo " -H   - show all options"
-  echo " -p n - run n instances of smokeview each instance rendering 1/n'th of the total images"
+  echo " -P n - run n instances of smokeview each instance rendering 1/n'th of the total images"
   echo "        only use this option if you have a RENDERALL keyword in your .ssf smokeview script"
   echo " -q q - name of queue. [default: batch]"
-  echo " -v   - output generated script"
+  echo " -v   - output generated script (do not run)"
   if [ "$HELP" == "" ]; then
     exit
   fi
@@ -24,8 +24,10 @@ function usage {
   echo " -c     - smokeview script file [default: casename.ssf]"
   echo " -C com - execute the command com"
   echo " -d dir - specify directory where the case is found [default: .]"
+  echo " -e exe - execute the program exe"
   echo " -i     - use installed smokeview"
   echo " -j p   - job prefix"
+  echo " -N n   - reserve n cores [default: $ncores]"
   echo " -r     - redirect output"
   echo " -s     - first frame rendered [default: 1]"
   echo " -S     - interval between frames [default: 1]"
@@ -66,6 +68,7 @@ fi
 #*** determine number of cores
 
 ncores=`grep processor /proc/cpuinfo | wc -l`
+NRESERVE=$ncores
 
 #*** determine default queue
 
@@ -85,14 +88,16 @@ redirect=
 FED=
 dummy=
 COMMAND=
-BINDIR=
+SMVBINDIR=
 SMVJOBPREFIX=
+b_arg=
 c_arg=
 d_arg=
 e_arg=
 f_arg=
 i_arg=
 j_arg=
+N_ARG=
 q_arg=
 r_arg=
 v_arg=
@@ -105,14 +110,15 @@ commandline=`echo $* | sed 's/-V//' | sed 's/-v//'`
 
 #*** read in parameters from command line
 
-while getopts 'Ab:c:C:d:e:fhHij:p:q:rs:S:tv' OPTION
+while getopts 'Ab:c:C:d:e:fhHij:n:N:p:P:q:rs:S:tv' OPTION
 do
 case $OPTION  in
   A)
    dummy=1
    ;;
   b)
-   BINDIR="-bindir $OPTARG"
+   SMVBINDIR="-bindir $OPTARG"
+   b_arg="-b $OPTARG"
    ;;
   c)
    smv_script="$OPTARG"
@@ -150,7 +156,16 @@ case $OPTION  in
    SMVJOBPREFIX="${OPTARG}"
    j_arg="-j ${OPTARG}"
    ;;
+  n)
+   dummy="${OPTARG}"
+   ;;
+  N)
+   NRESERVE="${OPTARG}"
+   ;;
   p)
+   dummy="${OPTARG}"
+   ;;
+  P)
    nprocs="$OPTARG"
    ;;
   q)
@@ -189,9 +204,15 @@ re='^[0-9]+$'
 if ! [[ $nprocs =~ $re ]] ; then
    nprocs=1;
 fi
+
+if ! [[ $NRESERVE =~ $re ]] ; then
+   NRESERVE=$ncores;
+fi
+N_ARG="-N $NRESERVE"
+
 if [ $nprocs != 1 ]; then
   for i in $(seq 1 $nprocs); do
-    $QSMV $c_arg $d_arg $e_arg $f_arg $i_arg $j_arg $q_arg $r_arg $v_arg -s $i -S $nprocs $in
+    $QSMV $b_arg $c_arg $d_arg $e_arg $f_arg $i_arg $j_arg $N_ARG $q_arg $r_arg $v_arg -s $i -S $nprocs $in
   done
   exit
 fi
@@ -248,6 +269,9 @@ if [ "$use_installed" == "1" ]; then
     smvpath=`which smokeview`
     smvdir=$(dirname "${smvpath}")
     curdir=`pwd`
+    if [ "$SMVBINDIR" == "" ]; then
+      SMVBINDIR="-bindir $smvdir"
+    fi
     cd $smvdir
     exe=`pwd`/smokeview
     cd $curdir
@@ -255,17 +279,18 @@ if [ "$use_installed" == "1" ]; then
 else
   if [ "$exe" == "" ]; then
     exe=$REPOROOT/smv/Build/smokeview/intel_linux_64/smokeview_linux_64
+    smvdir=$(dirname "${smvpath}")
+    if [ "$SMVBINDIR" == "" ]; then
+      SMVBINDIR="-bindir $REPOROOT/bot/Bundle/smv/for_bundle"
+    fi
   fi
 fi
+echo SMVBINDIR=$SMVBINDIR
 
-let ppn=$ncores
+let ppn=$NRESERVE
 let nodes=1
 
-if [ "$COMMAND" == "" ]; then
-  TITLE="$infile"
-else
-  TITLE=command
-fi
+TITLE="$infile"
 
 cd $dir
 fulldir=`pwd`
@@ -315,6 +340,10 @@ if [ "$RESOURCE_MANAGER" == "SLURM" ]; then
   MPIRUN='srun'
 fi
 
+if [ "$queue" == "terminal" ]; then
+  QSUB=bash
+fi
+
 #*** Set walltime parameter only if walltime is specified as input argument
 
 walltimestring_pbs=
@@ -340,9 +369,7 @@ if [ "$queue" != "none" ]; then
 #SBATCH -e $outerr
 #SBATCH -o $outlog
 #SBATCH -p $queue
-#SBATCH -n $n_mpi_processes
-####SBATCH --nodes=$nodes
-#SBATCH --cpus-per-task=$n_openmp_threads
+#SBATCH --nodes=$nodes
 $SLURM_MEM
 EOF
     if [ "$walltimestring_slurm" != "" ]; then
@@ -379,6 +406,7 @@ echo " smokeview script: $smokeview_script_file"
 echo "      start frame: $first"
 echo "       frame skip: $skip"
 echo "             Host: \`hostname\`"
+echo "      Run command: $exe $script_file $smv_script $FED $redirect $render_opts $SMVBINDIR $infile"
 echo "            Queue: $queue"
 echo ""
 
@@ -415,17 +443,17 @@ fi
 #*** output info to screen
 
 if [ "$COMMAND" == "" ]; then
-echo "     smokeview file: $smvfile"
-echo "      smokeview exe: $exe"
-echo "             script: $smokeview_script_file"
-echo "        start frame: $first"
-echo "         frame skip: $skip"
-echo "              Queue: $queue"
-echo ""
+  echo "     smokeview file: $smvfile"
+  echo "      smokeview exe: $exe"
+  echo "             script: $smokeview_script_file"
+  echo "        start frame: $first"
+  echo "         frame skip: $skip"
+  echo "              Queue: $queue"
+  echo ""
 else
-echo "     command: $COMMAND"
-echo "       Queue: $queue"
-echo ""
+  echo "     command: $COMMAND"
+  echo "       Queue: $queue"
+  echo ""
 fi
 
 #*** run script

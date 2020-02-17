@@ -17,12 +17,18 @@
 
 //*** options: all platforms
 
-#define pp_SELECT_GEOM       //  select and show geometry properties
+#define pp_SHIFT_COLORBARS    // use power law to shift colorbar colors
+#define pp_FILE_SIZES        // add option to output slice files sizes to be loaded
+//#define pp_UPDATE_FILELOAD     // when set only updates fileload variables when a file has been loaded or unloaded
+//#define pp_PLOT3D_REDUCEMENUS   // eliminate plot3d sub-menus
+//#define pp_PLOT3D_STATIC      // use static memory for plot3d labels
+//#define pp_SLICETHREAD        // parallel slice file loading
+#define pp_SELECT_GEOM        //  select and show geometry properties
 #define pp_SMOKE_FAST         // load 3d smoke in parallel
-//#define pp_PART_TEST           // for debugging, set particle values to 100*parti->seq_id + small random number
-#define pp_HTML                // output html version of smokeview scene
+//#define pp_PART_TEST          // for debugging, set particle values to 100*parti->seq_id + small random number
+#define pp_HTML               // output html version of smokeview scene
 //#define pp_SPECULAR         // add widgets for specular lighting parameters to the lighting dialog box
-#define pp_VENTPROFILE      // show original zonefire vent flow profile (calculated in smokeview)
+#define pp_VENTPROFILE        // show original zonefire vent flow profile (calculated in smokeview)
 #define pp_GPUSMOKE           // code to speed up 3d smoke using the gpu
 //#define pp_SMOKEDIAG        // output smoke3d diagnostics (number of meshes, total triangles, triangles drawn)
 //#define pp_GEOMPRINT        // output geometry info
@@ -33,10 +39,9 @@
 #define pp_FILELIST           // use list of file names
 #define pp_LANG               // support other languages
 #define pp_SLICE_USE_ID       // use slcf index
-//#define pp_ISOTIME          // output iso load times
-//#define pp_SMOKETEST        // max blending for fire, regular blending for smoke
-
-//#define pp_SPECTRAL
+//#define pp_ISOTIME            // output iso load times
+//#define pp_SMOKETEST          // max blending for fire, regular blending for smoke
+//#define pp_SPECTRAL           // use black body colors - not fully implemented
 
 #define pp_GPU                // support the GPU
 #ifdef pp_GPU
@@ -89,6 +94,7 @@
 
 #ifdef _DEBUG
 #define pp_RENDER360_DEBUG
+#define pp_SNIFF_ERROR
 #endif
 
 #endif

@@ -16,6 +16,7 @@
 #ifdef pp_LUA
 #include "lua_api.h"
 #endif
+#include "IOscript.h"
 
 #undef pp_GPU_CULL_STATE
 #ifdef pp_GPU
@@ -535,7 +536,9 @@ void MouseSelectGeom(int button, int state, int x, int y){
   int mouse_x, mouse_y;
   GLubyte r, g, b;
 
-  mouse_x = x; mouse_y = screenHeight-y;
+  mouse_x = x;
+  mouse_y = screenHeight-y;
+
   glDisable(GL_BLEND);
   glDisable(GL_DITHER);
   glDisable(GL_FOG);
@@ -546,9 +549,9 @@ void MouseSelectGeom(int button, int state, int x, int y){
 
   ShowScene(SELECTOBJECT, VIEW_CENTER, 0, 0, 0, NULL);
   glReadBuffer(GL_BACK);
-  glReadPixels(mouse_x, mouse_y, 1, 1, GL_RED, GL_UNSIGNED_BYTE, &r);
+  glReadPixels(mouse_x, mouse_y, 1, 1, GL_RED,   GL_UNSIGNED_BYTE, &r);
   glReadPixels(mouse_x, mouse_y, 1, 1, GL_GREEN, GL_UNSIGNED_BYTE, &g);
-  glReadPixels(mouse_x, mouse_y, 1, 1, GL_BLUE, GL_UNSIGNED_BYTE, &b);
+  glReadPixels(mouse_x, mouse_y, 1, 1, GL_BLUE,  GL_UNSIGNED_BYTE, &b);
 
   r = r>>nredshift;
   g = g>>ngreenshift;
@@ -559,28 +562,57 @@ void MouseSelectGeom(int button, int state, int x, int y){
   if(val>0){
     geomdata *geomi;
     geomlistdata *geomlisti;
-    vertdata *verti;
-    float *xyz;
-
 
     geomi = geominfoptrs[0];
     geomlisti = geomi->geomlistinfo-1;
-    selected_geom_index = val-1;
 
-    if(select_geom==GEOM_PROP_VERTEX){
-      verti = geomlisti->verts+selected_geom_index;
-      xyz = verti->xyz;
-      UpdateVertexLoc(xyz[0], xyz[1], xyz[2]);
+    switch (select_geom){
+    case GEOM_PROP_VERTEX1:
+      selected_geom_vertex1 = val-1;
+      break;
+    case GEOM_PROP_VERTEX2:
+      selected_geom_vertex2 = val-1;
+      break;
+    case GEOM_PROP_TRIANGLE:
+    case GEOM_PROP_SURF:
+      selected_geom_triangle = val-1;
+      break;
     }
-    else{
+
+    switch(select_geom){
+    case GEOM_PROP_VERTEX1:
+    case GEOM_PROP_VERTEX2:
+    {
+      float *xyz1, *xyz2;
+
+      xyz1 = NULL;
+      if(selected_geom_vertex1>=0){
+        vertdata *verti;
+
+        verti = geomlisti->verts+selected_geom_vertex1;
+        xyz1 = verti->xyz;
+      }
+      xyz2 = NULL;
+      if(selected_geom_vertex2>=0){
+        vertdata *verti;
+
+        verti = geomlisti->verts+selected_geom_vertex2;
+        xyz2 = verti->xyz;
+      }
+      UpdateVertexInfo(xyz1, xyz2);
+    }
+      break;
+    case GEOM_PROP_TRIANGLE:
+    case GEOM_PROP_SURF:
       if(geomlisti->ntriangles>0){
         surfdata *tri_surf;
-        tridata **tris;
+        tridata *trii;
 
-        tris = geomlisti->triangleptrs;
-        tri_surf = tris[selected_geom_index]->geomsurf;
-        UpdateTriangleInfo(tri_surf, tris[selected_geom_index]->area);
+        trii = geomlisti->triangles+selected_geom_triangle;
+        tri_surf = trii->geomsurf;
+        UpdateTriangleInfo(tri_surf, trii->area);
       }
+      break;
     }
     glShadeModel(GL_SMOOTH);
     glEnable(GL_BLEND);
@@ -1650,6 +1682,9 @@ void Keyboard(unsigned char key, int flag){
         else{
           contour_type++;
           if(contour_type>2)contour_type=0;
+          if(contour_type==LINE_CONTOURS)printf("line coloring\n");
+          if(contour_type==STEPPED_CONTOURS)printf("stepped coloring\n");
+          if(contour_type==SHADED_CONTOURS)printf("continuous coloring\n");
           UpdatePlot3dDisplay();
           UpdateRGBColors(COLORBAR_INDEX_NONE);
         }
@@ -1866,16 +1901,9 @@ void Keyboard(unsigned char key, int flag){
       if(visTimebar==0)PRINTF("Time bar hidden\n");
       if(visTimebar==1)PRINTF("Time bar visible\n");
       break;
-#ifdef _DEBUG
     case 'l':
-      if(nsmoke3dinfo>0){
-        smokecullflag=1-smokecullflag;
-        PRINTF("smokecullflag=%i\n",smokecullflag);
-        UpdateSmoke3dFlags();
-        return;
-      }
+      LoadUnloadMenu(RELOADALL);
       break;
-#endif
     case 'L':
       UnloadSliceMenu(UNLOAD_LAST);
       break;
@@ -2234,7 +2262,7 @@ void Keyboard(unsigned char key, int flag){
       break;
     case 'W':
       clip_mode++;
-      if(clip_mode>3)clip_mode=0;
+      if(clip_mode>CLIP_MAX)clip_mode=0;
       UpdateClipAll();
       break;
     case 'x':
@@ -2277,6 +2305,20 @@ void Keyboard(unsigned char key, int flag){
       LevelScene(1,1,quat_general);
       Quat2Rot(quat_general,quat_rotation);
       break;
+#ifdef pp_SELECT_GEOM
+    case '=':
+      if(ngeominfo>0){
+        select_geom++;
+        if(select_geom==5)select_geom=0;
+        if(select_geom==GEOM_PROP_NONE)printf("geometry selection off\n");
+        if(select_geom==GEOM_PROP_VERTEX1)printf("select vertex 1\n");
+        if(select_geom==GEOM_PROP_VERTEX2)printf("select vertex 2\n");
+        if(select_geom==GEOM_PROP_TRIANGLE)printf("select triangle\n");
+        if(select_geom==GEOM_PROP_SURF)printf("select surf\n");
+        UpdateSelectGeom();
+      }
+      break;
+#endif
     case '!':
       SnapScene();
       break;
@@ -2303,22 +2345,22 @@ void Keyboard(unsigned char key, int flag){
         break;
       }
       break;
- // toggle_colorbar   state
- //    0              hidden
- //    1              vertical
- //    2->max         horizontal
+ //    vis_colorbar                       state
+ //    0/COLORBAR_HIDDEN                  hidden
+ //    1/COLORBAR_SHOW_VERTICAL           vertical
+ //    2->max/COLORBAR_SHOW_HORIZONTAL    horizontal
     case ',':
       {
         int maxtoggle;
 
         maxtoggle = MAX(3, 2 + CountColorbars());
-        toggle_colorbar++;
-        if(toggle_colorbar >= maxtoggle)toggle_colorbar = 0;
-        if(toggle_colorbar == 0) {
+        vis_colorbar++;
+        if(vis_colorbar>= maxtoggle)vis_colorbar = 0;
+        if(vis_colorbar== COLORBAR_HIDDEN) {
           visColorbarVertical = 0;
           visColorbarHorizontal = 0;
         }
-        else if(toggle_colorbar == 1) {
+        else if(vis_colorbar== COLORBAR_SHOW_VERTICAL) {
           visColorbarVertical = 1;
           visColorbarHorizontal = 0;
         }
@@ -2405,6 +2447,16 @@ void Keyboard(unsigned char key, int flag){
       break;
     case ';':
       ColorbarMenu(COLORBAR_FLIP);
+      break;
+    case '{':
+      iplot3dtimelist--;
+      if(iplot3dtimelist<0)iplot3dtimelist=nplot3dtimelist-1;
+      Plot3DListMenu(iplot3dtimelist);
+      break;
+    case '}':
+      iplot3dtimelist++;
+      if(iplot3dtimelist>=nplot3dtimelist)iplot3dtimelist=0;
+      Plot3DListMenu(iplot3dtimelist);
       break;
   }
 
@@ -3247,7 +3299,7 @@ void DoScriptLua(void){
     fflush(stdout);
     script_return_code = runLuaScript();
     if(script_return_code != LUA_OK && script_return_code != LUA_YIELD && exit_on_script_crash){
-        exit(1);
+        SMV_EXIT(1);
     }
   }
 }
@@ -3263,7 +3315,7 @@ void DoScript(void){
       fflush(stdout);
       script_return_code = runSSFScript();
       if(script_return_code != LUA_OK && script_return_code != LUA_YIELD && exit_on_script_crash){
-          exit(1);
+          SM_EXIT(1);
       }
     }
 }
@@ -3279,7 +3331,7 @@ void DoScript(void){
 #ifndef WIN32
     if(FILE_EXISTS(stop_filename)==YES){
       fprintf(stderr,"*** Warning: stop file found.  Remove before running smokeview script\n");
-      exit(0);
+      SMV_EXIT(0);
     }
 #endif
     if(current_script_command>=scriptinfo){
@@ -3308,7 +3360,7 @@ void DoScript(void){
       current_script_command++;
       script_render_flag= RunScriptCommand(current_script_command);
       if(runscript==2&&noexit==0&&current_script_command==NULL){
-        exit(0);
+        SMV_EXIT(0);
       }
       if(current_script_command==NULL){
         GluiScriptEnable();

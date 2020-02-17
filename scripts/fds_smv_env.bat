@@ -2,10 +2,14 @@
 
 :: ---- FDS and smokeview version ----
 
-set fds_version=FDS6.7.1R881
-set smv_version=SMV6.7.8R4
-set fds_versionbase=6.7.1R881
-set smv_versionbase=6.7.8R4
+set fds_version=FDS6.7.3
+set fds_tag=FDS6.7.3
+set fds_versionbase=6.7.3
+
+set smv_version=SMV6.7.12
+set smv_tag=SMV6.7.12
+set smv_versionbase=6.7.12
+
 set fds_edition=FDS6
 set fds_debug=0
 
@@ -22,7 +26,7 @@ if exist %userprofile%\.bundle\fds_revision.txt (
 
 :: ---- log entry date ----
 
-set smvlogdate="18-Aug-2019"
+set smvlogdate="19-Dec-2019"
 
 :: ---- repo locations ----
 
@@ -43,14 +47,16 @@ set misc_dir=fire-notes/INSTALL/LIBS/LINUX/LIB64
 set linux_mpi_version=INTEL
 set linux_intel_mpi_version=19u4
 
+
 set osx_mpi_version=3.1.2
 ::set osx_mpi_version=1.8.4
+
+set linux_comp_version=19u4
+set osx_comp_version=19u4
 
 :: ---- INTEL compiler version ----
 
 set INTELVERSION=INTEL19U4
-set linux_comp_version=19u4
-set osx_comp_version=19u4
 
 :: ---- Guide locations ----
 
@@ -85,6 +91,6 @@ set linux_logon=%linux_username%@%linux_hostname%
 
 ::*** OSX
 set osx_hostname=floga.el.nist.gov
-::set osx_hostname=192.168.1.13
+::set osx_hostname=192.168.1.180
 set osx_username=%username%
 set osx_logon=%osx_username%@%osx_hostname%

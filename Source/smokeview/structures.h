@@ -366,7 +366,10 @@ typedef struct _surfdata {
   int used_by_obst,used_by_vent;
 #ifdef pp_SELECT_GEOM
   int used_by_geom;
+  int glui_color[3];
+  float axis[3];
   int in_geom_list;
+  int ntris;
   float geom_area;
 #endif
 } surfdata;
@@ -683,8 +686,10 @@ typedef struct _meshdata {
   float *xplt_orig, *yplt_orig, *zplt_orig;
   float x0, x1, y0, y1, z0, z1;
   int drawsides[7];
-  int extsides[7]; // 1 if on exterior side of a supermesh, 0 otherwise
-  int is_extface[6]; // 1 if face i adjacent to extior, 0 if adjacent to another mesh
+  int extsides[7];   // 1 if on exterior side of a supermesh, 0 otherwise
+  int is_extface[6]; //  MESH_EXT if face i is completely adjacent to exterior,
+                     //  MESH_INT if face i is completely adjacent to another mesh,
+                     // MESH_BOTH if face i is neither
   int inside;
   float boxmin[3], boxmiddle[3], boxmax[3], dbox[3], boxeps[3], dcell, dcell3[3], eyedist;
   float slice_min[3], slice_max[3];
@@ -703,6 +708,7 @@ typedef struct _meshdata {
   int plotn;
 
   char *c_iblank_node0, *c_iblank_cell0, *c_iblank_x0, *c_iblank_y0, *c_iblank_z0;
+  char *c_iblank_node_html;
   float *f_iblank_cell0;
   char *c_iblank_embed0;
   float *block_zdist0;
@@ -1219,7 +1225,7 @@ typedef struct _slicedata {
   int blocknumber;
   int firstshort_slice;
   int vec_comp;
-  int skip;
+  int skipdup;
   int setvalmin, setvalmax;
   float valmin, valmax;
   float globalmin, globalmax;
@@ -1261,6 +1267,12 @@ typedef struct _slicedata {
   histogramdata *histograms;
   int nhistograms;
   struct _patchdata *patchgeom;
+#ifdef pp_FILE_SIZES
+  FILE_SIZE file_size;
+#endif
+#ifdef pp_SLICETHREAD
+  int skipload, loadstatus, boundstatus;
+#endif
 } slicedata;
 
 /* --------------------------  multislicedata ------------------------------------ */
@@ -1302,7 +1314,8 @@ typedef struct _boundsdata {
   float global_valmin, global_valmax;
   float chopmin, chopmax;
   float valmin_data,valmax_data;
-  char colorlabels[12][11];
+  char  colorlabels[12][11];
+  float colorvalues[12];
   float levels256[256];
   float fscale;
   char scale[31];
@@ -1373,6 +1386,9 @@ typedef struct _smoke3ddata {
   unsigned char *smokeview_tmp;
   unsigned char *smoke_comp_all;
   unsigned char *frame_all_zeros;
+#ifdef pp_FILE_SIZES
+  FILE_SIZE file_size;
+#endif
   float *smoke_boxmin, *smoke_boxmax;
   smokedata smoke, light;
   int dir;

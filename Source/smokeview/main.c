@@ -211,21 +211,21 @@ void ParseCommandline(int argc, char **argv){
   zonescale = a_zonescale;
 
   if(argc == 1){
-    exit(1);
+    SMV_EXIT(1);
   }
   if(strncmp(argv[1], "-ini", 4) == 0){
     InitCameraList();
     InitOpenGL();
     UpdateRGBColors(COLORBAR_INDEX_NONE);
     WriteIni(GLOBAL_INI, NULL);
-    exit(0);
+    SMV_EXIT(0);
   }
   if(strncmp(argv[1], "-ng_ini", 7) == 0){
     InitCameraList();
     use_graphics = 0;
     UpdateRGBColors(COLORBAR_INDEX_NONE);
     WriteIni(GLOBAL_INI, NULL);
-    exit(0);
+    SMV_EXIT(0);
   }
   strcpy(SMVFILENAME, "");
   smv_parse = 0;
@@ -332,15 +332,20 @@ void ParseCommandline(int argc, char **argv){
   STRCPY(htmlvr_filename, fdsprefix);
   STRCAT(htmlvr_filename, "_vr.html");
 
-  FREEMEMORY(htmlobstdata_filename);
-  NewMemory((void **)&htmlobstdata_filename, len_casename+strlen("_obstdata.txt")+1);
-  STRCPY(htmlobstdata_filename, fdsprefix);
-  STRCAT(htmlobstdata_filename, "_obstdata.txt");
+  FREEMEMORY(htmlobst_filename);
+  NewMemory((void **)&htmlobst_filename, len_casename+strlen("_obst.json")+1);
+  STRCPY(htmlobst_filename, fdsprefix);
+  STRCAT(htmlobst_filename, "_obst.json");
 
-  FREEMEMORY(htmlslicedata_filename);
-  NewMemory((void **)&htmlslicedata_filename, len_casename+strlen("_slicedata.txt")+1);
-  STRCPY(htmlslicedata_filename, fdsprefix);
-  STRCAT(htmlslicedata_filename, "_slicedata.txt");
+  FREEMEMORY(htmlslicenode_filename);
+  NewMemory((void **)&htmlslicenode_filename, len_casename+strlen("_slicenode.json")+1);
+  STRCPY(htmlslicenode_filename, fdsprefix);
+  STRCAT(htmlslicenode_filename, "_slicenode.json");
+
+  FREEMEMORY(htmlslicecell_filename);
+  NewMemory((void **)&htmlslicecell_filename, len_casename+strlen("_slicecell.json")+1);
+  STRCPY(htmlslicecell_filename, fdsprefix);
+  STRCAT(htmlslicecell_filename, "_slicecell.json");
 #endif
 
   FREEMEMORY(boundinfo_filename);
@@ -553,11 +558,11 @@ void ParseCommandline(int argc, char **argv){
     }
     else if(strncmp(argv[i], "-h", 2) == 0&&strncmp(argv[i], "-help_all", 9)!=0&&strncmp(argv[1], "-html", 5)!=0){
       Usage(argv[0],HELP_SUMMARY);
-      exit(0);
+      SMV_EXIT(0);
     }
     else if(strncmp(argv[i], "-help_all", 9)==0){
       Usage(argv[0],HELP_ALL);
-      exit(0);
+      SMV_EXIT(0);
     }
     else if(strncmp(argv[i], "-noblank", 8) == 0){
       iblank_set_on_commandline = 1;
@@ -568,20 +573,20 @@ void ParseCommandline(int argc, char **argv){
     }
     else if(strncmp(argv[i], "-fast", 5) == 0){
       fast_startup = 1;
-      lookfor_zip = 0;
+      lookfor_compressed_slice = 0;
     }
     else if(strncmp(argv[i], "-blank", 6) == 0){
       iblank_set_on_commandline = 1;
       use_iblank = 1;
     }
     else if(strncmp(argv[i], "-gversion", 9) == 0){
-      gversion = 1;
+      vis_title_gversion = 1;
     }
     else if(
       strncmp(argv[i], "-volrender", 10) != 0 && (strncmp(argv[i], "-version", 8) == 0 || strncmp(argv[i], "-v", 2) == 0)
       ){
       DisplayVersionInfo("Smokeview ");
-      exit(0);
+      SMV_EXIT(0);
     }
     else if(
       strncmp(argv[i], "-redirect", 9) == 0
@@ -699,12 +704,12 @@ void ParseCommandline(int argc, char **argv){
     else if(strncmp(argv[i], "-build", 6) == 0){
       showbuild = 1;
       Usage(argv[0],HELP_ALL);
-      exit(0);
+      SMV_EXIT(0);
     }
     else{
       fprintf(stderr, "*** Error: unknown option: %s\n", argv[i]);
       Usage(argv[0],HELP_ALL);
-      exit(1);
+      SMV_EXIT(1);
     }
   }
   if(update_ssf == 1){
@@ -740,12 +745,22 @@ int main(int argc, char **argv){
   char *progname;
 
 #ifdef pp_CRASH_TEST
-  printf("before crash\n");
-{
-  int *x=NULL;
-  printf("%i\n",x[0]);
-}
-  printf("after crash\n");
+  {
+    float *x = NULL, xx, yy, zz;
+
+    zz = xx+yy;
+    printf("use undefined variable zz=%f\n", zz);
+
+    xx = 0.0;
+    zz = 1.0/xx;
+    printf("divide by zero zz=%f\n", zz);
+
+    printf("before crash\n");
+    x[0] = 1.0;
+    printf("use undefined pointer x[0]=%f\n", x[0]);
+
+    printf("after crash\n");
+  }
 #endif
 #ifdef pp_LUA
   // If we are using lua, let lua take control here.
@@ -773,16 +788,18 @@ int main(int argc, char **argv){
     Usage("smokeview",HELP_SUMMARY);
     return 1;
   }
-  if(show_version==1){
-    PRINTVERSION("smokeview", argv_sv[0]);
-    return 1;
-  }
 
   prog_fullpath = progname;
 #ifdef pp_LUA
   smokeview_bindir_abs=getprogdirabs(progname,&smokeviewpath);
 #endif
   ParseCommandline(argc, argv_sv);
+
+  if(show_version==1){
+    PRINTVERSION("smokeview", argv_sv[0]);
+    return 1;
+  }
+
   if(smokeview_bindir==NULL){
     smokeview_bindir= GetProgDir(progname,&smokeviewpath);
   }
@@ -824,4 +841,10 @@ int main(int argc, char **argv){
 
   glutMainLoop();
   return 0;
+}
+
+/* ------------------ SMV_EXIT ------------------------ */
+
+void SMV_EXIT(int code){
+  exit(code);
 }

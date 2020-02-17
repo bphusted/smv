@@ -33,13 +33,15 @@ GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
 # Definition of the object variables
 
 obj =    main.o CNV3dsmoke.o CNVboundary.o CNVpart.o CNVplot3d.o CNVslice.o assert.o \
-         csphere.o dmalloc.o lightsmoke.o smv_endian.o histogram.o readfiles.o utilities.o \
+         csphere.o dmalloc.o lightsmoke.o histogram.o readfiles.o utilities.o \
          isobox.o file_util.o string_util.o threader.o compress.o md5.o sha1.o sha256.o \
          fdsmodules.o gsmv.o getdata.o
 objwin = $(obj:.o=.obj)
 
 # main has to be compiled without optimization (on a Windows PC) otherwise errors occcur
-main.obj: CFLAGS = -Od /nologo -D WIN32 -D pp_WIN_INTEL $(OPT)
+# don't think the following is needed anymore - keeping it around for awhile to make it easier to put
+# back in case it is needed
+#main.obj: CFLAGS = -Od /nologo -D WIN32 -D pp_WIN_INTEL $(OPT)
 
 #*** General Purpose Rules ***
 

@@ -9,6 +9,9 @@
 
 #ifdef pp_INTEL
 #define pp_FSEEK
+#ifdef WIN32
+#define HAVE_MSVS
+#endif
 #endif
 
 //*** options: windows
@@ -16,22 +19,37 @@
 #ifdef WIN32
 #undef pp_append
 
-#ifdef VS2015                      // needed in visual studio to prevent compiler warning/errors
-#define _CRT_SECURE_NO_DEPRECATE   // set to eliminate compiler warnings
+//*** needed when using Windows Intel compilers
+//    to prevent warnings/errors
+
+#ifdef pp_INTEL
+
+#ifndef _CRT_SECURE_NO_DEPRECATE
+#define _CRT_SECURE_NO_DEPRECATE
+#endif
+
+#ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#ifndef HAVE_SNPRINTF
 #define HAVE_SNPRINTF
+#endif
+
 #ifndef HAVE_STRUCT_TIMESPEC
 #define HAVE_STRUCT_TIMESPEC
 #endif
+
 #endif
+
+#ifdef __MINGW32__
+#ifndef pp_append
+#define pp_append // append underscore to Fortran file names
+#endif
+#endif
+
 
 #include "pragmas.h"
-#endif
-
-#ifdef pp_HASH
-#define PRINTVERSION(a,b) PRINTversion(a,b,hash_option)
-#else
-#define PRINTVERSION(a,b) PRINTversion(a)
 #endif
 
 //*** options: Mac
@@ -46,19 +64,19 @@
 #define pp_append // append underscore to Fortran file names
 #endif
 
-#ifdef __MINGW32__
-#ifdef WIN32
-#ifndef pp_append
-#define pp_append // append underscore to Fortran file names
-#endif
-#endif
-#endif
-
 //*** options: debug options
 
 #ifdef _DEBUG
 //#define pp_MEMPRINT     // output memory allocation info
 #define pp_MEMDEBUG     // comment this line when debugging REALLY large cases (to avoid memory checks)
+#endif
+
+//*** hash output
+
+#ifdef pp_HASH
+#define PRINTVERSION(a,b) PRINTversion(a,b,hash_option)
+#else
+#define PRINTVERSION(a,b) PRINTversion(a)
 #endif
 
 // used to access Fortran routines from C

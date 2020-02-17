@@ -392,13 +392,94 @@ void ScaleString(const char *stringfrom, char *stringto, const float *scale){
   Num2String(stringto,val);
 }
 
+/* ------------------ ScaleFloat ------------------------ */
+
+float ScaleFloat2Float(float floatfrom, const float *scale){
+  float val;
+
+  val = floatfrom;
+  if(scale!=NULL)val = scale[0]*val+scale[1];
+  return val;
+}
+
 /* ------------------ ScaleFloat2String ------------------------ */
 
 void ScaleFloat2String(float floatfrom, char *stringto, const float *scale){
   float val;
 
-  val = scale[0]*floatfrom+scale[1];
+  val = floatfrom;
+  if(scale!=NULL)val = scale[0]*val+scale[1];
   Num2String(stringto,val);
+}
+
+/* ------------------ GetFormat ------------------------ */
+
+char *GetFormat(int bef, int aft, char *format){
+  strcpy(format, "");
+  sprintf(format, "%s%i%s%i%s", "%",bef,".",aft,"f");
+  return format;
+}
+
+/* ------------------ SliceNum2String ------------------------ */
+
+void SliceNum2String(char *string, float tval, int ndecimals){
+  float tval2, mant10;
+  int exp10;
+  char format[20];
+
+  tval2 = ABS(tval);
+  if(0.01-.001<=tval2&&tval2<0.1){
+    sprintf(string, GetFormat(3,ndecimals+1,format), tval);
+  }
+  else if(0.1<=tval2&&tval2<1.0){
+    sprintf(string, GetFormat(3,ndecimals+1,format), tval);
+  }
+  else if(1.0<=tval2&&tval2<10.0){
+    sprintf(string, GetFormat(3,ndecimals+1,format), tval);
+  }
+  else if(10.0<=tval2&&tval2<100.0){
+    sprintf(string, GetFormat(3,ndecimals,format), tval);
+  }
+  else if(100.0<=tval2&&tval2<1000.0){
+    sprintf(string, GetFormat(3,ndecimals-1,format), tval);
+  }
+  else if(1000.0<=tval2&&tval2<10000.0){
+    sprintf(string, GetFormat(4,ndecimals-1,format), tval);
+  }
+  else if(10000.0<=tval2&&tval2<100000.0){
+    sprintf(string, GetFormat(5,ndecimals-1,format), tval);
+  }
+  else if(tval2==0.0){
+    STRCPY(string, "0.00");
+  }
+  else{
+    mant10 = FrExp10(tval, &exp10);
+    mant10 = (float)((int)(10.0f*mant10+0.5f))/10.0f;
+    if(mant10>=10.0f){
+      mant10 /= 10.0f;
+      exp10++;
+    }
+    if(exp10<-99){
+      STRCPY(string, "0.00");
+    }
+    else if(exp10>=-99&&exp10<-9){
+      sprintf(string, "%2.1f%i", mant10, exp10);
+    }
+    else if(exp10>99){
+      STRCPY(string, "***");
+    }
+    else{
+      if(exp10==0){
+        sprintf(string, "%2.1f", mant10);
+      }
+      else{
+        sprintf(string, "%2.1fE%i", mant10, exp10);
+      }
+    }
+
+    /*sprintf(string,"%1.1e",tval); */
+  }
+  if(strlen(string)>9)fprintf(stderr, "***fatal error - overwriting string\n");
 }
 
 /* ------------------ Num2String ------------------------ */
@@ -966,6 +1047,7 @@ int ReadLabelsBNDS(flowlabels *flowlabel, BFILE *stream, char *bufferD, char *bu
   return LABEL_OK;
 }
 
+
 /* ------------------ ReadLabels ------------------------ */
 
 int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
@@ -975,15 +1057,15 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
   int len_skip_label = 10;  // add extra space to label in case there is an isosurface skip parameter
   int return_val = LABEL_OK;
 
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"*");
-    return_val =  LABEL_ERR;
+  if(FGETS(buffer2, 255, stream)==NULL){
+    strcpy(buffer2, "*");
+    return_val = LABEL_ERR;
   }
 
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
+  len = strlen(buffer2);
+  buffer = TrimFront(buffer2);
   TrimBack(buffer);
-  len=strlen(buffer);
+  len = strlen(buffer);
   if(suffix_label!=NULL)len_suffix_label = strlen(suffix_label);
   if(flowlabel!=NULL){
     if(NewMemory((void **)&flowlabel->longlabel, (unsigned int)(len+len_suffix_label+len_skip_label+1))==0)return LABEL_ERR;
@@ -991,29 +1073,29 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
     if(suffix_label!=NULL&&strlen(suffix_label)>0)STRCAT(flowlabel->longlabel, suffix_label);
   }
 
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"**");
+  if(FGETS(buffer2, 255, stream)==NULL){
+    strcpy(buffer2, "**");
     return_val = LABEL_ERR;
   }
 
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
+  len = strlen(buffer2);
+  buffer = TrimFront(buffer2);
   TrimBack(buffer);
-  len=strlen(buffer);
+  len = strlen(buffer);
   if(flowlabel!=NULL){
     if(NewMemory((void **)&flowlabel->shortlabel, (unsigned int)(len+1))==0)return LABEL_ERR;
     STRCPY(flowlabel->shortlabel, buffer);
   }
 
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"***");
+  if(FGETS(buffer2, 255, stream)==NULL){
+    strcpy(buffer2, "***");
     return_val = LABEL_ERR;
   }
 
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
+  len = strlen(buffer2);
+  buffer = TrimFront(buffer2);
   TrimBack(buffer);
-  len=strlen(buffer)+1;// allow room for deg C symbol in case it is present
+  len = strlen(buffer)+1;// allow room for deg C symbol in case it is present
   if(flowlabel!=NULL){
     if(NewMemory((void *)&flowlabel->unit, (unsigned int)(len+1))==0)return LABEL_ERR;
 #ifdef pp_DEG
@@ -1034,6 +1116,77 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
   }
   return return_val;
 }
+
+#ifdef pp_PLOT3D_STATIC
+/* ------------------ ReadPlotLabels ------------------------ */
+
+int ReadPlot3DLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label, char *labels_static){
+  char buffer2[255], *buffer;
+  size_t len;
+  int len_suffix_label = 0;
+  int len_skip_label = 10;  // add extra space to label in case there is an isosurface skip parameter
+  int return_val = LABEL_OK;
+
+  if(FGETS(buffer2,255,stream)==NULL){
+    strcpy(buffer2,"*");
+    return_val =  LABEL_ERR;
+  }
+
+  len=strlen(buffer2);
+  buffer=TrimFront(buffer2);
+  TrimBack(buffer);
+  len=strlen(buffer);
+  if(suffix_label!=NULL)len_suffix_label = strlen(suffix_label);
+  if(flowlabel!=NULL){
+    flowlabel->longlabel = labels_static;
+    STRCPY(flowlabel->longlabel, buffer);
+    if(suffix_label!=NULL&&strlen(suffix_label)>0)STRCAT(flowlabel->longlabel, suffix_label);
+  }
+
+  if(FGETS(buffer2,255,stream)==NULL){
+    strcpy(buffer2,"**");
+    return_val = LABEL_ERR;
+  }
+
+  len=strlen(buffer2);
+  buffer=TrimFront(buffer2);
+  TrimBack(buffer);
+  len=strlen(buffer);
+  if(flowlabel!=NULL){
+    flowlabel->shortlabel = labels_static + MAXPLOT3DLABELSIZE;
+    STRCPY(flowlabel->shortlabel, buffer);
+  }
+
+  if(FGETS(buffer2,255,stream)==NULL){
+    strcpy(buffer2,"***");
+    return_val = LABEL_ERR;
+  }
+
+  len=strlen(buffer2);
+  buffer=TrimFront(buffer2);
+  TrimBack(buffer);
+  len=strlen(buffer)+1;// allow room for deg C symbol in case it is present
+  if(flowlabel!=NULL){
+    flowlabel->unit = labels_static + 2*MAXPLOT3DLABELSIZE;
+#ifdef pp_DEG
+    if(strlen(buffer)==1&&strcmp(buffer, "C")==0){
+      unsigned char *unit;
+
+      unit = (unsigned char *)flowlabel->unit;
+      unit[0] = DEG_SYMBOL;
+      unit[1] = 'C';
+      unit[2] = '\0';
+    }
+    else{
+      STRCPY(flowlabel->unit, buffer);
+    }
+#else
+    STRCPY(flowlabel->unit, buffer);
+#endif
+  }
+  return return_val;
+}
+#endif
 
 /* ------------------ Date2Day ------------------------ */
 
@@ -1553,8 +1706,6 @@ void PRINTversion(char *progname){
   PRINTF("Platform         : WIN64 ");
 #ifdef pp_INTEL
   PRINTF(" (Intel C/C++)");
-#else
-  PRINTF(" (MSVS C/C++)");
 #endif
   PRINTF("\n");
 #endif

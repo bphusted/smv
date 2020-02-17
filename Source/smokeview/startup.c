@@ -21,7 +21,7 @@ void InitMisc(void){
   int i;
 
   FREEMEMORY(plotiso);
-  NewMemory((void **)&plotiso,mxplot3dvars*sizeof(int));
+  NewMemory((void **)&plotiso, MAXPLOT3DVARS*sizeof(int));
 
   for(i=0;i<16;i++){
     if(i%5==0){
@@ -31,7 +31,7 @@ void InitMisc(void){
       modelview_identity[i]=0.0;
     }
   }
-  for(i=0;i<mxplot3dvars;i++){
+  for(i=0;i<MAXPLOT3DVARS;i++){
     plotiso[i]=nrgb/2;
   }
 
@@ -286,11 +286,7 @@ int SetupCase(int argc, char **argv){
     ShowGluiAlert();
   }
   // initialize info header
-  initialiseInfoHeader(&titleinfo, release_title, smv_githash, fds_githash,
-                       chidfilebase);
-#ifdef pp_SELECT_GEOM
-  UpdateGeomAreas();
-#endif
+  initialiseInfoHeader(&titleinfo, release_title, smv_githash, fds_githash, chidfilebase, fds_title);
   return 0;
 }
 
@@ -1642,7 +1638,6 @@ void InitVars(void){
   usetextures=0;
   canrestorelastview=0;
   ntargets=0;
-  endian_data=0, endian_native=0, setendian=0;
 
   mainwindow_id=0;
   rendertourcount=0;
@@ -1892,7 +1887,6 @@ void InitVars(void){
   blockage_as_input=0;
   blockage_snapped=1;
   show_cad_and_grid=0;
-  nplot3dtimelist=0;
 
   buffertype=DOUBLE_BUFFER;
   opengldefined=0;
@@ -1977,7 +1971,6 @@ void InitVars(void){
 
   demo_mode=0;
   update_demo=1;
-  mxplot3dvars=MAXPLOT3DVARS;
 
   valindex=0;
 

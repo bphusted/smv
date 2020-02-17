@@ -7,7 +7,10 @@
 #include <math.h>
 
 #include "smokeviewvars.h"
+#include "IOscript.h"
 #include "MALLOCC.h"
+#include "glui_smoke.h"
+#include "glui_bounds.h"
 
 GLUI_Rollout *ROLLOUT_slice_bound=NULL;
 GLUI_Rollout *ROLLOUT_slice_chop=NULL;
@@ -18,141 +21,6 @@ GLUI_Rollout *ROLLOUT_zone_bound=NULL;
 #ifdef pp_MEMDEBUG
 #define MEMCHECK 1
 #endif
-
-#define IMMERSED_SWITCH_CELLTYPE 0
-#define IMMERSED_SET_DRAWTYPE 1
-#define IMMERSED_SWITCH_EDGETYPE 2
-
-#define SMOOTH_SURFACES 402
-#define SORT_SURFACES 401
-#define ISO_SURFACE 1
-#define ISO_OUTLINE 2
-#define ISO_POINTS 3
-#define ISO_COLORS 4
-#define ISO_LEVEL 5
-#define ISO_TRANSPARENCY 6
-#define ISO_SETVALMIN 10
-#define ISO_SETVALMAX 11
-#define ISO_VALMIN 12
-#define ISO_VALMAX 13
-#define GLOBAL_ALPHA 7
-#define COLORTABLE_LIST 8
-#define SETVALMIN 1
-#define SETVALMAX 2
-#define VALMIN 3
-#define VALMAX 4
-#define FILETYPEINDEX 5
-#define FILEUPDATE 6
-#define FILERELOAD 7
-#define FILEUPDATEDATA 8
-#define UPDATEPLOT 10
-#define PLOTISO 11
-#define SHOWCHAR 12
-#define CHOPVALMIN 13
-#define CHOPVALMAX 14
-#define SETCHOPMINVAL 15
-#define SETCHOPMAXVAL 16
-#define CHOPUPDATE 17
-#define FRAMELOADING 18
-#define STREAKLENGTH 19
-#define TRACERS 21
-#define PARTFAST 22
-#define PLOTISOTYPE 22
-#define CACHE_BOUNDARYDATA 23
-#define SHOWPATCH_BOTH 24
-#define HIDEPATCHSURFACE 25
-#define DATA_transparent 26
-#define ALLFILERELOAD 27
-#define UNLOAD_QDATA 203
-#define SET_TIME 204
-#define TBOUNDS 205
-#define TBOUNDS_USE 206
-#define RELOAD_ALL_DATA 207
-#define RELOAD_INCREMENTAL_DATA 215
-#define SHOW_EVAC_SLICES 208
-#define DATA_EVAC_COLORING 209
-#define SLICE_VECTORSKIP 210
-#define PLOT3D_VECTORSKIP 211
-#define UPDATE_SLICEDUPS 212
-#define UPDATE_HISTOGRAM 213
-#define INIT_HISTOGRAM 214
-#define UPDATE_BOUNDARYSLICEDUPS 215
-#define ISO_TRANSPARENCY_OPTION 216
-#define ISO_COLORBAR_LIST 217
-#define ISO_OUTLINE_IOFFSET 218
-
-#define ISO_TRANSPARENT_CONSTANT 0
-#define ISO_TRANSPARENT_VARYING  1
-#define ISO_OPAQUE               2
-
-#define SCRIPT_START 31
-#define SCRIPT_STOP 32
-#define SCRIPT_LIST 33
-#define SCRIPT_SAVEINI 34
-#define SCRIPT_EDIT_INI 35
-#define SCRIPT_SETSUFFIX 36
-#define SCRIPT_RUNSCRIPT 37
-#define SCRIPT_LOADINI 38
-#define SCRIPT_RENDER 41
-#define SCRIPT_RENDER_SUFFIX 42
-#define SCRIPT_RENDER_DIR 43
-#define SCRIPT_STEP_NOW 44
-#define SCRIPT_CANCEL_NOW 45
-
-#define PARTICLE_BOUND             0
-#define PARTICLE_CHOP              1
-#define PARTICLE_SETTINGS          2
-
-#define BOUNDARY_BOUND             0
-#define BOUNDARY_CHOP              1
-#define BOUNDARY_OUTPUT_ROLLOUT    2
-#define BOUNDARY_THRESHOLD_ROLLOUT 3
-#define BOUNDARY_DUPLICATE_ROLLOUT 4
-#define BOUNDARY_SETTINGS_ROLLOUT  5
-
-#define ZONEVALMINMAX    50
-#define SETZONEVALMINMAX 52
-
-#define SAVE_SETTINGS 99
-#define CLOSE_BOUNDS 98
-#define COMPRESS_FILES 97
-#define OVERWRITE 96
-#define COMPRESS_AUTOLOADED 91
-#define ERASE 95
-#define STARTUP 94
-#define SAVE_FILE_LIST 93
-#define LOAD_FILES 92
-#define COLORBAR_EXTREME2 109
-#define TRANSPARENTLEVEL 110
-#define COLORBAR_LIST2 112
-#define COLORBAR_SMOOTH 113
-#define RESEARCH_MODE 114
-#define COLORBAND 115
-#define SLICE_IN_OBST 116
-
-#define UPDATE_VECTOR 101
-#define UPDATE_VECTOR_FROM_SMV 102
-
-#define TRUNCATE_BOUNDS 1
-#define DONT_TRUNCATE_BOUNDS 0
-#define UPDATE_BOUNDS 1
-#define RELOAD_BOUNDS 0
-#define UPDATERELOAD_BOUNDS 2
-
-#define LINE_CONTOUR_VALUE 301
-#define UPDATE_LINE_CONTOUR_VALUE 302
-
-#define FILESHOW_particle    10
-#define FILESHOW_slice       11
-#define FILESHOW_vslice      12
-#define FILESHOW_boundary    13
-#define FILESHOW_3dsmoke     14
-#define FILESHOW_isosurface  15
-#define FILESHOW_evac        19
-#define FILESHOW_plot3d      16
-#define FILESHOW_sizes       20
-#define BOUNDARY_LOAD_INCREMENTAL 16
-#define SLICE_LOAD_INCREMENTAL 17
 
 GLUI *glui_bounds=NULL;
 
@@ -218,6 +86,9 @@ GLUI_Rollout *ROLLOUT_particle_settings=NULL;
 
 GLUI_Panel *PANEL_slice_bound = NULL;
 GLUI_Panel *PANEL_partread = NULL;
+#ifdef pp_SLICETHREAD
+GLUI_Panel *PANEL_sliceread = NULL;
+#endif
 GLUI_Panel *PANEL_iso1 = NULL;
 GLUI_Panel *PANEL_iso2 = NULL;
 GLUI_Panel *PANEL_geomexp = NULL;
@@ -255,6 +126,9 @@ GLUI_Panel *PANEL_time2b=NULL;
 GLUI_Panel *PANEL_time2c=NULL;
 GLUI_Panel *PANEL_outputpatchdata=NULL;
 
+#ifdef pp_SLICETHREAD
+GLUI_Spinner *SPINNER_nslicethread_ids = NULL;
+#endif
 GLUI_Spinner *SPINNER_npartthread_ids = NULL;
 GLUI_Spinner *SPINNER_iso_outline_ioffset = NULL;
 GLUI_Spinner *SPINNER_histogram_width_factor = NULL;
@@ -308,6 +182,9 @@ GLUI_EditText *EDIT_part_min=NULL, *EDIT_part_max=NULL;
 GLUI_EditText *EDIT_p3_min=NULL, *EDIT_p3_max=NULL;
 GLUI_EditText *EDIT_p3_chopmin=NULL, *EDIT_p3_chopmax=NULL;
 
+#ifdef pp_SLICETHREAD
+GLUI_Checkbox *CHECKBOX_slice_multithread = NULL;
+#endif
 GLUI_Checkbox *CHECKBOX_part_multithread = NULL;
 GLUI_Checkbox *CHECKBOX_partfast = NULL;
 GLUI_Checkbox *CHECKBOX_show_slice_shaded = NULL;
@@ -1016,7 +893,7 @@ void BoundsDlgCB(int var){
     glui_bounds->hide();
     updatemenu = 1;
     break;
-  case SAVE_SETTINGS:
+  case SAVE_SETTINGS_BOUNDS:
     WriteIni(LOCAL_INI, NULL);
     break;
   case COMPRESS_FILES:
@@ -1296,11 +1173,11 @@ void BoundBoundCB(int var){
     updatemenu = 1;
     break;
   case STARTUP:
-    BoundsDlgCB(SAVE_SETTINGS);
+    BoundsDlgCB(SAVE_SETTINGS_BOUNDS);
     break;
   case SAVE_FILE_LIST:
     Set3DSmokeStartup();
-    BoundsDlgCB(SAVE_SETTINGS);
+    BoundsDlgCB(SAVE_SETTINGS_BOUNDS);
     break;
   case LOAD_FILES:
     LoadFiles();
@@ -2254,7 +2131,7 @@ extern "C" void GluiBoundsSetup(int main_window){
     ADDPROCINFO(boundprocinfo, nboundprocinfo, ROLLOUT_plot3d, PLOT3D_ROLLOUT, glui_bounds);
 
     RADIO_p3 = glui_bounds->add_radiogroup_to_panel(ROLLOUT_plot3d,&list_p3_index,FILETYPEINDEX,Plot3DBoundCB);
-    for(i=0;i<mxplot3dvars;i++){
+    for(i=0;i<MAXPLOT3DVARS;i++){
       glui_bounds->add_radiobutton_to_group(RADIO_p3,plot3dinfo[0].label[i].shortlabel);
     }
     CHECKBOX_cache_qdata = glui_bounds->add_checkbox_to_panel(ROLLOUT_plot3d, _("Cache Plot3D data"), &cache_qdata, UNLOAD_QDATA, Plot3DBoundCB);
@@ -2501,7 +2378,6 @@ extern "C" void GluiBoundsSetup(int main_window){
     SPINNER_transparent_level = glui_bounds->add_spinner_to_panel(ROLLOUT_boundimmersed, _("Transparent level"), GLUI_SPINNER_FLOAT, &transparent_level, TRANSPARENTLEVEL, SliceBoundCB);
     SPINNER_transparent_level->set_float_limits(0.0, 1.0);
 
-    //---
     if(nfedinfo>0){
       glui_bounds->add_checkbox_to_panel(ROLLOUT_boundimmersed, "Regenerate FED data", &regenerate_fed);
     }
@@ -2516,6 +2392,18 @@ extern "C" void GluiBoundsSetup(int main_window){
     PANEL_slice_smoke = glui_bounds->add_panel_to_panel(ROLLOUT_boundimmersed, "slice fire", true);
     glui_bounds->add_checkbox_to_panel(PANEL_slice_smoke, _("max blending"), &slices3d_max_blending);
     glui_bounds->add_checkbox_to_panel(PANEL_slice_smoke, _("show all 3D slices"), &showall_3dslices);
+
+#ifdef pp_SLICETHREAD
+    PANEL_sliceread = glui_bounds->add_panel_to_panel(ROLLOUT_boundimmersed, "Slice file loading", true);
+    CHECKBOX_slice_multithread = glui_bounds->add_checkbox_to_panel(PANEL_sliceread, _("Parallel loading"), &slice_multithread);
+    SPINNER_nslicethread_ids = glui_bounds->add_spinner_to_panel(PANEL_sliceread, _("Files loaded at once"), GLUI_SPINNER_INT, &nslicethread_ids);
+    if(nsliceinfo>1){
+      SPINNER_nslicethread_ids->set_int_limits(1, MIN(nsliceinfo, MAX_SLICE_THREADS));
+    }
+    else{
+      SPINNER_nslicethread_ids->set_int_limits(1, 1);
+    }
+#endif
 
 #ifdef pp_SMOKETEST
     glui_bounds->add_checkbox_to_panel(ROLLOUT_boundimmersed, _("opacity adjustment"), &slice_opacity_adjustment);
@@ -2578,7 +2466,7 @@ extern "C" void GluiBoundsSetup(int main_window){
   glui_bounds->add_radiobutton_to_group(RADIO_memcheck,"8 GB");
 #endif
 
-  glui_bounds->add_button(_("Save settings"), SAVE_SETTINGS, BoundsDlgCB);
+  glui_bounds->add_button(_("Save settings"), SAVE_SETTINGS_BOUNDS, BoundsDlgCB);
   glui_bounds->add_button(_("Close"), CLOSE_BOUNDS, BoundsDlgCB);
 
   glui_bounds->set_main_gfx_window( main_window );
@@ -2859,7 +2747,7 @@ extern "C" void UpdatePlot3dListIndex(void){
   i=plotn-1;
   list_p3_index_old=i;
   if(i<0)i=0;
-  if(i>mxplot3dvars-1)i=mxplot3dvars-1;
+  if(i>MAXPLOT3DVARS-1)i= MAXPLOT3DVARS-1;
   RADIO_p3->set_int_val(i);
   p3min_temp = p3min[i];
   p3max_temp = p3max[i];
@@ -3270,15 +3158,14 @@ void PartBoundCB(int var){
   case TRACERS:
   case PARTFAST:
     if(partfast==0||npartinfo<=1){
-      CHECKBOX_part_multithread->set_int_val(part_multithread);
       CHECKBOX_part_multithread->disable();
       SPINNER_npartthread_ids->disable();
     }
     else{
-      CHECKBOX_part_multithread->set_int_val(part_multithread);
       CHECKBOX_part_multithread->enable();
       SPINNER_npartthread_ids->enable();
     }
+    CHECKBOX_part_multithread->set_int_val(part_multithread);
     updatemenu=1;
     break;
   case FRAMELOADING:
@@ -3395,7 +3282,7 @@ void PartBoundCB(int var){
      if(EDIT_part_min!=NULL&&setpartmin==SET_MIN)PartBoundCB(SETVALMIN);
      if(EDIT_part_max!=NULL&&setpartmax==SET_MAX)PartBoundCB(SETVALMAX);
      LoadParticleMenu(PARTFILE_RELOADALL);
-     LoadEvacMenu(EVACFILE_LOADALL);
+     LoadEvacMenu(EVACFILE_RELOADALL);
      UpdateGlui();
      ParticlePropShowMenu(prop_index_SAVE);
     }
@@ -3535,13 +3422,13 @@ extern "C" void SliceBoundCB(int var){
       if(SPINNER_plot3dvectorskip!=NULL)SPINNER_plot3dvectorskip->set_int_val(vectorskip);
       break;
     case ZONEVALMINMAX:
-      GetZoneColors(zonetu, nzonetotal, izonetu,zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      GetZoneColors(zonetl, nzonetotal, izonetl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      if(have_zonefl==1)GetZoneColors(zonefl, nzonetotal, izonefl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      if(have_zonelw==1)GetZoneColors(zonelw, nzonetotal, izonelw, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      if(have_zoneuw==1)GetZoneColors(zoneuw, nzonetotal, izoneuw, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      if(have_zonecl==1)GetZoneColors(zonecl, nzonetotal, izonecl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
-      if(have_target_data==1)GetZoneColors(zonetargets, nzonetotal_targets, izonetargets, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, zonescale, zonelevels256);
+      GetZoneColors(zonetu, nzonetotal, izonetu,zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      GetZoneColors(zonetl, nzonetotal, izonetl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      if(have_zonefl==1)GetZoneColors(zonefl, nzonetotal, izonefl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      if(have_zonelw==1)GetZoneColors(zonelw, nzonetotal, izonelw, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      if(have_zoneuw==1)GetZoneColors(zoneuw, nzonetotal, izoneuw, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      if(have_zonecl==1)GetZoneColors(zonecl, nzonetotal, izonecl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      if(have_target_data==1)GetZoneColors(zonetargets, nzonetotal_targets, izonetargets, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
       UpdateSliceTempBounds(setzonemin, zonemin, setzonemax, zonemax);
       zoneusermin=zonemin;
       zoneusermax=zonemax;
@@ -3569,10 +3456,8 @@ extern "C" void SliceBoundCB(int var){
         if(EDIT_slice_max!=NULL)EDIT_slice_max->disable();
         EDIT_zone_max->set_float_val(zoneglobalmax);
       }
-      GetZoneColors(zonetu, nzonetotal, izonetu,zonemin, zonemax, nrgb, nrgb_full,
-        colorlabelzone, zonescale, zonelevels256);
-      GetZoneColors(zonetl, nzonetotal, izonetl, zonemin, zonemax, nrgb, nrgb_full,
-        colorlabelzone, zonescale, zonelevels256);
+      GetZoneColors(zonetu, nzonetotal, izonetu,zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
+      GetZoneColors(zonetl, nzonetotal, izonetl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonescale, zonelevels256);
       UpdateSliceTempBounds(setzonemin, zonemin, setzonemax, zonemax);
       break;
     case COLORBAR_LIST2:
@@ -3671,14 +3556,10 @@ extern "C" void SliceBoundCB(int var){
         // slice files
 
         if(nsliceloaded > 0){
-          setslicemin = setslicemin_save;
           SliceBoundCB(SETVALMIN);
-          slicemin = slicemin_save;
           SliceBoundCB(VALMIN);
 
-          setslicemax = setslicemax_save;
           SliceBoundCB(SETVALMAX);
-          slicemax = slicemax_save;
           SliceBoundCB(VALMAX);
         }
 
@@ -3700,19 +3581,6 @@ extern "C" void SliceBoundCB(int var){
         // particle files
 
         if(npartloaded > 0){
-          setpartmin = setpartmin_save;
-          PartBoundCB(SETVALMIN);
-          partmin = partmin_save;
-          PartBoundCB(VALMIN);
-
-          setpartmax = setpartmax_save;
-          PartBoundCB(SETVALMAX);
-          partmax = partmax_save;
-          PartBoundCB(VALMAX);
-          PartBoundCB(FILERELOAD);
-
-          // particle files
-
           setpartmin = setpartmin_save;
           PartBoundCB(SETVALMIN);
           partmin = partmin_save;
@@ -3897,11 +3765,21 @@ extern "C" void SliceBoundCB(int var){
     UpdateZoneTempBounds(setslicemin, slicemin, setslicemax, slicemax);
     break;
   case VALMIN:
+    if(is_fed_colorbar==1&&setslicemin==1&&ABS(slicemin)>0.001){
+      printf("***warning: min/max bounds for the FED colorbar are set to 0.0 and 3.0 respectively.\n");
+      printf("   To use different min/max bounds, change the colorbar.\n");
+      slicemin = 0.0;
+    }
     if(EDIT_slice_min!=NULL)EDIT_slice_min->set_float_val(slicemin);
     SetSliceMin(setslicemin,slicemin,setslicechopmin,slicechopmin);
     UpdateZoneTempBounds(setslicemin, slicemin, setslicemax, slicemax);
     break;
   case VALMAX:
+    if(is_fed_colorbar==1&&setslicemax==1&&ABS(slicemax-3.0)>0.001){
+      printf("***warning: min/max bounds for the FED colorbar are set to 0.0 and 3.0 respectively.\n");
+      printf("   To use different min/max bounds, change the colorbar.\n");
+      slicemax = 3.0;
+    }
     if(EDIT_slice_max!=NULL)EDIT_slice_max->set_float_val(slicemax);
     SetSliceMax(setslicemax,slicemax,setslicechopmax,slicechopmax);
     UpdateZoneTempBounds(setslicemin, slicemin, setslicemax, slicemax);

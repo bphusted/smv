@@ -43,7 +43,7 @@ cd $CURDIR
 
 FDSEXE=$GITROOT/fds/Build/impi_intel$PLATFORM$size/fds_impi_intel$PLATFORM$size
 MAKEMOVIE="$GITROOT/smv/Utilities/Scripts/make_movie.sh"
-QFDS=$GITROOT/fds/Utilities/Scripts/qfds.sh
+QFDS=$GITROOT/smv/Utilities/Scripts/qfds.sh
 QSMV="$GITROOT/smv/Utilities/Scripts/qsmv.sh -j ${MOV_JOBPREFIX} $QUEUE"
 
 VDIR=$GITROOT/smv/Verification
@@ -59,20 +59,26 @@ rm -f $OUTDIR/*.png
 
 # create version strings
 
+cd $VDIR/Visualization
+$FDSEXE version2.fds
+
 cd $VDIR
-$QFDS -e $FDSEXE -d Visualization -q terminal version2.fds
-$QSMV            -d Visualization             version2
+$QSMV -d Visualization version2
 
 # -------- make movie frames -------------------
 
 cd $VDIR
 
-$QSMV -p 8 -c plume5c_movies.ssf        -d Visualization plume5c
-$QSMV -p 8 -c thouse5_movies.ssf        -d Visualization thouse5
-$QSMV -p 8 -c BT10m_2x2km_LS_movies.ssf -d WUI           BT10m_2x2km_LS
-$QSMV -p 8 -c levelset1_movies.ssf      -d WUI           levelset1
-$QSMV -p 8 -c wind_test1_movies.ssf     -d WUI           wind_test1
-$QSMV -p 8 -c tree_test2_movies.ssf     -d WUI           tree_test2
+NPROCS=8
+#NRESERVE="-N 4"
+$QSMV -P $NPROCS $NRESERVE -c plume5c_movies.ssf        -d Visualization plume5c
+$QSMV -P $NPROCS $NRESERVE -c thouse5_movies.ssf        -d Visualization thouse5
+$QSMV -P $NPROCS $NRESERVE -c BT10m_2x2km_LS_movies.ssf -d WUI           BT10m_2x2km_LS
+$QSMV -P $NPROCS $NRESERVE -c hill_structure_movies.ssf -d WUI           hill_structure
+$QSMV -P $NPROCS $NRESERVE -c levelset1_movies.ssf      -d WUI           levelset1
+$QSMV -P $NPROCS $NRESERVE -c levelset2_movies.ssf      -d WUI           levelset2
+$QSMV -P $NPROCS $NRESERVE -c wind_test1_movies.ssf     -d WUI           wind_test1
+$QSMV -P $NPROCS $NRESERVE -c tree_test2_movies.ssf     -d WUI           tree_test2
 wait_cases_end
 
 # -------- make movies -------------------
@@ -88,11 +94,12 @@ $MAKEMOVIE -o $OUTDIR -m thouse5_tslice  thouse5_tslice
 $MAKEMOVIE -o $OUTDIR -m thouse5_smoke3d thouse5_smoke3d
 
 cd $WUIINDIR
-$MAKEMOVIE -o $OUTDIR BT10m_2x2km_LS
-$MAKEMOVIE -o $OUTDIR hill_structure
-$MAKEMOVIE -o $OUTDIR levelset1
-$MAKEMOVIE -o $OUTDIR wind_test1
-$MAKEMOVIE -o $OUTDIR tree_test2
+$MAKEMOVIE -o $OUTDIR BT10m_2x2km_LS_movie
+$MAKEMOVIE -o $OUTDIR hill_structure_movie
+$MAKEMOVIE -o $OUTDIR levelset1_movie
+$MAKEMOVIE -o $OUTDIR levelset2_movie
+$MAKEMOVIE -o $OUTDIR wind_test1_movie
+$MAKEMOVIE -o $OUTDIR tree_test2_movie
 
 echo movies generated
 

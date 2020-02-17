@@ -313,6 +313,8 @@ void FreeLabels(flowlabels *flowlabel){
 /* ------------------ InitMesh ------------------------ */
 
 void InitMesh(meshdata *meshi){
+  int i;
+
   meshi->smoke3d_soot = NULL;
   meshi->smoke3d_hrrpuv = NULL;
   meshi->smoke3d_temp = NULL;
@@ -324,12 +326,9 @@ void InitMesh(meshdata *meshi){
   meshi->opacity_adjustments = NULL;
   meshi->light_fraction = NULL;
   meshi->uc_light_fraction = NULL;
-  meshi->is_extface[0] = 1;
-  meshi->is_extface[1] = 1;
-  meshi->is_extface[2] = 1;
-  meshi->is_extface[3] = 1;
-  meshi->is_extface[4] = 1;
-  meshi->is_extface[5] = 1;
+  for(i = 0; i<6; i++){
+    meshi->is_extface[i] = MESH_EXT;
+  }
   meshi->ncutcells = 0;
   meshi->cutcells = NULL;
   meshi->slice_min[0] = 1.0;
@@ -543,6 +542,7 @@ void InitMesh(meshdata *meshi){
   meshi->c_iblank_y0 = NULL;
   meshi->c_iblank_z0 = NULL;
   meshi->c_iblank_node0 = NULL;
+  meshi->c_iblank_node_html = NULL;
   meshi->c_iblank_embed0 = NULL;
   meshi->block_zdist0 = NULL;
 
@@ -717,7 +717,11 @@ void ReadSMVDynamic(char *file){
       do_pass2=1;
       if(setup_only==1||smoke3d_only==1)continue;
       for(n = 0; n<5; n++){
+#ifdef pp_PLOT3D_STATIC
+        if(ReadPlot3DLabels(NULL, stream, NULL, NULL)==LABEL_ERR)break;
+#else
         if(ReadLabels(NULL, stream, NULL)==LABEL_ERR)break;
+#endif
       }
       nplot3dinfo++;
       continue;
@@ -973,9 +977,15 @@ void ReadSMVDynamic(char *file){
   if(nplot3dinfo>0){
     if(plot3dinfo==NULL){
       NewMemory((void **)&plot3dinfo,nplot3dinfo*sizeof(plot3ddata));
+#ifdef pp_PLOT3D_STATIC
+      NewMemory((void **)&plot3dlabels, nplot3dinfo*6*3*MAXPLOT3DLABELSIZE);
+#endif
     }
     else{
       ResizeMemory((void **)&plot3dinfo,nplot3dinfo*sizeof(plot3ddata));
+#ifdef pp_PLOT3D_STATIC
+      ResizeMemory((void **)&plot3dlabels, nplot3dinfo*6*3*MAXPLOT3DLABELSIZE);
+#endif
     }
   }
   for(i=0;i<ndeviceinfo;i++){
@@ -1057,14 +1067,14 @@ void ReadSMVDynamic(char *file){
       STRCPY(plot3di->comp_file,bufferptr);
       STRCAT(plot3di->comp_file,".svz");
 
-      if(FILE_EXISTS_CASEDIR(plot3di->comp_file)==YES){
-        plot3di->compression_type=COMPRESSED_ZLIB;
-        plot3di->file=plot3di->comp_file;
-      }
-      else{
-        plot3di->compression_type=UNCOMPRESSED;
-        plot3di->file=plot3di->reg_file;
-      }
+   //   if(FILE_EXISTS_CASEDIR(plot3di->comp_file)==YES){
+   //     plot3di->compression_type=COMPRESSED_ZLIB;
+   //     plot3di->file=plot3di->comp_file;
+   //   }
+   //   else{
+   //     plot3di->compression_type=UNCOMPRESSED;
+   //     plot3di->file=plot3di->reg_file;
+   //   }
       //disable compression for now
       plot3di->compression_type=UNCOMPRESSED;
       plot3di->file=plot3di->reg_file;
@@ -1072,12 +1082,20 @@ void ReadSMVDynamic(char *file){
       if(fast_startup==1||FILE_EXISTS_CASEDIR(plot3di->file)==YES){
         int n;
         int read_ok = YES;
+#ifdef pp_PLOT3D_STATIC
+        char *label_buffer;
+#endif
 
         plot3di->u = -1;
         plot3di->v = -1;
         plot3di->w = -1;
         for(n = 0;n<5;n++){
+#ifdef pp_PLOT3D_STATIC
+          label_buffer = plot3dlabels + (plot3di-plot3dinfo)*MAXPLOT3DLABELSIZE*6*3 + n*61*3;
+          if(ReadPlot3DLabels(&plot3di->label[n], stream, NULL, label_buffer)!=LABEL_OK){
+#else
           if(ReadLabels(&plot3di->label[n], stream, NULL)!=LABEL_OK){
+#endif
             read_ok=NO;
             break;
           }
@@ -1096,14 +1114,21 @@ void ReadSMVDynamic(char *file){
           continue;
         }
         if(plot3di->u>-1||plot3di->v>-1||plot3di->w>-1){
-          plot3di->nvars = mxplot3dvars;
+          plot3di->nvars = MAXPLOT3DVARS;
         }
         else{
           plot3di->nvars = 5;
         }
+#ifdef pp_PLOT3D_STATIC
+        label_buffer = plot3dlabels + (plot3di-plot3dinfo)*MAXPLOT3DLABELSIZE*6*3 + 5*61*3;
+        plot3di->label[5].longlabel = label_buffer;
+        plot3di->label[5].shortlabel = label_buffer+MAXPLOT3DLABELSIZE;
+        plot3di->label[5].unit       = label_buffer+2*MAXPLOT3DLABELSIZE;
+#else
         if(NewMemory((void **)&plot3di->label[5].longlabel, 6)==0)return;
         if(NewMemory((void **)&plot3di->label[5].shortlabel, 6)==0)return;
         if(NewMemory((void **)&plot3di->label[5].unit, 4)==0)return;
+#endif
 
         STRCPY(plot3di->label[5].longlabel, "Speed");
         STRCPY(plot3di->label[5].shortlabel, "Speed");
@@ -1908,8 +1933,8 @@ void InitTextures(void){
       continue;
     }
     if(use_graphics==1){
-      int errorcode;
       char *filename;
+      int max_texture_size;
 
       CheckMemory;
       filename=strrchr(texti->file,*dirseparator);
@@ -1921,17 +1946,24 @@ void InitTextures(void){
       }
       glGenTextures(1,&texti->name);
       glBindTexture(GL_TEXTURE_2D,texti->name);
+      printf("  reading in texture image: %s",texti->file);
+      glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
+
       floortex=ReadPicture(texti->file,&texwid,&texht,0);
       if(floortex==NULL){
-        PRINTF("***Error: Texture %s failed to load\n", filename);
+        PRINTF("\n***Error: Texture %s failed to load\n", filename);
         continue;
       }
-      errorcode=gluBuild2DMipmaps(GL_TEXTURE_2D,4, texwid, texht, GL_RGBA, GL_UNSIGNED_BYTE, floortex);
-      if(errorcode!=0){
-        FREEMEMORY(floortex);
-        PRINTF("***Error: Texture %s failed to load\n", filename);
-        continue;
+      printf(" - complete\n");
+      if(texwid>max_texture_size||texht>max_texture_size){
+        printf("***error: image size: %i x %i, is larger than the maximum allowed texture size %i x %i\n", texwid, texht, max_texture_size, max_texture_size);
       }
+      printf("  installing texture: %s",texti->file);
+      glTexImage2D(GL_TEXTURE_2D, 0, 4, texwid, texht, 0, GL_RGBA, GL_UNSIGNED_BYTE, floortex);
+      SNIFF_ERRORS("after glTexImage2D");
+      printf(" - complete\n");
+      glGenerateMipmap(GL_TEXTURE_2D);
+      SNIFF_ERRORS("after glGenerateMipmap");
       FREEMEMORY(floortex);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -2220,34 +2252,22 @@ void UpdateBoundInfo(void){
 /* ------------------ UpdateEndianInfo ------------------------ */
 
 void UpdateEndianInfo(void){
-  if(setendian==0){
-    if(Match(LESsystem,"AIX")==1||Match(LESsystem,"SGI")==1||Match(LESendian,"b")==1||Match(LESendian,"B")==1){
-      endian_data=1;
-    }
-    if(Match(LESsystem,"DVF")==1||Match(LESendian,"l")==1||Match(LESendian,"L")==1){
-      endian_data=0;
-    }
-    endian_smv = endian_data;
-  }
-
-#ifndef WIN32
-  if(endian_smv!=GetEndian()){
+  if(endian_fds!=endian_smv){
     fprintf(stderr,"*** Warning: Smokeview is running on a ");
-    if(GetEndian()==1){
+    if(endian_smv==ENDIAN_LITTLE){
       fprintf(stderr," little endian computer\n");
     }
     else{
       fprintf(stderr," big endian computer\n");
     }
     fprintf(stderr,"    but the data being visualized was generated on a ");
-    if(endian_smv==1){
+    if(endian_fds==ENDIAN_LITTLE){
       fprintf(stderr," little endian computer\n");
     }
     else{
       fprintf(stderr," big endian computer\n");
     }
   }
-#endif
 }
 
 /*
@@ -3510,7 +3530,7 @@ void SetupMeshWalls(void){
     xyz[1] = bmid[1];
     xyz[2] = bmid[2];
     if(GetMesh(xyz,NULL) != NULL){
-      is_extface[0] = 0;
+      is_extface[0] = MESH_INT;
       ncount++;
     }
 
@@ -3526,7 +3546,7 @@ void SetupMeshWalls(void){
     xyz[1] = bmin[1] - EPSMESH;
     xyz[2] = bmid[2];
     if(GetMesh(xyz,NULL) != NULL){
-      is_extface[2] = 0;
+      is_extface[2] = MESH_INT;
       ncount++;
     }
 
@@ -3534,7 +3554,7 @@ void SetupMeshWalls(void){
     xyz[1] = bmax[1] + EPSMESH;
     xyz[2] = bmid[2];
     if(GetMesh(xyz,NULL) != NULL){
-      is_extface[3] = 0;
+      is_extface[3] = MESH_INT;
       ncount++;
     }
 
@@ -3542,7 +3562,7 @@ void SetupMeshWalls(void){
     xyz[1] = bmid[1];
     xyz[2] = bmin[2] - EPSMESH;
     if(GetMesh(xyz,NULL) != NULL){
-      is_extface[4] = 0;
+      is_extface[4] = MESH_INT;
       ncount++;
     }
 
@@ -3550,12 +3570,199 @@ void SetupMeshWalls(void){
     xyz[1] = bmid[1];
     xyz[2] = bmax[2] + EPSMESH;
     if(GetMesh(xyz,NULL) != NULL){
-      is_extface[5] = 0;
+      is_extface[5] = MESH_INT;
       ncount++;
     }
   }
 }
 
+/* ------------------ SetupMeshWalls ------------------------ */
+
+void SetupMeshWallsNew(void){
+  int i;
+
+  for(i = 0; i<nmeshes; i++){
+    meshdata *meshi;
+    float xyz[3], *bmin, *bmax;
+    int *is_extface;
+    int ii, jj, kk;
+    float dx, dy, dz;
+    int n_int, n_ext;
+
+    meshi = meshinfo+i;
+    bmin = meshi->boxmin;
+    bmax = meshi->boxmax;
+    is_extface = meshi->is_extface;
+
+    dx = (bmax[0]-bmin[0])/(float)meshi->ibar;
+    dy = (bmax[1]-bmin[1])/(float)meshi->jbar;
+    dz = (bmax[2]-bmin[2])/(float)meshi->kbar;
+
+#define EPSMESH 0.001
+
+    // face: xmin
+
+    xyz[0] = bmin[0]-EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(jj = 0; jj<meshi->jbar; jj++){
+      xyz[1] = bmin[1]+dy/2.0+(float)jj*dy;
+      for(kk = 0; kk<meshi->kbar; kk++){
+        xyz[2] = bmin[2]+dz/2.0+(float)kk*dz;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[0] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[0] = MESH_INT;
+    }
+    else{
+      is_extface[0] = MESH_BOTH;
+    }
+
+    // face: xmax
+
+    xyz[0] = bmax[0]+EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(jj = 0; jj<meshi->jbar; jj++){
+      xyz[1] = bmin[1]+dy/2.0+(float)jj*dy;
+      for(kk = 0; kk<meshi->kbar; kk++){
+        xyz[2] = bmin[2]+dz/2.0+(float)kk*dz;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[1] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[1] = MESH_INT;
+    }
+    else{
+      is_extface[1] = MESH_BOTH;
+    }
+
+    // face: ymin
+
+    xyz[1] = bmin[1]-EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(ii = 0; ii<meshi->ibar; ii++){
+      xyz[0] = bmin[0]+dx/2.0+(float)ii*dx;
+      for(kk = 0; kk<meshi->kbar; kk++){
+        xyz[2] = bmin[2]+dz/2.0+(float)kk*dz;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[2] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[2] = MESH_INT;
+    }
+    else{
+      is_extface[2] = MESH_BOTH;
+    }
+
+    // face: ymax
+
+    xyz[1] = bmax[1]+EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(ii = 0; ii<meshi->ibar; ii++){
+      xyz[0] = bmin[0]+dx/2.0+(float)ii*dx;
+      for(kk = 0; kk<meshi->kbar; kk++){
+        xyz[2] = bmin[2]+dz/2.0+(float)kk*dz;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[3] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[3] = MESH_INT;
+    }
+    else{
+      is_extface[3] = MESH_BOTH;
+    }
+
+    // face: zmin
+
+    xyz[2] = bmin[2]-EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(ii = 0; ii<meshi->ibar; ii++){
+      xyz[0] = bmin[0]+dx/2.0+(float)ii*dx;
+      for(jj = 0; jj<meshi->jbar; jj++){
+        xyz[1] = bmin[1]+dy/2.0+(float)jj*dy;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[4] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[4] = MESH_INT;
+    }
+    else{
+      is_extface[4] = MESH_BOTH;
+    }
+
+    // face: zmax
+
+    xyz[2] = bmax[2]+EPSMESH;
+    n_int = 0;
+    n_ext = 0;
+    for(ii = 0; ii<meshi->ibar; ii++){
+      xyz[0] = bmin[0]+dx/2.0+(float)ii*dx;
+      for(jj = 0; jj<meshi->jbar; jj++){
+        xyz[1] = bmin[1]+dy/2.0+(float)jj*dy;
+        if(GetMesh(xyz, NULL)!=NULL){
+          n_int++;
+        }
+        else{
+          n_ext++;
+        }
+      }
+    }
+    if(n_int==0){
+      is_extface[5] = MESH_EXT;
+    }
+    else if(n_ext==0){
+      is_extface[5] = MESH_INT;
+    }
+    else{
+      is_extface[5] = MESH_BOTH;
+    }
+  }
+}
 /* ------------------ MakeFileLists ------------------------ */
 
 void MakeFileLists(void){
@@ -3645,6 +3852,8 @@ int ReadSMV(char *file, char *file2){
   npropinfo=1; // the 0'th prop is the default human property
   navatar_colors=0;
   FREEMEMORY(avatar_colors);
+
+  FREEMEMORY(fds_title);
 
   FREEMEMORY(geomdiaginfo);
   ngeomdiaginfo = 0;
@@ -3933,10 +4142,7 @@ int ReadSMV(char *file, char *file2){
   nvents=0;
   setPDIM=0;
   endian_smv = GetEndian();
-  endian_native = GetEndian();
-  endian_data=endian_native;
-  FREEMEMORY(LESsystem);
-  FREEMEMORY(LESendian);
+  endian_fds = endian_smv;
 
   FREEMEMORY(database_filename);
 
@@ -3963,11 +4169,6 @@ int ReadSMV(char *file, char *file2){
     InitVars();
     return -1;  // finished  unloading memory from previous case
   }
-
-  if(NewMemory((void **)&LESsystem,4)==0)return 2;
-  STRCPY(LESsystem,"");
-  if(NewMemory((void **)&LESendian,4)==0)return 2;
-  STRCPY(LESendian,"");
 
 #ifdef pp_READBUFFER
   if(readfile_option==READFILE){
@@ -4026,6 +4227,9 @@ int ReadSMV(char *file, char *file2){
     }
     TrimBack(buffer);
     if(strncmp(buffer," ",1)==0||buffer[0]==0)continue;
+    if(Match(buffer, "PL3D")==1){
+      BREAK;
+    }
 
     /*
       The keywords TRNX, TRNY, TRNZ, GRID, PDIM, OBST and VENT are not required
@@ -4033,6 +4237,18 @@ int ReadSMV(char *file, char *file2){
     */
 
 
+    if(Match(buffer, "TITLE")==1){
+      char *fds_title_local, len_title;
+
+      FGETS(buffer, 255, stream);
+      fds_title_local = TrimFrontBack(buffer);
+      if(fds_title_local==NULL)continue;
+      len_title = strlen(fds_title_local);
+      if(len_title==0)continue;
+      NewMemory((void **)&fds_title, len_title+1);
+      strcpy(fds_title, fds_title_local);
+      continue;
+    }
     if(Match(buffer, "SOLID_HT3D")==1){
       FGETS(buffer, 255, stream);
       sscanf(buffer, "%i", &solid_ht3d);
@@ -4231,26 +4447,15 @@ int ReadSMV(char *file, char *file2){
       lenbuffer = strlen(buffptr);
       if(lenbuffer>0){
         NewMemory((void **)&fds_version,lenbuffer+1);
+        NewMemory((void **)&fds_githash, lenbuffer+1);
         strcpy(fds_version,buffer);
+        strcpy(fds_githash, buffer);
       }
       else{
         NewMemory((void **)&fds_version,7+1);
+        NewMemory((void **)&fds_githash, 7+1);
         strcpy(fds_version,"unknown");
-      }
-
-      if(FGETS(buffer,255,stream)==NULL){
-        BREAK;
-      }
-      TrimBack(buffer);
-      buffptr = TrimFront(buffer);
-      lenbuffer = strlen(buffptr);
-      if(lenbuffer>0){
-        NewMemory((void **)&fds_githash,lenbuffer+1);
-        strcpy(fds_githash,buffer);
-      }
-      else{
-        NewMemory((void **)&fds_githash,7+1);
-        strcpy(fds_githash,"unknown");
+        strcpy(fds_githash, "unknown");
       }
       continue;
     }
@@ -4365,7 +4570,6 @@ int ReadSMV(char *file, char *file2){
     if( (Match(buffer,"SLCF") == 1)  ||
         (Match(buffer,"SLCC") == 1)  ||
         (Match(buffer, "SLCD") == 1) ||
-        (Match(buffer, "SLFL") == 1) ||
         (Match(buffer,"SLCT") == 1)
         || (Match(buffer, "BNDS") == 1)
       ){
@@ -4779,6 +4983,10 @@ int ReadSMV(char *file, char *file2){
       TrimBack(buffer);
       if(strncmp(buffer," ",1)==0||buffer[0]==0)continue;
     }
+    if(Match(buffer, "PL3D")==1){
+      BREAK;
+    }
+
     /*
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     +++++++++++++++++++++++++++++ CSVF ++++++++++++++++++++++++++
@@ -5735,6 +5943,9 @@ int ReadSMV(char *file, char *file2){
         smoke3di->finalize = 0;
         smoke3di->request_load = 0;
         smoke3di->primary_file=0;
+#ifdef pp_FILE_SIZES
+        smoke3di->file_size = 0;
+#endif
         smoke3di->blocknumber=blocknumber;
         smoke3di->lastiframe=-999;
         for(ii = 0;ii < MAXSMOKETYPES;ii++){
@@ -5858,6 +6069,11 @@ int ReadSMV(char *file, char *file2){
       if(s_color[3]<0.99){
         surfi->transparent=1;
       }
+#ifdef pp_SELECT_GEOM
+      surfi->glui_color[0] = CLAMP(255*surfi->color[0],0,255);
+      surfi->glui_color[1] = CLAMP(255*surfi->color[1], 0, 255);
+      surfi->glui_color[2] = CLAMP(255*surfi->color[2], 0, 255);
+#endif
       surfi->transparent_level=1.0;
       surfi->temp_ignition=temp_ignition;
       surfi->emis=emis;
@@ -6247,7 +6463,10 @@ int ReadSMV(char *file, char *file2){
     }
     TrimBack(buffer);
     if(strncmp(buffer," ",1)==0||buffer[0]==0)continue;
-  /*
+    if(Match(buffer, "PL3D")==1){
+      BREAK;
+    }
+    /*
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ++++++++++++++++++++++ AMBIENT ++++++++++++++++++++++++++++++
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -6742,7 +6961,10 @@ int ReadSMV(char *file, char *file2){
       }
     }
     CheckMemory;
-  /*
+    if(Match(buffer, "PL3D")==1){
+      BREAK;
+    }
+    /*
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ++++++++++++++++++ CLASS_OF_PARTICLES +++++++++++++++++++++++
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -8124,38 +8346,6 @@ typedef struct {
     }
   /*
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    ++++++++++++++++++++++ SYST ++++++++++++++++++++++++++++++
-    +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  */
-    if(Match(buffer,"SYST") == 1){
-      size_t len;
-
-      if(FGETS(buffer,255,stream)==NULL){
-        BREAK;
-      }
-      len=strlen(buffer);
-      buffer[len-1]='\0';
-      STRCPY(LESsystem,buffer);
-      continue;
-    }
-  /*
-    +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    ++++++++++++++++++++++ ENDIAN ++++++++++++++++++++++++++++++
-    +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  */
-    if(Match(buffer,"ENDIAN") == 1){
-      size_t len;
-
-      if(FGETS(buffer,255,stream)==NULL){
-        BREAK;
-      }
-      len=strlen(buffer);
-      buffer[len-1]='\0';
-      strncpy(LESendian,buffer,1);
-      continue;
-    }
-  /*
-    +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ++++++++++++++++++++++ ENDF ++++++++++++++++++++++++++++++
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   */
@@ -8173,13 +8363,16 @@ typedef struct {
       strcpy(endian_filename,bufferptr);
       ENDIANfile = fopen(endian_filename,"rb");
       if(ENDIANfile!=NULL){
-        endian_native = GetEndian();
+        endian_smv = GetEndian();
         FSEEK(ENDIANfile,4,SEEK_SET);
-        fread(&endian_data,4,1,ENDIANfile);
+        fread(&endian_fds,4,1,ENDIANfile);
         fclose(ENDIANfile);
-        endian_smv=endian_native;
-        if(endian_data!=1)endian_smv=1-endian_native;
-        setendian=1;
+        if(endian_fds==1){// fds and smokeview were run on same type of computer
+          endian_fds = endian_smv;
+        }
+        else{
+          endian_fds = 1-endian_smv;
+        }
       }
       continue;
     }
@@ -8219,23 +8412,23 @@ typedef struct {
     if( (Match(buffer,"SLCF") == 1)  ||
         (Match(buffer,"SLCC") == 1)  ||
         (Match(buffer, "SLCD") == 1) ||
-        (Match(buffer, "SLFL") == 1) ||
         (Match(buffer,"SLCT") == 1)
       || (Match(buffer, "BNDS") == 1)
       ){
       char *slicelabelptr, slicelabel[256], *sliceparms, *sliceoffsetptr;
       float above_ground_level=0.0;
       float sliceoffset_fds=0.0;
-      int terrain=0, cellcenter=0, facecenter=0, fire_line=0;
+      int terrain=0, cellcenter=0, facecenter=0;
       int slicegeom=0;
       int slcf_index = 0;
       char *char_slcf_index;
-      int has_reg, has_comp;
+      int has_reg, compression_type;
       int ii1 = -1, ii2 = -1, jj1 = -1, jj2 = -1, kk1 = -1, kk2 = -1;
       int blocknumber;
       slicedata *sd;
       size_t len;
       int read_slice_header=0;
+      char zlib_file[255], rle_file[255];
 
       if(setup_only == 1||smoke3d_only==1)continue;
 
@@ -8280,10 +8473,6 @@ typedef struct {
       if(Match(buffer,"SLCT") == 1){
         terrain=1;
       }
-      if(Match(buffer,"SLFL") == 1){
-        terrain=1;
-        fire_line=1;
-      }
       if(Match(buffer,"SLCC") == 1){
         cellcenter_slice_active = 1;
         cellcenter=1;
@@ -8326,6 +8515,7 @@ typedef struct {
       sd->slcf_index = slcf_index;
       sd->finalize = 1;
       sd->ntimes = 0;
+      sd->skipdup = 0;
       sd->ntimes_old = 0;
       sd->globalmax = -1.0e30;
       sd->globalmin = -sd->globalmax;
@@ -8334,6 +8524,9 @@ typedef struct {
       sd->comp_file=NULL;
       sd->vol_file=NULL;
       sd->slicelabel=NULL;
+#ifdef pp_FILE_SIZES
+      sd->file_size = 0;
+#endif
       sd->slice_filetype=SLICE_NODE_CENTER;
       sd->patchgeom = NULL;
       if(slicegeom==1){
@@ -8346,7 +8539,6 @@ typedef struct {
       if(terrain==1){
         sd->slice_filetype=SLICE_TERRAIN;
       }
-      if(fire_line==1)sd->slice_filetype=SLICE_FIRELINE;
       if(cellcenter==1){
         sd->slice_filetype=SLICE_CELL_CENTER;
       }
@@ -8355,13 +8547,20 @@ typedef struct {
       }
 
       islicecount++;
-      strcpy(buffer2,bufferptr);
-      strcat(buffer2,".svz");
+
+      strcpy(zlib_file,bufferptr);
+      strcat(zlib_file,".svz");
+      strcpy(rle_file,bufferptr);
+      strcat(rle_file,".rle");
+
       has_reg=0;
-      has_comp=0;
-      if(lookfor_zip==1&&FILE_EXISTS_CASEDIR(buffer2)==YES)has_comp=1;
-      if(has_comp==0&&(fast_startup==1||FILE_EXISTS_CASEDIR(bufferptr)==YES))has_reg=1;
-      if(has_reg==0&&has_comp==0){
+      compression_type=UNCOMPRESSED;
+      if(lookfor_compressed_slice==1){
+        if(FILE_EXISTS_CASEDIR(rle_file)==YES)compression_type  = COMPRESSED_RLE;
+        if(FILE_EXISTS_CASEDIR(zlib_file)==YES)compression_type = COMPRESSED_ZLIB;
+      }
+      if(compression_type==UNCOMPRESSED&&(fast_startup==1||FILE_EXISTS_CASEDIR(bufferptr)==YES))has_reg=1;
+      if(has_reg==0&&compression_type==UNCOMPRESSED){
         nsliceinfo--;
         nslicefiles--;
         nn_slice--;
@@ -8384,17 +8583,21 @@ typedef struct {
 
       NewMemory((void **)&sd->reg_file,(unsigned int)(len+1));
       STRCPY(sd->reg_file,bufferptr);
-
       NewMemory((void **)&sd->comp_file,(unsigned int)(len+4+1));
-      STRCPY(sd->comp_file,buffer2);
 
-      sd->compression_type=UNCOMPRESSED;
-      if(has_comp==1){
-        sd->compression_type=COMPRESSED_ZLIB;
-        sd->file=sd->comp_file;
-      }
-      if(sd->compression_type==UNCOMPRESSED){
-        sd->file=sd->reg_file;
+      sd->compression_type = compression_type;
+      switch (compression_type){
+        case UNCOMPRESSED:
+          sd->file=sd->reg_file;
+          break;
+        case COMPRESSED_ZLIB:
+          STRCPY(sd->comp_file,zlib_file);
+          sd->file=sd->comp_file;
+          break;
+        case COMPRESSED_RLE:
+          STRCPY(sd->comp_file,rle_file);
+          sd->file=sd->comp_file;
+          break;
       }
 
 // read in geometry file name
@@ -9060,6 +9263,9 @@ typedef struct {
       BREAK;
     }
     if(strncmp(buffer," ",1)==0||buffer[0]==0)continue;
+    if(Match(buffer, "PL3D")==1){
+      BREAK;
+    }
 
     /*
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -9195,7 +9401,7 @@ typedef struct {
 
   if(update_filesizes==1){
     GetFileSizes();
-    exit(0);
+    SMV_EXIT(0);
   }
 
   STOP_TIMER(processing_time);
@@ -9614,7 +9820,14 @@ int ReadIni2(char *inifile, int localfile){
 
     if(Match(buffer, "RESEARCHMODE") == 1){
       fgets(buffer, 255, stream);
-      sscanf(buffer, " %i ", &research_mode);
+#ifdef pp_SHIFT_COLORBARS
+      sscanf(buffer, " %i %i %f", &research_mode, &ncolorlabel_decimals, &colorbar_shift);
+      colorbar_shift = CLAMP(colorbar_shift, COLORBAR_SHIFT_MIN, COLORBAR_SHIFT_MAX);
+#else
+      sscanf(buffer, " %i %i", &research_mode, &ncolorlabel_decimals);
+#endif
+      if(research_mode==1&&research_mode_override==0)research_mode=0;
+      ncolorlabel_decimals = CLAMP(ncolorlabel_decimals, COLORBAR_NDECIMALS_MIN, COLORBAR_NDECIMALS_MAX);
       ONEORZERO(research_mode);
       update_research_mode=1;
       continue;
@@ -9661,6 +9874,11 @@ int ReadIni2(char *inifile, int localfile){
       ONEORZERO(show_boundary_points);
       continue;
     }
+    if(Match(buffer, "GEOMSLICEPROPS")==1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, " %f %f", &geomslice_linewidth, &geomslice_pointsize);
+      continue;
+    }
     if(Match(buffer, "GEOMCELLPROPS")==1){
       fgets(buffer, 255, stream);
       sscanf(buffer, " %i",
@@ -9697,6 +9915,12 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, " %i", &vis_northangle);
       fgets(buffer, 255, stream);
       sscanf(buffer, " %f %f %f", northangle_position, northangle_position + 1, northangle_position + 2);
+      continue;
+    }
+    if(Match(buffer, "SHOWAVATAR")==1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, " %i", &show_avatar);
+      ONEORZERO(show_avatar);
       continue;
     }
     if(Match(buffer, "TREEPARMS") == 1){
@@ -9799,8 +10023,8 @@ int ReadIni2(char *inifile, int localfile){
     }
     if(Match(buffer, "GVERSION") == 1){
       fgets(buffer, 255, stream);
-      sscanf(buffer, "%i", &gversion);
-      ONEORZERO(gversion);
+      sscanf(buffer, "%i", &vis_title_gversion);
+      ONEORZERO(vis_title_gversion);
     }
     if(Match(buffer, "GVECDOWN") == 1){
       fgets(buffer, 255, stream);
@@ -9899,6 +10123,11 @@ int ReadIni2(char *inifile, int localfile){
       fgets(buffer, 255, stream);
       sscanf(buffer, "%i", &showpatch_both);
       ONEORZERO(showpatch_both);
+    }
+    if(Match(buffer, "BOUNDARYMESH") == 1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i", &show_bndf_mesh_interface);
+      ONEORZERO(show_bndf_mesh_interface);
     }
     if(Match(buffer, "MESHOFFSET") == 1){
       int meshnum;
@@ -10102,7 +10331,7 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, "%i", &tempval);
       if(tempval<0)tempval = 0;
       n3d = tempval;
-      if(n3d>mxplot3dvars)n3d = mxplot3dvars;
+      if(n3d>MAXPLOT3DVARS)n3d = MAXPLOT3DVARS;
       for(i = 0; i<n3d; i++){
         int iplot3d, isetmin, isetmax;
         float p3mintemp, p3maxtemp;
@@ -10110,7 +10339,7 @@ int ReadIni2(char *inifile, int localfile){
         fgets(buffer, 255, stream);
         sscanf(buffer, "%i %i %f %i %f", &iplot3d, &isetmin, &p3mintemp, &isetmax, &p3maxtemp);
         iplot3d--;
-        if(iplot3d >= 0 && iplot3d<mxplot3dvars){
+        if(iplot3d >= 0 && iplot3d<MAXPLOT3DVARS){
           setp3min[iplot3d] = isetmin;
           setp3max[iplot3d] = isetmax;
           p3min[iplot3d] = p3mintemp;
@@ -10270,7 +10499,7 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, "%i", &tempval);
       if(tempval<0)tempval = 0;
       n3d = tempval;
-      if(n3d>mxplot3dvars)n3d = mxplot3dvars;
+      if(n3d>MAXPLOT3DVARS)n3d = MAXPLOT3DVARS;
       for(i = 0; i<n3d; i++){
         int iplot3d, isetmin, isetmax;
         float p3mintemp, p3maxtemp;
@@ -10278,7 +10507,7 @@ int ReadIni2(char *inifile, int localfile){
         fgets(buffer, 255, stream);
         sscanf(buffer, "%i %i %f %i %f", &iplot3d, &isetmin, &p3mintemp, &isetmax, &p3maxtemp);
         iplot3d--;
-        if(iplot3d >= 0 && iplot3d<mxplot3dvars){
+        if(iplot3d >= 0 && iplot3d<MAXPLOT3DVARS){
           setp3chopmin[iplot3d] = isetmin;
           setp3chopmax[iplot3d] = isetmax;
           p3chopmin[iplot3d] = p3mintemp;
@@ -10599,6 +10828,11 @@ int ReadIni2(char *inifile, int localfile){
       fgets(buffer, 255, stream);
       strcpy(buffer2, "");
       sscanf(buffer, "%i %f %i %f %s", &setvalmin, &valmin, &setvalmax, &valmax, buffer2);
+      if(setvalmin==1||setvalmax==1){
+        research_mode = 0;
+        research_mode_override = 0;
+        update_research_mode = 1;
+      }
       {
         char *colon;
 
@@ -10900,8 +11134,8 @@ int ReadIni2(char *inifile, int localfile){
 
       CheckMemory;
       fgets(buffer, 255, stream);
-      sscanf(buffer, "%i %i %i %i", &nrgb_ini, &usetexturebar, &colorbar_select_index, &colorband);
-      colorband = CLAMP(colorband, 1, 10);
+      sscanf(buffer, "%i %i %i %i", &nrgb_ini, &usetexturebar, &colorbar_select_index, &colorbar_selection_width);
+      colorbar_selection_width = CLAMP(colorbar_selection_width, COLORBAR_SELECTION_WIDTH_MIN, COLORBAR_SELECTION_WIDTH_MAX);
       FREEMEMORY(rgb_ini);
       if(NewMemory((void **)&rgb_ini, 4 * nrgb_ini*sizeof(float)) == 0)return 2;
       rgb_ini_copy = rgb_ini;
@@ -10924,7 +11158,7 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, "%i ", &nrgb2_ini);
       if(nrgb2_ini<8){
         fprintf(stderr, "*** Error: must have at lease 8 colors in COLOR2BAR\n");
-        exit(1);
+        SMV_EXIT(1);
       }
       FREEMEMORY(rgb2_ini);
       if(NewMemory((void **)&rgb2_ini, 4 * nrgb_ini*sizeof(float)) == 0)return 2;
@@ -11192,13 +11426,15 @@ int ReadIni2(char *inifile, int localfile){
       continue;
     }
     if(Match(buffer, "SHOWTITLE") == 1){
+      int dummy_val;
+
       fgets(buffer, 255, stream);
-      sscanf(buffer, "%i ", &visTitle);
+      sscanf(buffer, "%i %i %i", &vis_title_smv_version,&dummy_val,&vis_title_fds);
       continue;
     }
     if(Match(buffer, "SHOWCHID") == 1){
       fgets(buffer, 255, stream);
-      sscanf(buffer, "%i ", &visCHID);
+      sscanf(buffer, "%i ", &vis_title_CHID);
       continue;
     }
     if(Match(buffer, "SHOWTRANSPARENT") == 1){
@@ -11310,6 +11546,51 @@ int ReadIni2(char *inifile, int localfile){
       SetColorControls();
       continue;
     }
+#ifdef pp_SELECT_GEOM
+    if(Match(buffer, "SURFCOLORS")==1){
+      int ncolors;
+
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i %i", &ncolors, &use_surf_color);
+      for(i = 0; i<ncolors; i++){
+        surfdata *surfi;
+        int *ini_surf_color;
+        char *surflabel;
+
+        fgets(buffer, 255, stream);
+        surflabel = strchr(buffer, ':');
+        if(surflabel==NULL)continue;
+        surflabel = TrimFrontBack(surflabel+1);
+        surfi = GetSurface(surflabel);
+        if(surfi==NULL)continue;
+        ini_surf_color = surfi->glui_color;
+        sscanf(buffer, "%i %i %i", ini_surf_color, ini_surf_color+1, ini_surf_color+2);
+        ini_surf_color[0] = CLAMP(ini_surf_color[0], 0, 255);
+        ini_surf_color[1] = CLAMP(ini_surf_color[1], 0, 255);
+        ini_surf_color[2] = CLAMP(ini_surf_color[2], 0, 255);
+      }
+      continue;
+    }
+    if(Match(buffer, "GEOMSELECTCOLOR") == 1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i %i %i",  geom_vertex1_rgb,  geom_vertex1_rgb+1,  geom_vertex1_rgb+2);
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i %i %i",  geom_vertex2_rgb,  geom_vertex2_rgb+1,  geom_vertex2_rgb+2);
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i %i %i", geom_triangle_rgb, geom_triangle_rgb+1, geom_triangle_rgb+2);
+      for(i = 0; i<3; i++){
+        geom_vertex1_rgb[i]  = CLAMP(geom_vertex1_rgb[i], 0, 255);
+        geom_vertex2_rgb[i]  = CLAMP(geom_vertex2_rgb[i], 0, 255);
+        geom_triangle_rgb[i] = CLAMP(geom_triangle_rgb[i], 0, 255);
+      }
+      continue;
+    }
+    if(Match(buffer, "GEOMAXIS")==1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%f %f", &glui_surf_axis_length, &glui_surf_axis_width);
+      continue;
+    }
+#endif
     if(Match(buffer, "FOREGROUNDCOLOR") == 1){
       fgets(buffer, 255, stream);
       sscanf(buffer, "%f %f %f", foregroundbasecolor, foregroundbasecolor + 1, foregroundbasecolor + 2);
@@ -11392,8 +11673,9 @@ int ReadIni2(char *inifile, int localfile){
     }
     if(Match(buffer, "USERTICKS") == 1){
       fgets(buffer, 255, stream);
-      sscanf(buffer, "%i %i %i %i %i %i %f", &visUSERticks, &auto_user_tick_placement, &user_tick_sub,
-        &user_tick_show_x, &user_tick_show_y, &user_tick_show_z, &user_tick_direction);
+
+      sscanf(buffer, "%i %i %i %i %i %i %f %i", &visUSERticks, &auto_user_tick_placement, &user_tick_sub,
+        &user_tick_show_x, &user_tick_show_y, &user_tick_show_z, &user_tick_direction, &ntick_decimals);
       fgets(buffer, 255, stream);
       sscanf(buffer, "%f %f %f", user_tick_origin, user_tick_origin + 1, user_tick_origin + 2);
       fgets(buffer, 255, stream);
@@ -11582,6 +11864,11 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, "%i %i", &visColorbarVertical_val, &visColorbarHorizontal_val);
       if(visColorbarVertical_val==1)visColorbarHorizontal_val=0;
       if(visColorbarHorizontal_val==1)visColorbarVertical_val=0;
+  // if colorbars are hidden then research mode needs to be off
+      if(visColorbarVertical_val==0&&visColorbarHorizontal_val==0){
+        research_mode = 0;
+//        update_research_mode = 1;
+      }
       update_visColorbars=1;
       continue;
     }
@@ -11595,6 +11882,13 @@ int ReadIni2(char *inifile, int localfile){
       sscanf(buffer, "%i", &nopart);
       continue;
     }
+#ifdef pp_SLICETHREAD
+    if(Match(buffer, "SLICEFAST")==1){
+      fgets(buffer, 255, stream);
+      sscanf(buffer, "%i %i", &slice_multithread, &nslicethread_ids);
+      continue;
+    }
+#endif
     if(Match(buffer, "PARTFAST")==1){
       fgets(buffer, 255, stream);
       sscanf(buffer, "%i %i %i", &partfast, &part_multithread, &npartthread_ids);
@@ -12282,7 +12576,7 @@ int ReadIni2(char *inifile, int localfile){
       if(Match(buffer, "XYZCLIP") == 1){
         fgets(buffer, 255, stream);
         sscanf(buffer, "%i", &clip_mode);
-        clip_mode = CLAMP(clip_mode, 0, 2);
+        clip_mode = CLAMP(clip_mode, 0, CLIP_MAX);
         fgets(buffer, 255, stream);
         sscanf(buffer, "%i %f %i %f", &clipinfo.clip_xmin, &clipinfo.xmin, &clipinfo.clip_xmax, &clipinfo.xmax);
         fgets(buffer, 255, stream);
@@ -13004,8 +13298,8 @@ void WriteIniLocal(FILE *fileout){
     }
   }
   fprintf(fileout, "USERTICKS\n");
-  fprintf(fileout, " %i %i %i %i %i %i %f\n", visUSERticks, auto_user_tick_placement, user_tick_sub,
-    user_tick_show_x, user_tick_show_y, user_tick_show_z, user_tick_direction);
+  fprintf(fileout, " %i %i %i %i %i %i %f %i\n", visUSERticks, auto_user_tick_placement, user_tick_sub,
+    user_tick_show_x, user_tick_show_y, user_tick_show_z, user_tick_direction, ntick_decimals);
   fprintf(fileout, " %f %f %f\n", user_tick_origin[0], user_tick_origin[1], user_tick_origin[2]);
   fprintf(fileout, " %f %f %f\n", user_tick_min[0], user_tick_min[1], user_tick_min[2]);
   fprintf(fileout, " %f %f %f\n", user_tick_max[0], user_tick_max[1], user_tick_max[2]);
@@ -13057,11 +13351,11 @@ void WriteIniLocal(FILE *fileout){
 
     n3d = 5;
     if(n3d<numplot3dvars)n3d = numplot3dvars;
-    if(n3d>mxplot3dvars)n3d = mxplot3dvars;
+    if(n3d>MAXPLOT3DVARS)n3d = MAXPLOT3DVARS;
     fprintf(fileout, "C_PLOT3D\n");
     n3d = 5;
     if(n3d<numplot3dvars)n3d = numplot3dvars;
-    if(n3d>mxplot3dvars)n3d = mxplot3dvars;
+    if(n3d>MAXPLOT3DVARS)n3d = MAXPLOT3DVARS;
     fprintf(fileout, " %i\n", n3d);
     for(i = 0; i<n3d; i++){
       fprintf(fileout, " %i %i %f %i %f\n", i + 1, setp3chopmin[i], p3chopmin[i], setp3chopmax[i], p3chopmax[i]);
@@ -13134,7 +13428,7 @@ void WriteIniLocal(FILE *fileout){
 
     n3d = 5;
     if(n3d<numplot3dvars)n3d = numplot3dvars;
-    if(n3d>mxplot3dvars)n3d = mxplot3dvars;
+    if(n3d>MAXPLOT3DVARS)n3d = MAXPLOT3DVARS;
     fprintf(fileout, "V_PLOT3D\n");
     fprintf(fileout, " %i\n", n3d);
     for(i = 0; i < n3d; i++){
@@ -13222,7 +13516,7 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, "BOUNDCOLOR\n");
   fprintf(fileout, " %f %f %f\n", boundcolor[0], boundcolor[1], boundcolor[2]);
   fprintf(fileout, "COLORBAR\n");
-  fprintf(fileout," %i %i %i %i\n",nrgb,usetexturebar,colorbar_select_index,colorband);
+  fprintf(fileout," %i %i %i %i\n",nrgb,usetexturebar,colorbar_select_index, colorbar_selection_width);
   for(i=0;i<nrgb;i++){
     fprintf(fileout," %f %f %f\n",rgb[i][0],rgb[i][1],rgb[i][2]);
   }
@@ -13250,6 +13544,12 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %i\n", background_flip);
   fprintf(fileout, "FOREGROUNDCOLOR\n");
   fprintf(fileout, " %f %f %f\n", foregroundbasecolor[0], foregroundbasecolor[1], foregroundbasecolor[2]);
+#ifdef pp_SELECT_GEOM
+  fprintf(fileout, "GEOMSELECTCOLOR\n") ;
+  fprintf(fileout, " %i %i %i\n",  geom_vertex1_rgb[0],  geom_vertex1_rgb[1],  geom_vertex1_rgb[2]);
+  fprintf(fileout, " %i %i %i\n",  geom_vertex2_rgb[0],  geom_vertex2_rgb[1],  geom_vertex2_rgb[2]);
+  fprintf(fileout, " %i %i %i\n", geom_triangle_rgb[0], geom_triangle_rgb[1], geom_triangle_rgb[2]);
+#endif
   fprintf(fileout, "HEATOFFCOLOR\n");
   fprintf(fileout, " %f %f %f\n", heatoffcolor[0], heatoffcolor[1], heatoffcolor[2]);
   fprintf(fileout, "HEATONCOLOR\n");
@@ -13301,18 +13601,45 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %f %f %f\n", sprinkoncolor[0], sprinkoncolor[1], sprinkoncolor[2]);
   fprintf(fileout, "STATICPARTCOLOR\n");
   fprintf(fileout, " %f %f %f\n", static_color[0], static_color[1], static_color[2]);
+#ifdef pp_SELECT_GEOM
+  {
+    int scount;
+
+    scount = 0;
+    for(i = 0; i<nsurfinfo; i++){
+      surfdata *surfi;
+
+      surfi = surfinfo+sorted_surfidlist[i];
+      if(surfi->used_by_geom==1)scount++;
+    }
+    if(scount>0){
+      fprintf(fileout, "SURFCOLORS\n");
+      fprintf(fileout, " %i %i\n", scount, use_surf_color);
+      for(i = 0; i<nsurfinfo; i++){
+        surfdata *surfi;
+
+        surfi = surfinfo+sorted_surfidlist[i];
+        if(surfi->used_by_geom==1){
+          int *ini_surf_color;
+
+          ini_surf_color = surfi->glui_color;
+          fprintf(fileout, " %i %i %i : %s\n", ini_surf_color[0], ini_surf_color[1], ini_surf_color[2], surfi->surfacelabel);
+        }
+      }
+    }
+  }
+#endif
   fprintf(fileout, "TIMEBARCOLOR\n");
   fprintf(fileout, " %f %f %f\n", timebarcolor[0], timebarcolor[1], timebarcolor[2]);
   fprintf(fileout, "VENTCOLOR\n");
   fprintf(fileout," %f %f %f\n",ventcolor[0],ventcolor[1],ventcolor[2]);
 
-
-/*  extern GLfloat iso_ambient[4], iso_specular[4], iso_shininess;*/
-
-
-
   fprintf(fileout, "\n   *** SIZES/OFFSETS ***\n\n");
 
+#ifdef pp_SELECT_GEOM
+  fprintf(fileout, "GEOMSAXIS\n") ;
+  fprintf(fileout, " %f %f\n",  glui_surf_axis_length, glui_surf_axis_width);
+#endif
   fprintf(fileout, "GRIDLINEWIDTH\n");
   fprintf(fileout, " %f\n", gridlinewidth);
   fprintf(fileout, "ISOLINEWIDTH\n");
@@ -13394,13 +13721,26 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, "PARTFAST\n");
   fprintf(fileout, " %i %i %i\n", partfast, part_multithread, npartthread_ids);
   fprintf(fileout, "RESEARCHMODE\n");
-  fprintf(fileout, " %i\n", research_mode);
+  // if colorbars are hidden then research mode needs to be off
+  if(visColorbarVertical_val==0&&visColorbarHorizontal_val==0){
+    research_mode = 0;
+    update_research_mode = 1;
+  }
+#ifdef pp_SHIFT_COLORBARS
+  fprintf(fileout, " %i %i %f\n", research_mode, ncolorlabel_decimals, colorbar_shift);
+#else
+  fprintf(fileout, " %i %i\n", research_mode, ncolorlabel_decimals);
+#endif
   fprintf(fileout, "SHOWFEDAREA\n");
   fprintf(fileout, " %i\n", show_fed_area);
   fprintf(fileout, "SLICEAVERAGE\n");
   fprintf(fileout, " %i %f %i\n", slice_average_flag, slice_average_interval, vis_slice_average);
   fprintf(fileout, "SLICEDATAOUT\n");
   fprintf(fileout, " %i \n", output_slicedata);
+#ifdef pp_SLICEFAST
+  fprintf(fileout, "SLICEFAST\n");
+  fprintf(fileout, " %i %i\n", slice_multithread, nslicethread_ids);
+#endif
   fprintf(fileout, "SLICEZIPSTEP\n");
   fprintf(fileout, " %i\n", slicezipstep);
   fprintf(fileout, "SMOKE3DZIPSTEP\n");
@@ -13421,6 +13761,8 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %i %f %i %i %i %i\n", showbeam_as_line,beam_line_width,use_beamcolor,beam_color[0], beam_color[1], beam_color[2]);
   fprintf(fileout, "BLENDMODE\n");
   fprintf(fileout, " %i %i %i\n", slices3d_max_blending, hrrpuv_max_blending,showall_3dslices);
+  fprintf(fileout, "BOUNDARYMESH\n");
+  fprintf(fileout, " %i\n", show_bndf_mesh_interface);
   fprintf(fileout, "BOUNDARYTWOSIDE\n");
   fprintf(fileout, " %i\n", showpatch_both);
   fprintf(fileout, "CLIP\n");
@@ -13452,8 +13794,6 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %i %i\n", freeze_volsmoke, autofreeze_volsmoke);
   fprintf(fileout, "GEOMBOUNDARYPROPS\n");
   fprintf(fileout, " %i %i %i %f %f\n",show_boundary_shaded, show_boundary_outline, show_boundary_points, geomboundary_linewidth, geomboundary_pointsize);
-  fprintf(fileout, "GEOMOFFSET\n");
-  fprintf(fileout, " %f %f %f %i\n", geom_delx, geom_dely, geom_delz, show_geom_bndf);
   fprintf(fileout, "GEOMCELLPROPS\n");
   fprintf(fileout, " %i\n",
     slice_celltype);
@@ -13470,15 +13810,19 @@ void WriteIni(int flag,char *filename){
     highlight_edge0, highlight_edge1, highlight_edge2, highlight_edgeother);
   fprintf(fileout, "GEOMDOMAIN\n");
   fprintf(fileout, " %i %i\n", showgeom_inside_domain, showgeom_outside_domain);
+  fprintf(fileout, "GEOMOFFSET\n");
+  fprintf(fileout, " %f %f %f %i\n", geom_delx, geom_dely, geom_delz, show_geom_bndf);
   fprintf(fileout, "GEOMSHOW\n");
   fprintf(fileout, " %i %i %i %i %i %i %f %f\n",
      show_faces_interior, show_faces_exterior, show_faces_shaded, show_faces_outline, smooth_geom_normal,
      geom_force_transparent, geom_transparency, geom_linewidth);
   fprintf(fileout, " %i %i %i %i\n", show_volumes_interior, show_volumes_exterior, show_volumes_solid, show_volumes_outline);
   fprintf(fileout, " %f %f\n", geom_vert_exag, geom_max_angle);
+  fprintf(fileout, "GEOMSLICEPROPS\n");
+  fprintf(fileout, " %f %f\n", geomslice_linewidth, geomslice_pointsize);
 
   fprintf(fileout, "GVERSION\n");
-  fprintf(fileout, " %i\n", gversion);
+  fprintf(fileout, " %i\n", vis_title_gversion);
   fprintf(fileout, "GVECDOWN\n");
   fprintf(fileout, " %i\n", gvec_down);
   fprintf(fileout, "HISTOGRAM\n");
@@ -13536,6 +13880,8 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %i\n", viscadopaque);
   fprintf(fileout, "SHOWCEILING\n");
   fprintf(fileout, " %i\n", visCeiling);
+  fprintf(fileout, "SHOWCHID\n");
+  fprintf(fileout, " %i\n", vis_title_CHID);
   fprintf(fileout, "SHOWCOLORBARS\n");
   fprintf(fileout, " %i %i\n", visColorbarVertical,visColorbarHorizontal);
   fprintf(fileout, "SHOWCVENTS\n");
@@ -13576,6 +13922,8 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, " %i %i\n", visOpenVents, visOpenVentsAsOutline);
   fprintf(fileout, "SHOWOTHERVENTS\n");
   fprintf(fileout, " %i\n", visOtherVents);
+  fprintf(fileout, "SHOWROOMS\n");
+  fprintf(fileout, " %i\n", visCompartments);
   fprintf(fileout, "SHOWSENSORS\n");
   fprintf(fileout, " %i %i\n", visSensor, visSensorNorm);
   fprintf(fileout, "SHOWSLICEINOBST\n");
@@ -13599,23 +13947,19 @@ void WriteIni(int flag,char *filename){
   fprintf(fileout, "SHOWTIMELABEL\n");
   fprintf(fileout, " %i\n", visTimelabel);
   fprintf(fileout, "SHOWTITLE\n");
-  fprintf(fileout, " %i\n", visTitle);
-  fprintf(fileout, "SHOWCHID\n");
-  fprintf(fileout, " %i\n", visCHID);
+  fprintf(fileout, " %i %i %i\n", vis_title_smv_version, 0, vis_title_fds);
   fprintf(fileout, "SHOWTRACERSALWAYS\n");
   fprintf(fileout, " %i\n", show_tracers_always);
-  fprintf(fileout, "SHOWTRIANGLES\n");
-  fprintf(fileout, " %i %i %i %i 1 %i\n", show_iso_shaded, show_iso_outline, show_iso_points, show_iso_normal, smooth_iso_normal);
   fprintf(fileout, "SHOWTRANSPARENT\n");
   fprintf(fileout, " %i\n", visTransparentBlockage);
+  fprintf(fileout, "SHOWTRIANGLES\n");
+  fprintf(fileout, " %i %i %i %i 1 %i\n", show_iso_shaded, show_iso_outline, show_iso_points, show_iso_normal, smooth_iso_normal);
   fprintf(fileout, "SHOWTRANSPARENTVENTS\n");
   fprintf(fileout, " %i\n", show_transparent_vents);
   fprintf(fileout, "SHOWTRIANGLECOUNT\n");
   fprintf(fileout, " %i\n", show_triangle_count);
   fprintf(fileout, "SHOWVENTFLOW\n");
   fprintf(fileout, " %i %i %i %i %i\n", visVentHFlow, visventslab, visventprofile, visVentVFlow, visVentMFlow);
-  fprintf(fileout, "SHOWROOMS\n");
-  fprintf(fileout, " %i\n", visCompartments);
   fprintf(fileout, "SHOWTARGETS\n");
   fprintf(fileout, " %i \n", vis_target_data);
   fprintf(fileout, "SHOWVENTS\n");
@@ -13847,6 +14191,8 @@ void WriteIni(int flag,char *filename){
 
   fprintf(fileout,"\n *** TOUR INFO ***\n\n");
 
+  fprintf(fileout, "SHOWAVATAR\n");
+  fprintf(fileout, " %i\n", show_avatar);
   fprintf(fileout, "SHOWPATHNODES\n");
   fprintf(fileout, " %i\n", show_path_knots);
   fprintf(fileout, "SHOWTOURROUTE\n");
@@ -13918,12 +14264,14 @@ void WriteIni(int flag,char *filename){
 
     if(use_graphics==1){
       GLint nred, ngreen, nblue, ndepth, nalpha;
+      int max_texture_size;
 
       glGetIntegerv(GL_RED_BITS,&nred);
       glGetIntegerv(GL_GREEN_BITS,&ngreen);
       glGetIntegerv(GL_BLUE_BITS,&nblue);
       glGetIntegerv(GL_DEPTH_BITS,&ndepth);
       glGetIntegerv(GL_ALPHA_BITS,&nalpha);
+      glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
       fprintf(fileout, "\n\n");
       fprintf(fileout,"# Graphics Environment\n");
       fprintf(fileout,"# --------------------\n\n");
@@ -13945,11 +14293,12 @@ void WriteIni(int flag,char *filename){
           fprintf(fileout, "# %s\n", version_label);
         }
       }
-      fprintf(fileout, "#       Red bits:%i\n", nred);
-      fprintf(fileout,"#     Green bits:%i\n",ngreen);
-      fprintf(fileout,"#      Blue bits:%i\n",nblue);
-      fprintf(fileout,"#     Alpha bits:%i\n",nalpha);
-      fprintf(fileout,"#     Depth bits:%i\n\n",ndepth);
+      fprintf(fileout,"#         Red bits:%i\n", nred);
+      fprintf(fileout,"#       Green bits:%i\n",ngreen);
+      fprintf(fileout,"#        Blue bits:%i\n",nblue);
+      fprintf(fileout,"#       Alpha bits:%i\n",nalpha);
+      fprintf(fileout,"#       Depth bits:%i\n",ndepth);
+      fprintf(fileout,"# max texture size:%i\n\n",max_texture_size);
     }
   }
 

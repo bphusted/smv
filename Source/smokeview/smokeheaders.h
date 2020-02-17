@@ -5,8 +5,15 @@
 #include "gd.h"
 #endif
 
+#ifdef pp_SHIFT_COLORBARS
+EXTERNCPP void ShiftColorbars(void);
+#endif
+EXTERNCPP int GetColorbarState(void);
+EXTERNCPP void ViewpointCB(int val);
+EXTERNCPP void SMV_EXIT(int code);
 #ifdef pp_SELECT_GEOM
-EXTERNCPP void UpdateVertexLoc(float x, float y, float z);
+EXTERNCPP void UpdateSelectGeom(void);
+EXTERNCPP void UpdateVertexInfo(float *xyz1, float *xyz2);
 EXTERNCPP void UpdateTriangleInfo(surfdata *tri_surf, float tri_area);
 EXTERNCPP void DrawSelectGeom(void);
 EXTERNCPP void UpdateGeomAreas(void);
@@ -27,6 +34,12 @@ EXTERNCPP void InsertRollout(GLUI_Rollout *rollout, GLUI *dialog);
 EXTERNCPP void CloseRollouts(GLUI *dialog);
 #endif
 
+#ifdef pp_SLICETHREAD
+EXTERNCPP void LoadAllSliceFiles(int slicenum);
+EXTERNCPP void FinalizeSliceLoad(slicedata *slicei);
+#endif
+
+EXTERNCPP void MakeColorLabels(char colorlabels[12][11], float colorvalues[12], float tmin_arg, float tmax_arg, int nlevel);
 EXTERNCPP void FinalizePartLoad(partdata *parti);
 EXTERNCPP void LoadAllPartFilesMT(int val);
 EXTERNCPP void GetAllPartBoundsMT(void);
@@ -44,7 +57,8 @@ EXTERNCPP void InitNabors(void);
 EXTERNCPP int Smv2Html(char *html_out, int option, int from_where, int vr_flag);
 EXTERNCPP int Smv2Geom(char *html_file);
 EXTERNCPP int Obst2Data(char *html_file);
-EXTERNCPP int Slice2Data(char *html_file, int option);
+EXTERNCPP int SliceNode2Data(char *html_file, int option);
+EXTERNCPP int SliceCell2Data(char *html_file, int option);
 #endif
 EXTERNCPP void UpdateBackgroundFlip(int flip);
 EXTERNCPP void UpdateBackgroundFlip2(int flip);
@@ -150,6 +164,8 @@ EXTERNCPP void DrawNorth(void);
 EXTERNCPP void DrawGeomData(int flag, patchdata *patchi, int geom_type);
 EXTERNCPP void UpdateCurrentColorbar(colorbardata *cb);
 EXTERNCPP int  HaveFire(void);
+EXTERNCPP void UpdateFireAlpha(void);
+EXTERNCPP int  HaveSoot(void);
 EXTERNCPP void UpdateObjectUsed(void);
 EXTERNCPP void UpdateColorTableList(int ncolortableinfo_old);
 EXTERNCPP void UpdateColorTable(colortabledata *ctableinfo, int nctableinfo);
@@ -287,8 +303,6 @@ EXTERNCPP void DrawFilled2Tetra(float *v1, float *v2, float *v3, float *v4,
    unsigned char *rgb0color,unsigned char *rgb1color,unsigned char *rgb2color,unsigned char *rgb3color,int *vis_state);
 EXTERNCPP void DrawTetraOutline(float *v1, float *v2, float *v3, float *v4, unsigned char *rgbcolor);
 EXTERNCPP void DrawFilledCircle(float diameter, unsigned char *rgbcolor, circdata *circinfo);
-EXTERNCPP void DrawCubeCOutline(float size, unsigned char *rgbcolor);
-EXTERNCPP void DrawBoxOutline(float x1, float x2, float y1, float y2, float z1, float z2, float *rgbcolor);
 EXTERNCPP void DrawCircle(float diameter, unsigned char *rgbcolor, circdata *circinfo);
 EXTERNCPP void DrawFilledRectangle(float width, float height, unsigned char *rgbcolor);
 EXTERNCPP void DrawRectangle(float width, float height, unsigned char *rgbcolor);
@@ -633,7 +647,7 @@ EXTERNCPP int  MakeIBlank(void);
 EXTERNCPP int  MakeIBlankCarve(void);
 EXTERNCPP void MakeIBlankSmoke3D(void);
 EXTERNCPP void GetUnitInfo(const char *unitlabel, int *unitclass, int *unittype);
-EXTERNCPP float GetUnitVal(const char *unitlabel, float oldval);
+EXTERNCPP float GetUnitVal(const char *unitlabel, float oldval, int ndecimals);
 
 EXTERNCPP void UpdateUnitDefs(void);
 
@@ -805,6 +819,7 @@ EXTERNCPP void AdjustDataBounds(const float *pdata, int skip, int ndata, int set
 EXTERNCPP void AdjustPart5Chops(void);
 EXTERNCPP void AdjustPlot3DBounds(int iplot3d, int setpmin, float *pmin, int setpmax, float *pmax);
 EXTERNCPP void ScaleFloat2String(float floatfrom, char *stringto, const float *scale);
+EXTERNCPP float ScaleFloat2Float(float floatfrom, const float *scale);
 EXTERNCPP void ScaleString(const char *stringfrom, char *stringto, const float *scale);
 EXTERNCPP void Num2String(char *string, float tval);
 EXTERNCPP int  SetupCase(int argc, char **argv);
@@ -873,14 +888,14 @@ EXTERNCPP void GetBoundaryColors3(patchdata *patchi, float *t, int start, int nt
               int settmin, float *tmin, int settmax, float *tmax,
               float *tmin_global, float *tmax_global,
               int nlevel,
-              char **labels, char *scale, float *tvals256,
+              char **patchlabels, float *patchvalues, char *scale, float *tvals256,
               int *extreme_min, int *extreme_max);
 EXTERNCPP void GetBoundaryLabels(
               float tmin, float tmax,
-              char **labels, char *scale, float *tvals256, int nlevel);
+              char **labels, float *boundaryvaluespatch, char *scale, float *tvals256, int nlevel);
 EXTERNCPP void GetZoneColors(const float *t, int nt, unsigned char *it,
                float tmin, float tmax, int nlevel, int nlevel_full,
-               char **labels, char *scale, float *tvals256
+               char **zonelabels, float zonevalues[12], char *scale, float *tvals256
                );
 
 EXTERNCPP void GetPlot3DColors(int iplot, int settmin, float *ttmin, int settmax, float *ttmax,
@@ -894,7 +909,7 @@ EXTERNCPP void UpdatePart5Extremes(void);
 EXTERNCPP void GetSliceColors(const float *t, int nt, unsigned char *it,
               float tmin, float tmax,
               int ndatalevel, int nlevel,
-              char labels[12][11],char **scale, float *fscale, float *tlevels2,
+              char colorlabels[12][11],float colorvalues[12], char **scale, float *fscale, float *tlevels2,
               int *extreme_min, int *extreme_max
               );
 EXTERNCPP meshdata *GetLoadedIsoMesh(void);

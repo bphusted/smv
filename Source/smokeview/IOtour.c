@@ -329,9 +329,9 @@ void DrawTours(void){
 
     /* keyframe avatar */
 
-  //show_tourlocus=1;
+  //show_avatar=1;
   //tourlocus_type=2;
-  if(show_tourlocus==1){
+  if(show_avatar==1){
     switch(tourlocus_type){
       case 0:
         AntiAliasLine(ON);
@@ -1483,7 +1483,7 @@ void ReallocTourMemory(void){
       NewMemory((void **)&touri->pathnodes,tour_ntimes*sizeof(pathdata));
       NewMemory((void **)&touri->path_times,tour_ntimes*sizeof(float));
       touri->ntimes=tour_ntimes;
-      }
+    }
     FREEMEMORY(tour_t);
     FREEMEMORY(tour_t2);
     FREEMEMORY(tour_dist);
