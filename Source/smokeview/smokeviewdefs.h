@@ -7,10 +7,8 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define SNIFF_ERRORS(f)
 #endif
 
-#ifdef pp_SHIFT_COLORBARS
 #define COLORBAR_SHIFT_MIN          0.1
 #define COLORBAR_SHIFT_MAX         10.0
-#endif
 
 #define COLORBAR_NDECIMALS_MIN        1
 #define COLORBAR_NDECIMALS_MAX        3
@@ -508,15 +506,17 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define SURFACE_TEMPMIN  -100000.
 #define SURFACE_TEMPMAX   100000.
 
-#define PERCENTILE_MIN 0
-#define SET_MIN 1
-#define GLOBAL_MIN 2
-#define CHOP_MIN 3
+#define PERCENTILE_MIN    0
+#define SET_MIN           1
+#define GLOBAL_MIN        2
+#define GLOBAL_MIN_LOADED 3
+#define CHOP_MIN          3
 
-#define PERCENTILE_MAX 0
-#define SET_MAX 1
-#define GLOBAL_MAX 2
-#define CHOP_MAX 3
+#define PERCENTILE_MAX    0
+#define SET_MAX           1
+#define GLOBAL_MAX        2
+#define GLOBAL_MAX_LOADED 3
+#define CHOP_MAX          3
 
 #define SHADED_CONTOURS 0
 #define STEPPED_CONTOURS 1
@@ -746,14 +746,12 @@ void _Sniff_Errors(char *whereat, char *file, int line);
 #define RenderLABELframenumber 980
 #define RenderLABELtime 979
 #define MENU_RENDER_SETTINGS 900
-#ifdef pp_HTML
 #define RenderJSON        982
 #define RenderJSONALL     983
 #define RenderHTML        984
 #define RenderHTMLALL     985
 #define HTML_CURRENT_TIME   0
 #define HTML_ALL_TIMES      1
-#endif
 
 #define ShowEXTERIORwallmenu -1
 #define HideEXTERIORwallmenu -19

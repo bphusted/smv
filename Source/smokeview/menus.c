@@ -50,9 +50,7 @@ float     slice_load_time;
 #define MENU_SLICECOLORDEFER -5
 #define MENU_NEWSLICEMENUS   -7
 
-#ifdef pp_FILE_SIZES
 #define MENU_SLICE_FILE_SIZES -9
-#endif
 
 #define MENU_OPTION_TRAINERMENU 2
 
@@ -1569,9 +1567,9 @@ void ZoomMenu(int value){
       zoom=zooms[0];
       zoomindex=0;
     }
-    if(zoom>zooms[4]){
-      zoom=zooms[4];
-      zoomindex=4;
+    if(zoomindex!=MAX_ZOOMS&&zoom>zooms[MAX_ZOOMS-1]){
+      zoom=zooms[MAX_ZOOMS-1];
+      zoomindex=MAX_ZOOMS-1;
     }
     if(projection_type!= PROJECTION_PERSPECTIVE){
       camera_current->projection_type=projection_type;
@@ -1588,8 +1586,8 @@ void ZoomMenu(int value){
     }
   }
   else{
-    if(zoomindex<0)zoomindex=2;
-    if(zoomindex>4)zoomindex=2;
+    if(zoomindex<0)zoomindex=ZOOMINDEX_ONE;
+    if(zoomindex>MAX_ZOOMS)zoomindex=ZOOMINDEX_ONE;
     zoom=zooms[zoomindex];
     if(projection_type!= PROJECTION_PERSPECTIVE){
       SetViewPoint(RESTORE_EXTERIOR_VIEW_ZOOM);
@@ -1874,7 +1872,6 @@ void RenderMenu(int value){
     }
     Keyboard('R',FROM_SMOKEVIEW);
     break;
-#ifdef pp_HTML
   case RenderJSON:
   case RenderJSONALL:
     {
@@ -1911,7 +1908,6 @@ void RenderMenu(int value){
     Smv2Html(html_filename,   HTML_ALL_TIMES, FROM_SMOKEVIEW, VR_NO);
     Smv2Html(htmlvr_filename, HTML_ALL_TIMES, FROM_SMOKEVIEW, VR_YES);
     break;
-#endif
   case RenderCancel:
     RenderState(RENDER_OFF);
     break;
@@ -2965,7 +2961,11 @@ void ReloadAllSliceFiles(void){
       load_size+=ReadGeomData(slicei->patchgeom, slicei, LOAD, &errorcode);
     }
     else{
+#ifdef pp_NEWBOUND_DIALOG
+      load_size+=ReadSliceUseGluiBounds(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#else
       load_size+=ReadSlice(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#endif
     }
     file_count++;
   }
@@ -2987,10 +2987,6 @@ void LoadUnloadMenu(int value){
   if(value==MENU_DUMMY)return;
   GLUTSETCURSOR(GLUT_CURSOR_WAIT);
   if(value==UNLOADALL){
-   // leaving code here commented in case I later decide to unload terrain files
-   // for(i=0;i<nterraininfo;i++){
-   //   ReadTerrain("",i,UNLOAD,&errorcode);
-   // }
     if(scriptoutstream!=NULL){
       fprintf(scriptoutstream,"UNLOADALL\n");
     }
@@ -3052,11 +3048,6 @@ void LoadUnloadMenu(int value){
     for(i=0;i<nsliceinfo;i++){
       sliceinfo[i].reload=1;
     }
-    for(i=0;i<nterraininfo;i++){
-      if(terraininfo[i].loaded==1){
-        ReadTerrain(terraininfo[i].file,i,LOAD,&errorcode);
-      }
-    }
     for(i=0;i<nvsliceinfo;i++){
       if(vsliceinfo[i].loaded==1){
         ReadVSlice(i, load_mode,&errorcode);
@@ -3089,7 +3080,11 @@ void LoadUnloadMenu(int value){
           ReadGeomData(slicei->patchgeom, slicei, load_mode, &errorcode);
         }
         else{
+#ifdef pp_NEWBOUND_DIALOG
+          ReadSliceUseGluiBounds(slicei->file, i, load_mode, set_slicecolor, &errorcode);
+#else
           ReadSlice(slicei->file, i, load_mode, set_slicecolor, &errorcode);
+#endif
         }
       }
     }
@@ -4201,9 +4196,7 @@ FILE_SIZE LoadSmoke3D(int type, int *count){
   int last_smoke = 0, i, file_count=0,errorcode;
   FILE_SIZE load_size=0;
   int need_soot, need_hrrpuv, need_temp, need_co2;
-#ifdef pp_FILE_SIZES
   FILE_SIZE total_size;
-#endif
 
   need_soot   = type&SOOT_2;
   need_hrrpuv = type&HRRPUV_2;
@@ -4222,9 +4215,7 @@ FILE_SIZE LoadSmoke3D(int type, int *count){
     break;
     }
   }
-#ifdef pp_FILE_SIZES
   total_size = 0;
-#endif
   for(i=0;i<nsmoke3dinfo;i++){
     smoke3ddata *smoke3di;
 
@@ -4237,7 +4228,6 @@ FILE_SIZE LoadSmoke3D(int type, int *count){
       file_count++;
       smoke3di->finalize = 0;
       if(i == last_smoke)smoke3di->finalize = 1;
-#ifdef pp_FILE_SIZES
       if(compute_smoke3d_file_sizes==1){
         smoke3di->file_size = GetFileSizeSMV(smoke3di->reg_file);
         total_size += smoke3di->file_size;
@@ -4245,12 +4235,8 @@ FILE_SIZE LoadSmoke3D(int type, int *count){
       else{
         load_size += ReadSmoke3D(ALL_FRAMES, i, LOAD, FIRST_TIME, &errorcode);
       }
-#else
-      load_size += ReadSmoke3D(ALL_FRAMES, i, LOAD, FIRST_TIME, &errorcode);
-#endif
     }
   }
-#ifdef pp_FILE_SIZES
   if(compute_smoke3d_file_sizes==1){
     PRINTF(" size of 3D smoke files to be loaded=");
     if(total_size>1000000000){
@@ -4265,7 +4251,6 @@ FILE_SIZE LoadSmoke3D(int type, int *count){
     PRINTF(" minimum network load time=%f s\n",(float)total_size*8.0/1000000000.0);
     PRINTF("   (assuming a gigabit network connection)\n");
   }
-#endif
   *count = file_count;
   return load_size;
 }
@@ -4278,19 +4263,17 @@ void LoadSmoke3DMenu(int value){
   float load_time, load_size;
 
 #ifdef pp_SMOKE_FAST
-#define MENU_SMOKE_SOOT_HRRPUV -5
-#define MENU_SMOKE3D_LOAD_TEST -3
+#define MENU_SMOKE_SOOT_HRRPUV     -5
+#define MENU_SMOKE3D_LOAD_TEST     -3
 #define MENU_SMOKE_SOOT_HRRPUV_CO2 -6
-#define MENU_SMOKE_SOOT_TEMP -7
-#define MENU_SMOKE_SOOT_TEMP_CO2 -8
+#define MENU_SMOKE_SOOT_TEMP       -7
+#define MENU_SMOKE_SOOT_TEMP_CO2   -8
 #endif
-#define MENU_DUMMY_SMOKE -9
-#define MENU_SMOKE_SETTINGS       -4
-#ifdef pp_FILE_SIZES
-#define MENU_SMOKE_FILE_SIZES     -10
-#endif
-#define MENU_SMOKE3D_IBLANK -2
 
+#define MENU_DUMMY_SMOKE           -9
+#define MENU_SMOKE_SETTINGS        -4
+#define MENU_SMOKE_FILE_SIZES     -10
+#define MENU_SMOKE3D_IBLANK        -2
 
   if(value == MENU_DUMMY_SMOKE)return;
   START_TIMER(load_time);
@@ -4366,12 +4349,10 @@ void LoadSmoke3DMenu(int value){
     }
   }
 #endif
-#ifdef pp_FILE_SIZES
     else if(value ==MENU_SMOKE_FILE_SIZES){
       compute_smoke3d_file_sizes = 1-compute_smoke3d_file_sizes;
       updatemenu = 1;
     }
-#endif
 
 #ifdef pp_SMOKE_FAST
   else if(value == MENU_SMOKE3D_LOAD_TEST){
@@ -4401,13 +4382,9 @@ void LoadSmoke3DMenu(int value){
     }
   }
   STOP_TIMER(load_time);
-#ifdef pp_FILE_SIZES
   if(compute_smoke3d_file_sizes==0){
     PRINT_LOADTIMES(file_count, load_size, load_time);
   }
-#else
-  PRINT_LOADTIMES(file_count,load_size,load_time);
-#endif
   updatemenu=1;
   GLUTPOSTREDISPLAY;
   GLUTSETCURSOR(GLUT_CURSOR_LEFT_ARROW);
@@ -4430,49 +4407,6 @@ int AnySlices(char *type){
     if(STRCMP(sliceinfo[i].label.longlabel,type)==0)return 1;
   }
   return 0;
-}
-
-/* ------------------ UnLoadTerrainMenu ------------------------ */
-
-void UnloadTerrainMenu(int value){
-  int i;
-  int errorcode;
-
-  if(value >= 0 && value < nterraininfo){
-    ReadTerrain("", value, UNLOAD, &errorcode);
-  }
-  else if(value == MENU_UNLOADTERRAIN_UNLOADALL){
-    for(i = 0; i < nterraininfo; i++){
-      UnloadTerrainMenu(i);
-    }
-  }
-  updatemenu = 1;
-  GLUTPOSTREDISPLAY;
-
-}
-
-/* ------------------ LoadTerrainMenu ------------------------ */
-
-void LoadTerrainMenu(int value){
-  int i;
-  int errorcode;
-
-  if(value>=0&&value<nterraininfo){
-    terraindata *terri;
-
-    terri = terraininfo + value;
-    ReadTerrain(terri->file,value,LOAD,&errorcode);
-  }
-  else if(value==MENU_LOADTERRAIN_UNLOAD){
-    UnloadTerrainMenu(value);
-  }
-  else if(value==MENU_LOADTERRAIN_LOADALL){
-    for(i=0;i<nterraininfo;i++){
-      LoadTerrainMenu(i);
-    }
-  }
-  updatemenu=1;
-  GLUTPOSTREDISPLAY;
 }
 
 /* ------------------ DefineAllFEDs ------------------------ */
@@ -4515,7 +4449,11 @@ FILE_SIZE LoadSlicei(int set_slicecolor, int value){
         return_filesize = ReadGeomData(slicei->patchgeom, slicei, LOAD, &errorcode);
       }
       else {
+#ifdef pp_NEWBOUND_DIALOG
+        return_filesize=ReadSliceUseGluiBounds(slicei->file, value, LOAD, set_slicecolor, &errorcode);
+#else
         return_filesize=ReadSlice(slicei->file, value, LOAD, set_slicecolor, &errorcode);
+#endif
       }
       if(reset_colorbar == 1)ColorbarMenu(colorbartype_save);
     }
@@ -4615,7 +4553,11 @@ void LoadSliceMenu(int value){
             load_size+=ReadGeomData(slicei->patchgeom, slicei, LOAD, &errorcode);
           }
           else{
+#ifdef pp_NEWBOUND_DIALOG
+            load_size+=ReadSliceUseGluiBounds(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#else
             load_size+=ReadSlice(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#endif
           }
           file_count++;
         }
@@ -4762,11 +4704,7 @@ void LoadMultiVSliceMenu(int value){
 
 /* ------------------ LoadAllMSlices ------------------------ */
 
-#ifdef pp_FILE_SIZES
 FILE_SIZE LoadAllMSlices(int last_slice, multislicedata *mslicei){
-#else
-void LoadAllMSlices(int last_slice, multislicedata *mslicei){
-#endif
   int i;
   float load_time;
   FILE_SIZE file_size = 0;
@@ -4786,15 +4724,13 @@ void LoadAllMSlices(int last_slice, multislicedata *mslicei){
       set_slicecolor = SET_SLICECOLOR;
     }
     if(slicei->skipdup== 0){
-      file_size+=LoadSlicei(set_slicecolor,mslicei->islices[i]);
+      file_size += LoadSlicei(set_slicecolor,mslicei->islices[i]);
       file_count++;
     }
   }
   STOP_TIMER(load_time);
   PRINT_LOADTIMES(file_count,(float)file_size,load_time);
-#ifdef pp_FILE_SIZES
   return file_size;
-#endif
 }
 
 #ifdef pp_SLICETHREAD
@@ -4895,9 +4831,7 @@ void LoadMultiSliceMenu(int value){
     }
     if(scriptoutstream==NULL||script_defer_loading==0){
       int last_slice;
-#ifdef pp_FILE_SIZES
       FILE_SIZE total_size=0;
-#endif
 
 #ifdef pp_SLICETHREAD
       last_slice = SetupSlice(value);
@@ -4921,12 +4855,7 @@ void LoadMultiSliceMenu(int value){
           UnloadSliceMenu(mslicei->islices[i]);
         }
       }
-#ifdef pp_FILE_SIZES
       total_size = LoadAllMSlices(last_slice, mslicei);
-#else
-      LoadAllMSlices(last_slice, mslicei);
-#endif
-#ifdef pp_FILE_SIZES
       if(compute_slice_file_sizes==1){
         PRINTF(" size of slice files to be loaded=");
         if(total_size>1000000000){
@@ -4941,7 +4870,6 @@ void LoadMultiSliceMenu(int value){
         PRINTF(" minimum network load time=%f s\n",(float)total_size*8.0/1000000000.0);
         PRINTF("   (assuming a gigabit network connection)\n");
       }
-#endif
     }
     script_multislice=0;
   }
@@ -4998,7 +4926,11 @@ void LoadMultiSliceMenu(int value){
         load_size+=ReadGeomData(slicei->patchgeom, slicei, LOAD, &errorcode);
       }
       else{
+#ifdef pp_NEWBOUND_DIALOG
+        load_size+=ReadSliceUseGluiBounds(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#else
         load_size+=ReadSlice(slicei->file,i,LOAD,set_slicecolor,&errorcode);
+#endif
       }
       file_count++;
     }
@@ -5047,12 +4979,10 @@ void LoadMultiSliceMenu(int value){
         use_set_slicecolor = 1 - use_set_slicecolor;
         updatemenu = 1;
         break;
-#ifdef pp_FILE_SIZES
       case MENU_SLICE_FILE_SIZES:
         compute_slice_file_sizes = 1-compute_slice_file_sizes;
         updatemenu = 1;
         break;
-#endif
       case MENU_SLICE_SETTINGS:
         ShowBoundsDialog(DLG_SLICE);
         break;
@@ -6081,8 +6011,6 @@ void GeometryMenu(int value){
     break;
 
   case 17+TERRAIN_3D:
-  case 17+TERRAIN_2D_STEPPED:
-  case 17+TERRAIN_2D_LINE:
   case 17+TERRAIN_3D_MAP:
   case 17+TERRAIN_HIDDEN:
     if(value==17+TERRAIN_HIDDEN){
@@ -6228,7 +6156,6 @@ static int luascriptmenu=0;
 static int luascriptlistmenu=0;
 #endif
 static int loadplot3dmenu=0, unloadvslicemenu=0, unloadslicemenu=0;
-static int loadterrainmenu=0, unloadterrainmenu=0;
 static int loadsmoke3dmenu=0,loadsmoke3dsootmenu=0,loadsmoke3dhrrmenu=0;
 static int loadsmoke3dtempmenu = 0, loadsmoke3dco2menu = 0;
 static int loadvolsmoke3dmenu=0,showvolsmoke3dmenu=0;
@@ -7138,12 +7065,6 @@ updatemenu=0;
   CREATEMENU(terrain_showmenu,GeometryMenu);
   if(visTerrainType==TERRAIN_3D)glutAddMenuEntry(_("*3D surface"),17+TERRAIN_3D);
   if(visTerrainType!=TERRAIN_3D)glutAddMenuEntry(_("3D surface"),17+TERRAIN_3D);
-#ifdef pp_SHOWTERRAIN
-  if(visTerrainType==TERRAIN_2D_STEPPED)glutAddMenuEntry(_("*2D stepped"),17+TERRAIN_2D_STEPPED);
-  if(visTerrainType!=TERRAIN_2D_STEPPED)glutAddMenuEntry(_("2D stepped"),17+TERRAIN_2D_STEPPED);
-  if(visTerrainType==TERRAIN_2D_LINE)glutAddMenuEntry(_("*2D lines"),17+TERRAIN_2D_LINE);
-  if(visTerrainType!=TERRAIN_2D_LINE)glutAddMenuEntry(_("2D lines"),17+TERRAIN_2D_LINE);
-#endif
   if(terrain_texture!=NULL&&terrain_texture->loaded==1){
     if(visTerrainType==TERRAIN_3D_MAP)glutAddMenuEntry(_("*Image"),17+TERRAIN_3D_MAP);
     if(visTerrainType!=TERRAIN_3D_MAP)glutAddMenuEntry(_("Image"),17+TERRAIN_3D_MAP);
@@ -7281,7 +7202,7 @@ updatemenu=0;
   if(GetNumActiveDevices()>0||ncvents>0){
     GLUTADDSUBMENU(_("Objects"),showobjectsmenu);
   }
-  if(nterraininfo>0){
+  if(nterraininfo>0&&ngeominfo==0){
     GLUTADDSUBMENU(_("Terrain"),terrain_showmenu);
   }
   if(GetNTotalVents()>0)GLUTADDSUBMENU(_("Surfaces"), ventmenu);
@@ -8264,6 +8185,7 @@ updatemenu=0;
     for(ii=0;ii<nslice_loaded;ii++){
       slicedata *sd;
       char menulabel[1024];
+      int doit;
 
       i = slice_loaded_list[ii];
       sd = sliceinfo + i;
@@ -8280,7 +8202,16 @@ updatemenu=0;
         STRCAT(menulabel," - ");
         STRCAT(menulabel,sd->slicelabel);
       }
-      glutAddMenuEntry(menulabel,i);
+      doit=1;
+      if(sd->slice_filetype==SLICE_TERRAIN){
+        meshdata *meshslice;
+        terraindata *terri;
+
+        meshslice = meshinfo + sd->blocknumber;
+        terri = meshslice->terrain;
+        if(terri==NULL||terri->nvalues==0)doit = 0;
+      }
+      if(doit==1)glutAddMenuEntry(menulabel,i);
     }
     // loaded geometry slice entries
     for(ii = 0;ii<npatchinfo;ii++){
@@ -8599,16 +8530,20 @@ updatemenu=0;
   if(apertureindex!=4)glutAddMenuEntry("90",4);
 
   CREATEMENU(zoommenu,ZoomMenu);
-  if(zoomindex==0)glutAddMenuEntry("*0.25",0);
-  if(zoomindex!=0)glutAddMenuEntry("0.25",0);
-  if(zoomindex==1)glutAddMenuEntry("*0.50",1);
-  if(zoomindex!=1)glutAddMenuEntry("0.50",1);
-  if(zoomindex==2)glutAddMenuEntry("*1.0",2);
-  if(zoomindex!=2)glutAddMenuEntry("1.0",2);
-  if(zoomindex==3)glutAddMenuEntry("*2.0",3);
-  if(zoomindex!=3)glutAddMenuEntry("2.0",3);
-  if(zoomindex==4)glutAddMenuEntry("*4.0",4);
-  if(zoomindex!=4)glutAddMenuEntry("4.0",4);
+  for(i = 0; i<MAX_ZOOMS+1; i++){
+    char label[64];
+
+    if(zooms[i]>0.0){
+      if(zoomindex==i){
+        sprintf(label, "*%f", zooms[i]);
+      }
+      else{
+        sprintf(label, "%f", zooms[i]);
+      }
+      TrimZeros(label);
+      glutAddMenuEntry(label, i);
+    }
+  }
 
   /* --------------------------------reset menu -------------------------- */
 
@@ -8999,10 +8934,8 @@ updatemenu=0;
     glutAddMenuEntry("-", MENU_DUMMY);
     glutAddMenuEntry(_("Render html(current)"), RenderHTML);
     glutAddMenuEntry(_("Render html(all)"),     RenderHTMLALL);
-#ifdef pp_HTML
     glutAddMenuEntry(_("Render json(current)"),  RenderJSON);
     glutAddMenuEntry(_("Render json(all)"),     RenderJSONALL);
-#endif
 
     glutAddMenuEntry("-", MENU_DUMMY);
 
@@ -9850,54 +9783,6 @@ updatemenu=0;
     }
   }
 
-  /* --------------------------------unload and load terrain menus -------------------------- */
-
-  if(nterraininfo>0){
-    int nterrainloaded=0;
-
-    CREATEMENU(unloadterrainmenu,UnloadTerrainMenu);
-    for(i=0;i<nterraininfo;i++){
-      terraindata *terri;
-
-      terri = terraininfo + i;
-      if(terri->loaded==1){
-        nterrainloaded++;
-        glutAddMenuEntry(terri->file,i);
-      }
-    }
-    if(nterrainloaded>1){
-        glutAddMenuEntry("-",MENU_UNLOADTERRAIN_DUMMY);
-        glutAddMenuEntry(_("Unload all"), MENU_UNLOADTERRAIN_UNLOADALL);
-    }
-    CREATEMENU(loadterrainmenu,LoadTerrainMenu);
-    if(nterraininfo>1){
-      glutAddMenuEntry(_("All terrains"), MENU_LOADTERRAIN_LOADALL);
-      glutAddMenuEntry("-",MENU_LOADTERRAIN_DUMMY);
-    }
-    /*
-    leaving code commented in case I later decide to load/unload terrain files
-    for(i=0;i<nterraininfo;i++){
-      char menulabel[256];
-
-      terraindata *terri;
-
-      terri = terraininfo + i;
-      strcpy(menulabel,"");
-      if(terri->loaded==1)strcat(menulabel,"*");
-      strcat(menulabel,terri->file);
-      glutAddMenuEntry(menulabel,i);
-    }
-    */
-    if(nterrainloaded==1){
-      glutAddMenuEntry("-",MENU_LOADTERRAIN_DUMMY);
-      glutAddMenuEntry(_("Unload terrain"), MENU_LOADTERRAIN_UNLOAD);
-    }
-    else if(nterrainloaded>1){
-      glutAddMenuEntry("-",MENU_LOADTERRAIN_DUMMY);
-      GLUTADDSUBMENU(_("Unload terrain"),unloadterrainmenu);
-    }
-  }
-
 // setup boundary slices for slice files
 
     {
@@ -10028,7 +9913,18 @@ updatemenu=0;
         STRCAT(menulabel,sd->slicelabel);
       }
       if(sd->menu_show==1){
-        glutAddMenuEntry(menulabel,sliceorderindex[i]);
+        int doit;
+
+        doit=1;
+        if(sd->slice_filetype==SLICE_TERRAIN){
+          meshdata *meshslice;
+          terraindata *terri;
+
+          meshslice = meshinfo + sd->blocknumber;
+          terri = meshslice->terrain;
+          if(terri==NULL||terri->nvalues==0)doit = 0;
+        }
+        if(doit==1)glutAddMenuEntry(menulabel,sliceorderindex[i]);
       }
       if(i==nsliceinfo-1||strcmp(sd->label.longlabel,sdip1->label.longlabel)!=0){
         subslice_menuindex[iloadsubslicemenu]=sliceorderindex[i];
@@ -10264,26 +10160,26 @@ updatemenu=0;
     }
 
     if(nmultisliceinfo>0)glutAddMenuEntry("-", MENU_DUMMY);
-#ifdef pp_FILE_SIZES
     if(compute_slice_file_sizes==1){
       glutAddMenuEntry(_("  *compute size of slice files to be loaded"), MENU_SLICE_FILE_SIZES);
     }
     else{
       glutAddMenuEntry(_("  compute size of slice files to be loaded"), MENU_SLICE_FILE_SIZES);
     }
-#endif
     if(use_set_slicecolor==1){
       glutAddMenuEntry(_("  *defer slice coloring"), MENU_SLICECOLORDEFER);
     }
     else{
       glutAddMenuEntry(_("  defer slice coloring"), MENU_SLICECOLORDEFER);
     }
+#ifdef pp_NEW_SLICE_MENUS
     if(use_new_slice_menus==1){
       glutAddMenuEntry(_("  *use new slice menus"), MENU_NEWSLICEMENUS);
     }
     else{
       glutAddMenuEntry(_("  use new slice menus"), MENU_NEWSLICEMENUS);
     }
+#endif
     if(nslicedups > 0){
       GLUTADDSUBMENU(_("Duplicate slices"), duplicateslicemenu);
     }
@@ -10475,8 +10371,9 @@ updatemenu=0;
           CREATEMENU(loadsmoke3dmenu,LoadSmoke3DMenu);
           {
 #ifdef pp_SMOKE_FAST
-            if(smoke3d_load_test==1)glutAddMenuEntry("*smoke3d load test", MENU_SMOKE3D_LOAD_TEST);
-            if(smoke3d_load_test == 0)glutAddMenuEntry("smoke3d load test", MENU_SMOKE3D_LOAD_TEST);
+            // comment out for now
+           // if(smoke3d_load_test==1)glutAddMenuEntry("*smoke3d load test", MENU_SMOKE3D_LOAD_TEST);
+           // if(smoke3d_load_test == 0)glutAddMenuEntry("smoke3d load test", MENU_SMOKE3D_LOAD_TEST);
 #endif
           }
           // multi mesh smoke menus items
@@ -10523,14 +10420,12 @@ updatemenu=0;
           glutAddMenuEntry(_("Initialize smoke blockage info"), MENU_SMOKE3D_IBLANK);
         }
         glutAddMenuEntry("-", MENU_DUMMY3);
-#ifdef pp_FILE_SIZES
         if(compute_smoke3d_file_sizes==1){
           glutAddMenuEntry(_("*compute size of 3D smoke files to be loaded"), MENU_SMOKE_FILE_SIZES);
         }
         else{
           glutAddMenuEntry(_("compute size of 3D smoke files to be loaded"), MENU_SMOKE_FILE_SIZES);
         }
-#endif
         glutAddMenuEntry(_("Settings..."), MENU_SMOKE_SETTINGS);
         if(nsmoke3dloaded==1)glutAddMenuEntry(_("Unload"),UNLOAD_ALL);
         if(nsmoke3dloaded>1)GLUTADDSUBMENU(_("Unload"),unloadsmoke3dmenu);
@@ -11327,7 +11222,7 @@ updatemenu=0;
       // terrain
 
       if(manual_terrain==1&&nterraininfo>0){
-        GLUTADDSUBMENU(_("Terrain"),loadterrainmenu);
+ //       GLUTADDSUBMENU(_("Terrain"),loadterrainmenu);
       }
 
       // slice

@@ -306,34 +306,19 @@ typedef struct _texturedata {
   GLuint name;
 } texturedata;
 
-/* --------------------------  terraincell ------------------------------------ */
-
-typedef struct _terraincell {
-  int nallocated, nstates;
-  float *time;
-  int interval;
-  unsigned char *state;
-} terraincell;
-
 /* --------------------------  terraindata ------------------------------------ */
 
 typedef struct _terraindata {
   char *file;
-  unsigned char *state;
-  int *timeslist;
-  int loaded, display;
-  int autoload;
   texturedata *ter_texture;
-  int nx, ny;
+  int ibar, jbar;
   float xmin, xmax, ymin, ymax;
-  float *x, *y;
-  float levels[13];
+  float zmin_cutoff;
+  float *xplt, *yplt;
   float *zcell, *znode, *znode_scaled, *znode_offset;
+  int nvalues; // number of values above zmin
   unsigned char *uc_znormal;
-  float *times;
-  terraincell *tcell;
   struct _meshdata *terrain_mesh;
-  int ntimes;
 } terraindata;
 
 /* --------------------------  matldata ------------------------------------ */
@@ -441,6 +426,10 @@ typedef struct _blockagedata {
   int nshowtime, show;
   char *label;
   float *color;
+#ifdef pp_BLOCK_COLOR
+  float transparency;
+  int use_block_transparency;
+#endif
   int colorindex;
   int useblockcolor;
   facedata *faceinfo[6];
@@ -738,7 +727,6 @@ typedef struct _meshdata {
   char *c_iblank_xy, *c_iblank_xz, *c_iblank_yz;
   float plot3d_speedmax;
   contour plot3dcontour1,plot3dcontour2,plot3dcontour3;
-  contour terrain_contour;
   isosurface currentsurf,currentsurf2;
   isosurface *blockagesurface;
   isosurface **blockagesurfaces;
@@ -1230,6 +1218,9 @@ typedef struct _slicedata {
   float valmin, valmax;
   float globalmin, globalmax;
   float valmin_data, valmax_data;
+#ifdef pp_NEWBOUND_DIALOG
+  float file_min, file_max;
+#endif
   float diff_valmin,  diff_valmax;
   flowlabels label;
   float *qslicedata, *qsliceframe, *times, *qslice;
@@ -1254,7 +1245,7 @@ typedef struct _slicedata {
   int nsliceijk;
   int *timeslist;
   int idir;
-  float sliceoffset, sliceoffset_fds;
+  float sliceoffset;
   int nslicei, nslicej, nslicek;
   int nslicex, nslicey;
   int ndirxyz[4];
@@ -1267,9 +1258,10 @@ typedef struct _slicedata {
   histogramdata *histograms;
   int nhistograms;
   struct _patchdata *patchgeom;
-#ifdef pp_FILE_SIZES
-  FILE_SIZE file_size;
+#ifdef pp_NEWBOUND_DIALOG
+  struct _boundsdata *bounds;
 #endif
+  FILE_SIZE file_size;
 #ifdef pp_SLICETHREAD
   int skipload, loadstatus, boundstatus;
 #endif
@@ -1305,15 +1297,18 @@ typedef struct _multivslicedata {
 
 typedef struct _boundsdata {
   char *shortlabel;
-  int setvalmin, setvalmax;
+  int dlg_setvalmin, dlg_setvalmax;
   int setchopmin, setchopmax;
+  float chopmin, chopmax;
+  float dlg_valmin, dlg_valmax;
+  float data_valmin,data_valmax;
+  float global_valmin, global_valmax;
+#ifdef pp_NEWBOUND_DIALOG
+  float percentile_valmin, percentile_valmax;
+#endif
   float line_contour_min;
   float line_contour_max;
   int line_contour_num;
-  float valmin, valmax;
-  float global_valmin, global_valmax;
-  float chopmin, chopmax;
-  float valmin_data,valmax_data;
   char  colorlabels[12][11];
   float colorvalues[12];
   float levels256[256];
@@ -1386,9 +1381,7 @@ typedef struct _smoke3ddata {
   unsigned char *smokeview_tmp;
   unsigned char *smoke_comp_all;
   unsigned char *frame_all_zeros;
-#ifdef pp_FILE_SIZES
   FILE_SIZE file_size;
-#endif
   float *smoke_boxmin, *smoke_boxmax;
   smokedata smoke, light;
   int dir;
