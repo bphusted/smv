@@ -276,7 +276,7 @@ intel_linux_64 : CFLAGS    += -D pp_LUA
 intel_linux_64 : SMVLUACORE_FILES += $(LIB_DIR_PLAT)/lpeg.so
 intel_linux_64 : LIBLUA    += $(LIB_DIR_PLAT)/liblua.a -ldl
 endif
-intel_linux_64 : LFLAGS    = -m64 -static-intel $(INTEL_LIBS_LINUX) $(SMV_PROFILEFLAG)
+intel_linux_64 : LFLAGS    = -m64 -static-intel $(INTEL_LIBS_LINUX) $(SMV_PROFILEFLAG) -no-cilk
 intel_linux_64 : CC        = icc
 intel_linux_64 : CPP       = icpc
 intel_linux_64 : FC        = ifort
