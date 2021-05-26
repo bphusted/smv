@@ -162,7 +162,7 @@ intel_linux_64 : FC        = ifort
 intel_linux_64 : exe       = smokediff_linux_64
 
 intel_linux_64 : $(obj)
-	$(CPP) -o $(bin)/$(exe) -static-intel $(obj) -lifport $(LINUXFORTLIBS)
+	$(CPP) -o $(bin)/$(exe) -static-intel -no-cilk $(obj) -lifport $(LINUXFORTLIBS)
 
 # ------------- intel linux 64 db ----------------
 
