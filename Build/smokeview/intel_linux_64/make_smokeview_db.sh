@@ -1,4 +1,6 @@
 #!/bin/bash
+module purge
+module load compiler/iccifort/2020.4.304
 source ../../scripts/setopts.sh $*
 
 # Exit immediately if any of the build steps fail
@@ -13,7 +15,7 @@ if [ "$BUILD_LIBS" == "1" ]; then
 else
   eval make -C ${LIBDIR} ${SMV_MAKE_OPTS} -f make_LIBS.make all
 fi
-
+export IFORT_COMPILER_LIB=/sw/easybuild/software/iccifort/2020.4.304/compilers_and_libraries/linux/lib/intel64_lin
 if [ "$BUILD_ALL" == "1" ]; then
   make -f ../Makefile clean
 fi
