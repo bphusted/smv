@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 #include GLUT_H
 
-#include "update.h"
 #include "smokeviewvars.h"
 #include "viewports.h"
 #include "IOobjects.h"
@@ -53,16 +52,16 @@ void DrawLights(float *position0, float *position1){
 /* ------------------ ShowScene2 ------------------------ */
 
 void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
-  if(rotation_type == EYE_CENTERED&&nskyboxinfo>0)DrawSkybox();
-  UpdateLights(light_position0, light_position1);
-  if(drawlights==1)DrawLights(light_position0, light_position1);
+  if(mode==DRAWSCENE){
+    if(rotation_type==EYE_CENTERED&&nskyboxinfo>0)DrawSkybox();
+    UpdateLights(light_position0, light_position1);
+    if(drawlights==1)DrawLights(light_position0, light_position1);
 
 
  // if(render_status==RENDER_ON&&render_mode==RENDER_360){
  //   UpdateLights(light_position0, light_position1);
  // }
 
-  if(mode == DRAWSCENE){
     glPointSize((float)1.0);
 
 
@@ -112,7 +111,8 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
     /* ++++++++++++++++++++++++ draw sensors/sprinklers/heat detectors +++++++++++++++++++++++++ */
 
     CLIP_GEOMETRY;
-    DrawDevices();
+
+    DrawDevices(mode);
     if(viswindrose)DrawWindRosesDevices();
     SNIFF_ERRORS("after DrawDevices");
 
@@ -154,10 +154,15 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
     /* ++++++++++++++++++++++++ draw simulation frame (corners at (0,0,0) and (xbar,ybar,zbar) +++++++++++++++++++++++++ */
 
-    if(isZoneFireModel == 0 && visFrame == 1 && highlight_flag == 2){
+
+    if(geom_bounding_box_mousedown==1||(isZoneFireModel == 0 && visFrame == 1 && highlight_flag == 2)){
       CLIP_GEOMETRY;
       DrawOutlines();
       SNIFF_ERRORS("after DrawOutlines");
+    }
+
+    if(geom_bounding_box_mousedown==1){
+      DrawObstBoundingBox();
     }
 
     if(show_rotation_center == 1){
@@ -197,7 +202,8 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   if(mode == SELECTOBJECT){
     if(select_device == 1){
       CLIP_GEOMETRY;
-      DrawDevices();
+
+      DrawDevices(mode);
       SNIFF_ERRORS("after drawselect_devices");
       return;
     }
@@ -215,7 +221,6 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   }
 
   /* ++++++++++++++++++++++++ draw selected avatars +++++++++++++++++++++++++ */
-#ifdef pp_SELECT_GEOM
   if(mode==SELECTOBJECT){
     if(select_geom!=GEOM_PROP_NONE){
       CLIP_GEOMETRY;
@@ -224,7 +229,6 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
       return;
     }
   }
-#endif
 
   /* ++++++++++++++++++++++++ DrawSelectTours +++++++++++++++++++++++++ */
 
@@ -263,24 +267,37 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   /* ++++++++++++++++++++++++ draw blockages +++++++++++++++++++++++++ */
 
   CLIP_GEOMETRY;
-  DrawBlockages(mode, DRAW_OPAQUE);
-  SNIFF_ERRORS("DrawBlockages");
+  if(geom_bounding_box_mousedown==0){
+    DrawBlockages(mode, DRAW_OPAQUE);
+    SNIFF_ERRORS("DrawBlockages");
+  }
 
   /* ++++++++++++++++++++++++ draw triangles +++++++++++++++++++++++++ */
 
   if(ngeominfoptrs>0){
     CLIP_GEOMETRY;
-    DrawGeom(DRAW_OPAQUE, GEOM_STATIC);
-    DrawGeom(DRAW_OPAQUE, GEOM_DYNAMIC);
+#ifdef pp_WUI_VAO
+    if(have_terrain_vao==0){
+      DrawGeom(DRAW_OPAQUE, GEOM_STATIC);
+      DrawGeom(DRAW_OPAQUE, GEOM_DYNAMIC);
+    }
+#else
+    if(use_cfaces==1&&ncgeominfo>0){
+      int i;
+
+      for(i = 0; i<ncgeominfo; i++){
+        geomdata *geomi;
+
+        geomi = cgeominfo+i;
+        DrawCGeom(DRAW_OPAQUE, geomi);
+      }
+    }
+    else if(ngeominfoptrs>0){
+      DrawGeom(DRAW_OPAQUE, GEOM_STATIC);
+      DrawGeom(DRAW_OPAQUE, GEOM_DYNAMIC);
+    }
+#endif
     SNIFF_ERRORS("DrawGeom");
-  }
-
-  /* ++++++++++++++++++++++++ draw diagnostic geometry +++++++++++++++++++++++++ */
-
-  if(show_geometry_diagnostics == 1){
-    CLIP_GEOMETRY;
-    DrawGeomDiag();
-    SNIFF_ERRORS("DrawGeomDiag");
   }
 
   /* ++++++++++++++++++++++++ draw shooter points +++++++++++++++++++++++++ */
@@ -293,7 +310,21 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw terrain +++++++++++++++++++++++++ */
 
-  if(visTerrainType != TERRAIN_HIDDEN&&nterraininfo>0&&ngeominfo==0){
+#ifdef pp_WUI_VAO
+  if(have_terrain_vao==1&&usegpu==1){
+    CLIP_GEOMETRY;
+    DrawTerrainGeomGPU(DRAW_OPAQUE);
+  }
+  else{
+    CLIP_GEOMETRY;
+    DrawTerrainGeom(DRAW_OPAQUE);
+  }
+#else
+  CLIP_GEOMETRY;
+  DrawTerrainGeom(DRAW_OPAQUE);
+#endif
+
+  if(visTerrainType != TERRAIN_HIDDEN&&nterraininfo>0&&ngeominfo==0 && geom_bounding_box_mousedown==0){
     int i;
 
     //shaded 17 0
@@ -309,17 +340,17 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
       terri = terraininfo + i;
       switch(visTerrainType){
       case TERRAIN_3D:
-        DrawTerrain(terri);
+        DrawTerrainOBST(terri);
         break;
       case TERRAIN_2D_STEPPED:
       case TERRAIN_2D_LINE:
         break;
       case TERRAIN_3D_MAP:
-        if(terrain_texture != NULL&&terrain_texture->loaded == 1){
-          DrawTerrainTexture(terri);
+        if(terrain_textures != NULL&&terrain_textures[iterrain_textures].loaded == 1){
+          DrawTerrainOBSTTexture(terri);
         }
         else{
-          DrawTerrain(terri);
+          DrawTerrainOBST(terri);
         }
         break;
       default:
@@ -337,12 +368,14 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   }
   if(((show_node_slices_and_vectors == 1 || show_cell_slices_and_vectors==1)&& showvslice == 1) || (showslice == 1 && use_transparency_data == 0)){
     CLIP_VALS;
-    DrawSliceFrame();
+    if(geom_bounding_box_mousedown==0){
+      DrawSliceFrame();
+    }
   }
 
   /* ++++++++++++++++++++++++ draw boundary files +++++++++++++++++++++++++ */
 
-  if(showpatch == 1){
+  if(showpatch == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawBoundaryFrame(DRAW_OPAQUE);
   }
@@ -356,7 +389,7 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw animated isosurfaces +++++++++++++++++++++++++ */
 
-  if(showiso == 1){
+  if(showiso == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawIso(DRAW_OPAQUE);
   }
@@ -401,15 +434,40 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   //**********************************************************************************
   //**********************************************************************************
 
+  /* ++++++++++++++++++++++++ draw terrain +++++++++++++++++++++++++ */
+
+#ifdef pp_WUI_VAO
+  if(have_terrain_vao==1&&usegpu==1){
+    CLIP_GEOMETRY;
+    DrawTerrainGeomGPU(DRAW_TRANSPARENT);
+  }
+  else{
+    CLIP_GEOMETRY;
+    DrawTerrainGeom(DRAW_TRANSPARENT);
+  }
+#else
+  CLIP_GEOMETRY;
+  DrawTerrainGeom(DRAW_TRANSPARENT);
+#endif
+
   /* ++++++++++++++++++++++++ draw triangles +++++++++++++++++++++++++ */
 
-  if(ngeominfoptrs>0){
-    CLIP_GEOMETRY;
+  if(use_cfaces==1&&ncgeominfo>0){
+    int i;
+
+    for(i = 0; i<ncgeominfo; i++){
+      geomdata *geomi;
+
+      geomi = cgeominfo+i;
+      DrawCGeom(DRAW_TRANSPARENT, geomi);
+    }
+  }
+  else if(ngeominfoptrs>0){
     DrawGeom(DRAW_TRANSPARENT, GEOM_STATIC);
     DrawGeom(DRAW_TRANSPARENT, GEOM_DYNAMIC);
   }
 
-  if(showiso == 1){
+  if(showiso == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawIso(DRAW_TRANSPARENT);
   }
@@ -421,7 +479,7 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw 3D smoke +++++++++++++++++++++++++ */
 
-  if(show3dsmoke == 1){
+  if(show3dsmoke == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
 #ifdef pp_SMOKETEST
     if(usegpu==0&&hrrpuv_max_blending==1){
@@ -437,7 +495,7 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw vol smoke +++++++++++++++++++++++++ */
 
-  if(showvolrender == 1&&show3dsmoke==0){
+  if(showvolrender == 1 && show3dsmoke==0 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawVolSmokeFrame();
   }
@@ -447,10 +505,22 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   if(smoke_test == 1)DrawSmokeTest();
 #endif
 
-  if(active_smokesensors == 1 && show_smokesensors != SMOKESENSORS_HIDDEN){
+  if(active_smokesensors == 1 && show_smokesensors != SMOKESENSORS_HIDDEN && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     GetSmokeSensors();
+
     DrawDevicesVal();
+  }
+
+  /* ++++++++++++++++++++++++ draw device plots +++++++++++++++++++++++++ */
+
+  if(mode==DRAWSCENE && geom_bounding_box_mousedown==0){
+    if((show_hrrpuv_plot==1&&hrrinfo!=NULL)||showdevice_plot==DEVICE_PLOT_SHOW_ALL||showdevice_plot==DEVICE_PLOT_SHOW_SELECTED){
+      DrawDevicePlots();
+    }
+    if(showdevice_plot==DEVICE_PLOT_SHOW_TREE_ALL){
+      DrawTreeDevicePlots();
+    }
   }
 
   /* ++++++++++++++++++++++++ draw zone fire modeling info +++++++++++++++++++++++++ */
@@ -463,7 +533,7 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw boundary files +++++++++++++++++++++++++ */
 
-  if(showpatch == 1){
+  if(showpatch == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawBoundaryFrame(DRAW_TRANSPARENT);
   }
@@ -473,7 +543,9 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   if((show_node_slices_and_vectors == 1 || show_cell_slices_and_vectors==1) || (showslice == 1 && use_transparency_data == 1)){
     if(nslice_loaded>0||ngeomslice_loaded>0){
       CLIP_VALS;
-      DrawSliceFrame();
+      if(geom_bounding_box_mousedown==0){
+        DrawSliceFrame();
+      }
       SNIFF_ERRORS("after DrawSliceFrame");
     }
   }
@@ -483,12 +555,14 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
   //  DrawDemo(20,20);
   //  DrawDemo2(1);
   CLIP_GEOMETRY;
-  DrawBlockages(mode, DRAW_TRANSPARENT);
+  if(geom_bounding_box_mousedown==0){
+    DrawBlockages(mode, DRAW_TRANSPARENT);
+  }
   SNIFF_ERRORS("after drawBlokcages");
 
   /* ++++++++++++++++++++++++ draw vector slice files +++++++++++++++++++++++++ */
 
-  if(showvslice == 1){
+  if(showvslice == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawVSliceFrame();
   }
@@ -496,7 +570,7 @@ void ShowScene2(int mode, int view_mode, int quad, GLint s_left, GLint s_down){
 
   /* ++++++++++++++++++++++++ draw plot3d files +++++++++++++++++++++++++ */
 
-  if(showplot3d == 1){
+  if(showplot3d == 1 && geom_bounding_box_mousedown==0){
     CLIP_VALS;
     DrawPlot3dFrame();
   }
@@ -548,7 +622,16 @@ void ShowScene(int mode, int view_mode, int quad, GLint s_left, GLint s_down, sc
       SNIFF_ERRORS("after ViewportTitle");
     }
 
+    if(histogram_draw!=NULL){
+      ViewportHistogram(quad, s_left, s_down);
+      SNIFF_ERRORS("after ViewportHistogram");
+    }
+
     ViewportScene(quad, view_mode, s_left, s_down, screen);
+    if(update_reshape>0){
+      update_reshape--;
+      GLUTPOSTREDISPLAY;
+    }
     SNIFF_ERRORS("after ViewportScene");
   }
 

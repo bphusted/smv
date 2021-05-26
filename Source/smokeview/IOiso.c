@@ -5,7 +5,6 @@
 #include GLUT_H
 #include <math.h>
 
-#include "update.h"
 #include "smokeviewvars.h"
 
 /* ------------------ GetIsoLevels ------------------------ */
@@ -139,9 +138,6 @@ void GetIsoSizes(const char *isofile, int dataflag, FILE **isostreamptr, int *nv
     *niso_times += 1;
   }
   FSEEK(*isostreamptr,beg,SEEK_SET);
-  if(dataflag==1&&axislabels_smooth==1){
-    SmoothLabel(tmin_local,tmax_local,nrgb);
-  }
 }
 
 /* ------------------ ReadIsoGeomWrapup ------------------------ */
@@ -164,7 +160,7 @@ void ReadIsoGeomWrapup(int flag){
 #endif
   UpdateTimes();
   GetFaceInfo();
-  IdleCB();
+  ForceIdle();
 }
 
 /* ------------------ UnloadIsoTrans ------------------------ */
@@ -196,7 +192,6 @@ void UnloadIsoTrans(void){
 /* ------------------ UnloadIso ------------------------ */
 
 void UnloadIso(meshdata *meshi){
-  isosurface *asurface;
   isodata *ib;
   int nloaded = 0;
   int i;
@@ -204,27 +199,8 @@ void UnloadIso(meshdata *meshi){
 
   if(meshi->isofilenum == -1)return;
   ib = isoinfo + meshi->isofilenum;
-  if(meshi->niso_times > 0 && meshi->nisolevels > 0){
-    if(meshi->animatedsurfaces != NULL){
-      for(i = 0;i < meshi->niso_times*meshi->nisolevels;i++){
-        asurface = meshi->animatedsurfaces + i;
-        FREEMEMORY(asurface->iso_triangles);
-        FREEMEMORY(asurface->iso_vertices);
-      }
-    }
-    CheckMemoryOff;
-    FREEMEMORY(meshi->iso_times);
-    FREEMEMORY(meshi->animatedsurfaces);
-    FREEMEMORY(meshi->showlevels);
-  }
-  if(ib->dataflag==1){
-    FREEMEMORY(ib->geom_nstatics);
-    FREEMEMORY(ib->geom_ndynamics);
-    FREEMEMORY(ib->geom_times);
-    FREEMEMORY(ib->geom_vals);
-  }
-  meshi->niso_times = 0;
-  FREEMEMORY(ib->normaltable);
+  FreeAllMemory(ib->memory_id);
+  meshi->iso_times = NULL;
 
   UnloadIsoTrans();
 
@@ -241,9 +217,9 @@ void UnloadIso(meshdata *meshi){
   }
 
   UpdateTimes();
+  PrintMemoryInfo;
   updatemenu = 1;
-  IdleCB();
-
+  ForceIdle();
   return;
 }
 
@@ -319,10 +295,10 @@ FILE_SIZE ReadIsoGeom(const char *file, int ifile, int load_flag, int *geom_fram
     FORTgetgeomdatasize(isoi->tfile, &ntimes_local, &isoi->geom_nvals, &error, lenfile);
 
     if(isoi->geom_nvals>0&&ntimes_local>0){
-      NewMemory((void **)&isoi->geom_nstatics, ntimes_local*sizeof(int));
-      NewMemory((void **)&isoi->geom_ndynamics, ntimes_local*sizeof(int));
-      NewMemory((void **)&isoi->geom_times, ntimes_local*sizeof(float));
-      NewMemory((void **)&isoi->geom_vals, isoi->geom_nvals*sizeof(float));
+      NewMemoryMemID((void **)&isoi->geom_nstatics,  ntimes_local*sizeof(int),       isoi->memory_id);
+      NewMemoryMemID((void **)&isoi->geom_ndynamics, ntimes_local*sizeof(int),       isoi->memory_id);
+      NewMemoryMemID((void **)&isoi->geom_times,     ntimes_local*sizeof(float),     isoi->memory_id);
+      NewMemoryMemID((void **)&isoi->geom_vals,      isoi->geom_nvals*sizeof(float), isoi->memory_id);
     }
 
     FORTgetgeomdata(isoi->tfile, &ntimes_local, &isoi->geom_nvals, isoi->geom_times,
@@ -387,12 +363,11 @@ FILE_SIZE ReadIsoGeom(const char *file, int ifile, int load_flag, int *geom_fram
     GetIsoDataBounds(isoi, &iso_valmin, &iso_valmax);
     isoi->geom_globalmin = iso_valmin;
     isoi->geom_globalmax = iso_valmax;
-    AdjustBounds(PERCENTILE_MIN, PERCENTILE_MAX, isoi->geom_vals, isoi->geom_nvals, &iso_valmin, &iso_valmax);
     isoi->geom_percentilemin = iso_valmin;
     isoi->geom_percentilemax = iso_valmax;
     if(setisomin == GLOBAL_MIN)iso_valmin = isoi->geom_globalmin;
     if(setisomax == GLOBAL_MAX)iso_valmax = isoi->geom_globalmax;
-    iso_percentile_min = isoi->geom_percentilemin; 
+    iso_percentile_min = isoi->geom_percentilemin;
     iso_percentile_max = isoi->geom_percentilemax;
     iso_global_min = isoi->geom_globalmin;
     iso_global_max = isoi->geom_globalmax;
@@ -588,13 +563,13 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
     fclose(isostream);
     return;
   }
-  if(NewMemory((void **)&meshi->iso_times,sizeof(float)*meshi->niso_times)==0){
+  if(NewMemoryMemID((void **)&meshi->iso_times,sizeof(float)*meshi->niso_times, ib->memory_id)==0){
     ReadIso("",ifile,UNLOAD,NULL,&error);
     *errorcode=1;
     fclose(isostream);
     return;
   }
-  if(NewMemory((void **)&meshi->showlevels,sizeof(int)*meshi->nisolevels)==0){
+  if(NewMemoryMemID((void **)&meshi->showlevels,sizeof(int)*meshi->nisolevels,ib->memory_id)==0){
     *errorcode=1;
     ReadIso("",ifile,UNLOAD,NULL,&error);
     fclose(isostream);
@@ -617,8 +592,8 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
       meshi->isomax_index=ilevel;
     }
   }
-  ASSERT(meshi->animatedsurfaces==NULL);
-  if(NewMemory((void **)&meshi->animatedsurfaces,meshi->nisolevels*meshi->niso_times*sizeof(isosurface))==0){
+  //ASSERT(meshi->animatedsurfaces==NULL);
+  if(NewMemoryMemID((void **)&meshi->animatedsurfaces,meshi->nisolevels*meshi->niso_times*sizeof(isosurface),ib->memory_id)==0){
     *errorcode=1;
     ReadIso("",ifile,UNLOAD,NULL,&error);
     fclose(isostream);
@@ -712,11 +687,11 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
         unsigned short *verti;
         unsigned short *vertices_i;
 
-        if(NewMemory((void **)&asurface->iso_vertices,nvertices_i*sizeof(isovert))==0){
+        if(NewMemoryMemID((void **)&asurface->iso_vertices,nvertices_i*sizeof(isovert),ib->memory_id)==0){
           break_frame=1;
           break;
         }
-        if(NewMemory((void **)&vertices_i,3*nvertices_i*sizeof(unsigned short))==0){
+        if(NewMemoryMemID((void **)&vertices_i,3*nvertices_i*sizeof(unsigned short),ib->memory_id)==0){
           break_frame=1;
           break;
         }
@@ -754,7 +729,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
           fread(&asurface->tmax,4,1,isostream);
           read_size+=2*(4+4+4);
           //printf("amin=%f amax=%f imin=%f imax=%f\n",asurface->tmin,asurface->tmax,ib->tmin,ib->tmax);;
-          if(NewMemory((void **)&tvertices_i,nvertices_i*sizeof(unsigned short))==0){
+          if(NewMemoryMemID((void **)&tvertices_i,nvertices_i*sizeof(unsigned short),ib->memory_id)==0){
             break_frame=1;
             break;
           }
@@ -788,12 +763,12 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
         unsigned short *triangles2_i;
         int *triangles_i;
 
-        if(NewMemory((void **)&triangles_i,ntriangles_i*sizeof(int))==0){
+        if(NewMemoryMemID((void **)&triangles_i,ntriangles_i*sizeof(int),ib->memory_id)==0){
           break_frame=1;
           break;
         }
         if(nvertices_i<256&&nvertices_i>0){
-          if(NewMemory((void **)&triangles1_i,ntriangles_i*sizeof(unsigned char))==0){
+          if(NewMemoryMemID((void **)&triangles1_i,ntriangles_i*sizeof(unsigned char),ib->memory_id)==0){
             break_frame=1;
             break;
           }
@@ -805,7 +780,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
           FREEMEMORY(triangles1_i);
         }
         else if(nvertices_i>=256&&nvertices_i<65536){
-          if(NewMemory((void **)&triangles2_i,ntriangles_i*sizeof(unsigned short))==0){
+          if(NewMemoryMemID((void **)&triangles2_i,ntriangles_i*sizeof(unsigned short),ib->memory_id)==0){
             break_frame=1;
             break;
           }
@@ -820,7 +795,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
           fread(triangles_i,4,(unsigned int)ntriangles_i,isostream);
           read_size+=4+4*ntriangles_i+4;
         }
-        if(NewMemory((void **)&asurface->iso_triangles,(ntriangles_i/3)*sizeof(isotri))==0){
+        if(NewMemoryMemID((void **)&asurface->iso_triangles,(ntriangles_i/3)*sizeof(isotri),ib->memory_id)==0){
           break_frame=1;
           break;
         }
@@ -855,7 +830,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
 
       if(nvertices_i>0){
         float *vertnorms=NULL;
-        if(NewMemory((void **)&vertnorms,3*nvertices_i*sizeof(float))==0){
+        if(NewMemoryMemID((void **)&vertnorms,3*nvertices_i*sizeof(float),ib->memory_id)==0){
           break_frame=1;
           break;
         }
@@ -951,7 +926,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
 
   UpdateTimes();
   PrintMemoryInfo;
-  IdleCB();
+  ForceIdle();
 
   STOP_TIMER(total_time);
 
@@ -966,13 +941,14 @@ FILE_SIZE ReadIso(const char *file, int ifile, int flag, int *geom_frame_index, 
   isodata *isoi;
   FILE_SIZE return_filesize=0;
 
+  SetTimeState();
   update_fileload = 1;
   if(ifile>=0&&ifile<nisoinfo){
 
     isoi = isoinfo+ifile;
     if(flag==LOAD)PRINTF("Loading %s(%s)", file,isoi->surface_label.shortlabel);
     if(isoi->is_fed==1){
-      ReadFed(ifile, flag, FED_ISO, errorcode);
+      ReadFed(ifile, ALL_FRAMES, NULL,  flag, FED_ISO, errorcode);
     }
     else{
       if(isoi->geomflag==1){
@@ -1015,7 +991,7 @@ void DrawIsoOrig(int tranflag){
     iso_specular[3] = 1.0;
     if(tranflag==DRAW_TRANSPARENT)TransparentOn();
 
-    if(usetexturebar==1&&isoi->dataflag==1){
+    if(isoi->dataflag==1){
       glTexEnvf(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_REPLACE);
       glEnable(GL_TEXTURE_1D);
       glBindTexture(GL_TEXTURE_1D,texture_iso_colorbar_id);
@@ -1039,7 +1015,7 @@ void DrawIsoOrig(int tranflag){
       niso_list_start=niso_opaques;
     }
     CheckMemory;
-    if(usetexturebar==1&&isoi->dataflag==1){
+    if(isoi->dataflag==1){
       for(i=0;i<niso_list_start;i++){
         isotri *tri;
         isovert *v1, *v2, *v3;
@@ -1090,7 +1066,7 @@ void DrawIsoOrig(int tranflag){
     glEnd();
 
     glPopAttrib();
-    if(usetexturebar==1&&isoi->dataflag==1)glDisable(GL_TEXTURE_1D);
+    if(isoi->dataflag==1)glDisable(GL_TEXTURE_1D);
 
 
     if(tranflag==DRAW_TRANSPARENT)TransparentOff();
@@ -1604,7 +1580,6 @@ void UpdateIsoShowLevels(void){
 
 void SetIsoLabels(float smin, float smax,
                     isodata *sd, int *errorcode){
-  char *scale;
   int isotype;
   boundsdata *sb;
 
@@ -1615,9 +1590,7 @@ void SetIsoLabels(float smin, float smax,
 
   *errorcode=0;
   PRINTF("setting up iso labels \n");
-  scale=sb->scale;
-  GetIsoLabels(smin,smax,nrgb,
-                sb->colorlabels,&scale,sb->levels256);
+  GetIsoLabels(smin,smax,nrgb,sb->colorlabels,sb->levels256);
 }
 
 /* ------------------ CompareIsoTriangles ------------------------ */

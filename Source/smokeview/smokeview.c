@@ -13,7 +13,7 @@
 #endif
 
 /* ------------------ _Sniff_Errors ------------------------ */
-#ifdef pp_SNIFF_ERRORS
+#ifdef pp_SNIFF_ERROR
 void _Sniff_Errors(char *whereat, char *file, int line){
   int error;
 
@@ -145,13 +145,6 @@ void SetViewPoint(int option){
       camera_current->eye[1]=camera_current->isometric_y;
     }
     break;
-  case RESTORE_INTERIOR_VIEW:
-    rotation_type_save = camera_current->rotation_type;
-    projection_type_save = camera_current->projection_type;
-    CopyCamera(camera_current,camera_internal);
-    camera_current->rotation_type=rotation_type_save;
-    camera_current->projection_type=projection_type_save;
-    break;
   default:
     ASSERT(FFALSE);
     break;
@@ -231,7 +224,24 @@ void DisplayVersionInfo(char *progname){
     PRINTF("FDS Build        : %s\n",fds_githash);
   }
   if(smokeviewpath!=NULL){
+#ifdef WIN32
     PRINTF("Smokeview        : %s\n",smokeviewpath);
+#else
+    {
+      char *smv2, smokeviewpath_copy[256];
+
+      strcpy(smokeviewpath_copy, smokeviewpath);
+      smv2 = strstr(smokeviewpath_copy, "Build");
+      if(smv2==NULL){
+        PRINTF("Smokeview        : %s\n", smokeviewpath);
+      }
+      else{
+        smv2[-1] = 0;
+        PRINTF("Smokeview        : %s/\n", smokeviewpath_copy);
+        PRINTF("                   %s\n", smv2);
+      }
+    }
+#endif
   }
   if(smokezippath!=NULL){
     PRINTF("Smokezip         : %s\n",smokezippath);

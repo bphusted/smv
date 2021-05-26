@@ -25,7 +25,6 @@ float FloatSwitch(float val){
 
   val2ptr=(float *)buffer2;
   return *val2ptr;
-
 }
 
 /* ------------------ IntSwitch ------------------------ */
@@ -44,7 +43,6 @@ int IntSwitch(int val){
 
   val2ptr=(int *)buffer2;
   return *val2ptr;
-
 }
 
 /* ------------------ EndianSwitch ------------------------ */

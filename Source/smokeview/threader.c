@@ -11,18 +11,14 @@
 
 void InitMultiThreading(void){
 #ifdef pp_THREAD
+  pthread_mutex_init(&mutexREADALLGEOM, NULL);
 #ifdef pp_SLICETHREAD
   pthread_mutex_init(&mutexSLICE_LOAD, NULL);
 #endif
   pthread_mutex_init(&mutexPART_LOAD, NULL);
   pthread_mutex_init(&mutexCOMPRESS,NULL);
-#ifdef pp_ISOTHREAD
-  pthread_mutex_init(&mutexTRIANGLES,NULL);
-#endif
   pthread_mutex_init(&mutexVOLLOAD,NULL);
-#ifdef pp_THREADIBLANK
   pthread_mutex_init(&mutexIBLANK, NULL);
-#endif
 #endif
 }
 
@@ -89,64 +85,50 @@ void CompressSVZip(void){
 }
 #endif
 
-//***************************** multi threading slice loading routines ***********************************
-
 #ifdef pp_THREAD
-#ifdef pp_SLICETHREAD
 
-/* ------------------ MtLoadAllSliceFiles ------------------------ */
+/* --------------------------  slicethreaddata ------------------------------------ */
 
-void *MtLoadAllSliceFiles(void *arg){
-  int *valptr;
+typedef struct _slicethreaddata {
+  int slice_index;
+  FILE_SIZE file_size;
+} slicethreaddata;
 
-  valptr = (int *)(arg);
-  LoadAllSliceFiles(*valptr);
-  pthread_exit(NULL);
-  return NULL;
-}
+FILE_SIZE LoadSlicei(int set_slicecolor, int value, int time_frame, float *time_value);
 
-/* ------------------ LoadAllSlieFilesMT ------------------------ */
+/* ------------------ LoadAllMSlicesMT ------------------------ */
 
-void LoadAllSliceFilesMT(int slicenum){
+FILE_SIZE LoadAllMSlicesMT(int last_slice, multislicedata *mslicei,  int *fcount){
+  FILE_SIZE file_size = 0;
+  int file_count = 0;
   int i;
+//  slicethreaddata slicethreadinfo[MAX_THREADS];
 
-  if(slice_multithread==0){
-    LoadAllSliceFiles(slicenum);
-    return;
-  }
+  file_count = 0;
+  file_size = 0;
+  for(i = 0; i<mslicei->nslices; i++){
+    slicedata *slicei;
+    int set_slicecolor;
 
-  for(i = 0; i<nslicethread_ids; i++){
-    pthread_create(slicethread_ids+i, NULL, MtLoadAllSliceFiles, &slicenum);
-  }
-  for(i=0;i<nslicethread_ids;i++){
-    pthread_join(slicethread_ids[i],NULL);
-  }
-  if(slicenum<0){
-    for(i = 0; i<nsliceinfo; i++){
-      slicedata *slicei;
+    slicei = sliceinfo+mslicei->islices[i];
+    set_slicecolor = DEFER_SLICECOLOR;
 
-     slicei = sliceinfo+i;
-      if(slicei->finalize==1)FinalizeSliceLoad(slicei);
+    slicei->finalize = 0;
+    if(last_slice==mslicei->islices[i]){
+      slicei->finalize = 1;
+      set_slicecolor = SET_SLICECOLOR;
+    }
+    if(slicei->skipdup==0&&last_slice!=mslicei->islices[i]){
+      file_size += LoadSlicei(set_slicecolor, mslicei->islices[i], ALL_FRAMES, NULL);
+      file_count++;
     }
   }
-  else{
-    FinalizeSliceLoad(sliceinfo+slicenum);
-  }
+  file_size += LoadSlicei(SET_SLICECOLOR, last_slice, ALL_FRAMES, NULL);
+  file_count++;
+  *fcount = file_count;
+  return file_size;
 }
-#endif
-#endif
 
-#ifndef pp_THREAD
-#ifdef pp_SLICETHREAD
-void LoadAllSliceFilesMT(int slicenum){
-  LoadAllSliceFiles(slicenum);
-}
-#endif
-#endif
-
-//***************************** multi threading particle loading routines ***********************************
-
-#ifdef pp_THREAD
 /* ------------------ MtLoadAllPartFiles ------------------------ */
 
 void *MtLoadAllPartFiles(void *arg){
@@ -163,6 +145,9 @@ void *MtLoadAllPartFiles(void *arg){
 void LoadAllPartFilesMT(int partnum){
   int i;
 
+  if(part_multithread==1&&current_script_command==NULL&&update_generate_part_histograms==-1){
+    JOIN_PART_HIST;
+  }
   if(part_multithread==0){
     LoadAllPartFiles(partnum);
     return;
@@ -178,8 +163,18 @@ void LoadAllPartFilesMT(int partnum){
     for(i = 0; i<npartinfo; i++){
       partdata *parti;
 
-     parti = partinfo+i;
-      if(parti->finalize==1)FinalizePartLoad(parti);
+      parti = partinfo+i;
+      parti->finalize=0;
+    }
+    for(i = npartinfo-1; i>=0; i--){
+      partdata *parti;
+
+      parti = partinfo+i;
+      if(parti->loaded==1){
+        parti->finalize = 1;
+        FinalizePartLoad(parti);
+        break;
+      }
     }
   }
   else{
@@ -189,6 +184,69 @@ void LoadAllPartFilesMT(int partnum){
 #else
 void LoadAllPartFilesMT(int partnum){
   LoadAllPartFiles(partnum);
+}
+#endif
+
+#ifdef pp_THREAD
+/* ------------------ MtClassifyAllGeom ------------------------ */
+
+void *MtClassifyAllGeom(void *arg){
+  ClassifyAllGeom();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void ClassifyAllGeomMT(void){
+  if(readallgeom_multithread==1){
+    int i;
+
+    SetupReadAllGeom();
+    for(i = 0; i<nreadallgeomthread_ids; i++){
+      pthread_create(classifyallgeomthread_ids+i, NULL, MtClassifyAllGeom, NULL);
+    }
+  }
+  else{
+    SetupReadAllGeom();
+    ClassifyAllGeom();
+  }
+}
+
+/* ------------------ MtReadAllGeom ------------------------ */
+
+void *MtReadAllGeom(void *arg){
+  ReadAllGeom();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void ReadAllGeomMT(void){
+  if(readallgeom_multithread==1){
+    int i;
+
+    SetupReadAllGeom();
+    for(i = 0; i<nreadallgeomthread_ids; i++){
+      pthread_create(readallgeomthread_ids+i, NULL, MtReadAllGeom, NULL);
+    }
+    for(i = 0; i<nreadallgeomthread_ids; i++){
+      pthread_join(readallgeomthread_ids[i], NULL);
+    }
+  }
+  else{
+    SetupReadAllGeom();
+    ReadAllGeom();
+  }
+}
+
+/* ------------------ MtReadAllGeom ------------------------ */
+
+void *MTGeneratePartHistograms(void *arg){
+  GeneratePartHistograms();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void GeneratePartHistogramsMT(void){
+  pthread_create(&generate_part_histogram_id, NULL, MTGeneratePartHistograms, NULL);
 }
 #endif
 
@@ -285,7 +343,6 @@ void FinishUpdateTriangles(void){
 
 /* ------------------ MtMakeIBlank ------------------------ */
 #ifdef pp_THREAD
-#ifdef pp_THREADIBLANK
 void *MtMakeIBlank(void *arg){
 
   MakeIBlank();
@@ -297,22 +354,42 @@ void *MtMakeIBlank(void *arg){
   return NULL;
 }
 #endif
+
+/* ------------------ Sample ------------------------ */
+
+#ifdef pp_SAMPLE
+// example multi threading routines
+// need to declare sample_thread_id in threader.h
+// need to declare sample_multithread in smokeviewvars.h
+
+#ifdef pp_THREAD
+void *MtSample(void *arg){
+  Sample();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void SampleMT(void){
+  if(sample_multithread==1){
+    pthread_create(&sample_thread_id, NULL, MtSample, NULL);
+  }
+  else{
+    Sample();
+  }
+}
+#else
+void SampleMT(void){
+  Sample();
+}
+#endif
 #endif
 
 /* ------------------ makeiblank_all ------------------------ */
 
 #ifdef pp_THREAD
-#ifdef pp_THREADIBLANK
 void MakeIBlankAll(void){
   pthread_create(&makeiblank_thread_id, NULL, MtMakeIBlank, NULL);
 }
-#else
-void MakeIBlankAll(void){
-  MakeIBlank();
-  SetCVentDirs();
-  update_setvents=1;
-}
-#endif
 #else
 void MakeIBlankAll(void){
   MakeIBlank();

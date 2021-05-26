@@ -248,8 +248,9 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     command = current_script_command->command;
 
     if(
-      (command == SCRIPT_RENDERONCE || command == SCRIPT_RENDERALL ||
-        command == SCRIPT_RENDER360ALL || command == SCRIPT_VOLSMOKERENDERALL || command == SCRIPT_ISORENDERALL
+      ( command == SCRIPT_RENDERONCE   || command == SCRIPT_RENDERALL         ||
+        command == SCRIPT_RENDER360ALL || command == SCRIPT_VOLSMOKERENDERALL ||
+        command == SCRIPT_ISORENDERALL || command == SCRIPT_LOADSLICERENDER
         ) &&
       current_script_command->cval2 != NULL
       ){
@@ -271,13 +272,13 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
   // directory
 
   if(Writable(renderfile_dir) == NO){
-    if(Writable(smokeviewtempdir) == YES){
-      strcpy(renderfile_dir, smokeviewtempdir);
+    if(Writable(smokeview_scratchdir) == YES){
+      strcpy(renderfile_dir, smokeview_scratchdir);
     }
     else{
-      if(smokeviewtempdir!=NULL&&strlen(smokeviewtempdir)>0){
+      if(smokeview_scratchdir!=NULL&&strlen(smokeview_scratchdir)>0){
         fprintf(stderr, "*** Error: unable to render screen image to either directories %s or %s\n",
-        renderfile_dir,smokeviewtempdir);
+        renderfile_dir,smokeview_scratchdir);
       }
       else{
         fprintf(stderr, "*** Error: unable to render screen image to directory %s \n",renderfile_dir);
@@ -293,6 +294,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     (current_script_command->command == SCRIPT_RENDERALL ||
       current_script_command->command == SCRIPT_RENDER360ALL ||
       current_script_command->command == SCRIPT_VOLSMOKERENDERALL ||
+      current_script_command->command == SCRIPT_LOADSLICERENDER ||
       current_script_command->command == SCRIPT_ISORENDERALL
       ))){
     int image_num;
@@ -305,21 +307,29 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     else{
       image_num = itimes;
     }
+    if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+      int time_current = current_script_command->ival4;
+      image_num = time_current;
+    }
     if(render_label_type == RENDER_LABEL_FRAMENUM || RenderTime == 0){
       float time_local;
       int code;
+      int do_time=0;
 
-      if(RenderTime == 0){
-        sprintf(suffix, "s%04i", image_num);
+      if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER)do_time = 1;
+      if(RenderTime!=0)do_time=1;
+
+      if(do_time == 1){
+        sprintf(suffix, "%04i", image_num);
       }
       else{
-        sprintf(suffix, "%04i", image_num);
+        sprintf(suffix, "s%04i", image_num);
       }
       code = GetPlot3dTime(&time_local);
       if(code == 1 && render_label_type == RENDER_LABEL_TIME){
         char timelabel_local[20], *timelabelptr, dt = 1.0;
 
-        timelabelptr = Time2TimeLabel(time_local, dt, timelabel_local);
+        timelabelptr = Time2TimeLabel(time_local, dt, timelabel_local, force_fixedpoint);
         strcat(suffix, "_");
         strcat(suffix, timelabelptr);
         strcat(suffix, "s");
@@ -333,7 +343,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
       time_local = global_times[itimes];
       dt = global_times[1] - global_times[0];
       if(dt < 0.0)dt = -dt;
-      timelabelptr = Time2TimeLabel(time_local, dt, timelabel_local);
+      timelabelptr = Time2TimeLabel(time_local, dt, timelabel_local, force_fixedpoint);
       strcpy(suffix, timelabelptr);
       strcat(suffix, "s");
     }
@@ -536,11 +546,6 @@ int MergeRenderScreenBuffers(int nfactor, GLubyte **screenbuffers){
   }
   strcat(renderfullfile,renderfile);
 
-  if(script_viewpoint_found==NO&&current_script_command!=NULL){
-    FileCopy(script_error1_filename,renderfullfile);
-    return 0;
-  }
-
   RENDERfile = fopen(renderfullfile, "wb");
   if(RENDERfile == NULL){
     fprintf(stderr, "*** Error: unable to render screen image to %s", renderfullfile);
@@ -636,6 +641,14 @@ int MergeRenderScreenBuffers(int nfactor, GLubyte **screenbuffers){
     OutputSliceData();
   }
   PRINTF(" Completed\n");
+  if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+    char timer_render_label[20];
+
+    STOP_TIMER(timer_render);
+    Float2String(timer_render_label, timer_render, 3, force_fixedpoint);
+    printf("render time: %s s\n", timer_render_label);
+    START_TIMER(timer_render);
+  }
   return 0;
 }
 
@@ -1143,7 +1156,7 @@ int SmokeviewImage2File(char *directory, char *RENDERfilename, int rendertype, i
   height2 = height_end-height_beg;
 
   if(directory==NULL){
-    renderfile= GetFileName(smokeviewtempdir,RENDERfilename,NOT_FORCE_IN_DIR);
+    renderfile= GetFileName(smokeview_scratchdir,RENDERfilename,NOT_FORCE_IN_DIR);
   }
   else{
     renderfile= GetFileName(directory,RENDERfilename,FORCE_IN_DIR); //force
@@ -1298,7 +1311,7 @@ int SVimage2var(int rendertype,
 
 /* ------------------ ReadPicture ------------------------ */
 
-unsigned char *ReadPicture(char *filename, int *width, int *height, int printflag){
+unsigned char *ReadPicture(char *filename, int *width, int *height, int *is_transparent, int printflag){
   char *ext;
   unsigned char *returncode;
   char *filebuffer=NULL;
@@ -1345,10 +1358,10 @@ unsigned char *ReadPicture(char *filename, int *width, int *height, int printfla
   if(printflag==1)PRINTF("Loading texture:%s ",filebuffer);
   ext = filebuffer + strlen(filebuffer) - 4;
   if(strncmp(ext,".jpg",4)==0||strncmp(ext,".JPG",4)==0){
-    returncode = ReadJPEG(filebuffer,width,height);
+    returncode = ReadJPEG(filebuffer,width,height,is_transparent);
   }
   else if(strncmp(ext,".png",4)==0||strncmp(ext,".PNG",4)==0){
-    returncode = ReadPNG(filebuffer,width,height);
+    returncode = ReadPNG(filebuffer,width,height,is_transparent);
   }
   else{
     if(allocated==1){
@@ -1374,7 +1387,7 @@ unsigned char *ReadPicture(char *filename, int *width, int *height, int printfla
 
 /* ------------------ ReadJPEG ------------------------ */
 
-unsigned char *ReadJPEG(const char *filename,int *width, int *height){
+unsigned char *ReadJPEG(const char *filename,int *width, int *height, int *is_transparent){
 
   FILE *file;
   gdImagePtr image;
@@ -1397,13 +1410,20 @@ unsigned char *ReadJPEG(const char *filename,int *width, int *height){
     return NULL;
   }
   dptr=dataptr;
+  *is_transparent = 0;
   for(i = 0; i<HEIGHT; i++){
     for(j=0;j<WIDTH;j++){
+      unsigned int a;
+
       intrgb=(unsigned int)gdImageGetPixel(image,j,(unsigned int)(HEIGHT-(1+i)));
       *dptr++ = (intrgb>>16)&255;
       *dptr++ = (intrgb>>8)&255;
       *dptr++ = intrgb&255;
-      *dptr++=0xff;
+      a = (intrgb>>24)&255;
+      a = 255-a;
+      if(a<129)a = 0;
+      if(a==0)*is_transparent = 1;
+      *dptr++ = (unsigned char)a;
     }
   }
   gdImageDestroy(image);
@@ -1413,7 +1433,7 @@ unsigned char *ReadJPEG(const char *filename,int *width, int *height){
 
 /* ------------------ ReadPNG ------------------------ */
 
-unsigned char *ReadPNG(const char *filename,int *width, int *height){
+unsigned char *ReadPNG(const char *filename,int *width, int *height, int *is_transparent){
 
   FILE *file;
   gdImagePtr image;
@@ -1432,13 +1452,20 @@ unsigned char *ReadPNG(const char *filename,int *width, int *height){
     return NULL;
   }
   dptr=dataptr;
+  *is_transparent = 0;
   for(i = 0; i<*height; i++){
     for(j=0;j<*width;j++){
+      unsigned int a;
+
       intrgb=(unsigned int)gdImageGetPixel(image,j,(unsigned int)(*height-(1+i)));
       *dptr++ = (intrgb>>16)&255;
       *dptr++ = (intrgb>>8)&255;
       *dptr++ = intrgb&255;
-      *dptr++ = 0xff;
+      a = (intrgb>>24)&255;
+      a = 255-a;
+      if(a<129)a=0;
+      if(a==0)*is_transparent = 1;
+      *dptr++ = (unsigned char)a;
     }
   }
   gdImageDestroy(image);

@@ -5,7 +5,6 @@
 #include <math.h>
 #include GLUT_H
 
-#include "update.h"
 #include "smokeviewvars.h"
 
 cadgeomdata *current_cadgeom;
@@ -23,18 +22,22 @@ void DrawCircVentsApproxSolid(int option){
     int j;
     meshdata *meshi;
     float *xplt, *yplt, *zplt;
+    float dx, dy, dz, dxyz;
 
     meshi = meshinfo + i;
     xplt = meshi->xplt;
     yplt = meshi->yplt;
     zplt = meshi->zplt;
+    dx = xplt[1] - xplt[0];
+    dy = yplt[1] - yplt[0];
+    dz = zplt[1] - zplt[0];
+    dxyz = MIN(MIN(dx, dy), dz)/10.0;
 
     for(j=0;j<meshi->ncvents;j++){
       cventdata *cvi;
       int ii, jj, kk;
       float xx, yy, zz;
       float xx2, yy2, zz2;
-      float dx;
 
       cvi = meshi->cventinfo + j;
 
@@ -44,10 +47,10 @@ void DrawCircVentsApproxSolid(int option){
 
       glColor3fv(cvi->color);
       if(cvi->dir==UP_X||cvi->dir==UP_Y||cvi->dir==UP_Z){
-        dx=0.001;
+        dx = dxyz;
       }
       else{
-        dx=-0.001;
+        dx= -dxyz;
       }
       switch(cvi->dir){
         case UP_X:
@@ -171,11 +174,17 @@ void DrawCircVentsApproxOutline(int option){
     int j;
     meshdata *meshi;
     float *xplt, *yplt, *zplt;
+    float dx, dy, dz, dxyz;
 
     meshi = meshinfo + i;
     xplt = meshi->xplt;
     yplt = meshi->yplt;
     zplt = meshi->zplt;
+
+    dx = xplt[1] - xplt[0];
+    dy = yplt[1] - yplt[0];
+    dz = zplt[1] - zplt[0];
+    dxyz = MIN(MIN(dx, dy), dz)/10.0;
 
     for(j=0;j<meshi->ncvents;j++){
       cventdata *cvi;
@@ -184,7 +193,6 @@ void DrawCircVentsApproxOutline(int option){
       float xx, yy, zz;
       float xx2, yy2, zz2;
       float xx3, yy3, zz3;
-      float dx;
       int in_circle;
 
       cvi = meshi->cventinfo + j;
@@ -195,10 +203,10 @@ void DrawCircVentsApproxOutline(int option){
 
       glColor3fv(cvi->color);
       if(cvi->dir==UP_X||cvi->dir==UP_Y||cvi->dir==UP_Z){
-        dx=0.001;
+        dx = dxyz;
       }
       else{
-        dx=-0.001;
+        dx = -dxyz;
       }
       switch(cvi->dir){
         case UP_X:
@@ -375,7 +383,7 @@ void DrawCircVentsExactSolid(int option){
         z0 = cvi->zmin;
       }
 
-      delta=SCALE2FDS(0.001);
+      delta=0.001;
       color=cvi->color;
       vcolor[0]=color[0]*255;
       vcolor[1]=color[1]*255;
@@ -485,7 +493,7 @@ void DrawCircVentsExactOutline(int option){
         z0 = cvi->zmin;
       }
 
-      delta=SCALE2FDS(0.001);
+      delta=0.001;
       color=cvi->color;
       vcolor[0]=color[0]*255;
       vcolor[1]=color[1]*255;
@@ -605,20 +613,9 @@ void UpdateIndexColors(void){
       bc = meshi->blockageinfoptrs[j];
       if(bc->usecolorindex==1){
         colorindex=bc->colorindex;
-#ifdef pp_BLOCK_COLOR
-        if(colorindex>=0){
-          if(bc->use_block_transparency==1&&bc->transparency>=0.0){
-            bc->color = GetColorTranPtr(rgb[nrgb+colorindex],bc->transparency);
-          }
-          else{
-            bc->color = GetColorPtr(rgb[nrgb+colorindex]);
-          }
-        }
-#else
         if(colorindex>=0){
           bc->color = GetColorPtr(rgb[nrgb+colorindex]);
         }
-#endif
       }
     }
     for(j=0;j<meshi->nvents;j++){
@@ -1111,6 +1108,8 @@ void SetCVentDirs(void){
 void SetVentDirs(void){
   int ii;
 
+  n_mirrorvents = 0;
+  n_openvents = 0;
   for(ii=0;ii<nmeshes;ii++){
     meshdata *meshi;
     float *xplttemp;
@@ -1141,6 +1140,8 @@ void SetVentDirs(void){
 
       vi=meshi->ventinfo+iv;
 
+      if(vi->isMirrorvent==1)n_mirrorvents++; // count number of mirror and open vents
+      if(vi->isOpenvent==1)n_openvents++;
       dir=0;
       if(vi->imin==vi->imax)dir=XDIR;
       if(vi->jmin==vi->jmax)dir=YDIR;
@@ -1614,10 +1615,12 @@ void ReadCAD2Geom(cadgeomdata *cd){
     texti->loaded=0;
     texti->used=0;
     texti->name=0;
+    texti->is_transparent = 0;
 
     if(texti->file!=NULL){
       int texwid, texht;
       unsigned char *floortex;
+      int is_transparent;
 
       if(have_textures==0){
         PRINTF("     Loading CAD textures\n");
@@ -1626,7 +1629,8 @@ void ReadCAD2Geom(cadgeomdata *cd){
       PRINTF("       Loading texture: %s",texti->file);
       glGenTextures(1,&texti->name);
       glBindTexture(GL_TEXTURE_2D,texti->name);
-      floortex=ReadPicture(texti->file,&texwid,&texht,0);
+      floortex=ReadPicture(texti->file,&texwid,&texht,&is_transparent,0);
+      texti->is_transparent = is_transparent;
       if(floortex==NULL){
         PRINTF(" - failed\n");
         fprintf(stderr,"*** Error: Texture file %s failed to load\n",texti->file);
@@ -2184,12 +2188,6 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
           faceptr->invisible=bc->surf[j]->invisible;
           faceptr->transparent=bc->surf[j]->transparent;
         }
-#ifdef pp_BLOCK_COLOR
-        if(bc->use_block_transparency==1){
-          faceptr->transparent = bc->transparent;
-          faceptr->color = GetColorTranPtr(faceptr->color, bc->transparency);
-        }
-#endif
         break;
       default:
         ASSERT(FFALSE);
@@ -2474,9 +2472,6 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
     }
     faceptr++;
   }
-#ifdef pp_BLOCK_COLOR
-  UpdateBlockType();
-#endif
 }
 
 /* ------------------ UpdateFaces ------------------------ */
@@ -2753,6 +2748,10 @@ void UpdateFaceLists(void){
     }
     else{
       patchi=NULL;
+    }
+    if(chop_patch == 1){
+      local_showpatch=0;
+      loadpatch=0;
     }
 
     if(local_showpatch==1&&loadpatch==1){
@@ -4202,7 +4201,7 @@ void DrawUserTicks(void){
   int i;
   float xyz[3],xyz2[3];
   float tick_origin[3], step[3];
-  int show_tick_x, show_tick_y, show_tick_z;
+  int show_tick_x=0, show_tick_y=0, show_tick_z=0;
   float fds_tick_length;
 
 #define MIN_DTICK 0.0

@@ -18,6 +18,7 @@
 
 #ifdef WIN32
 void GetSystemTimesAddress(void);
+int getnprocs(char *command);
 #endif
 unsigned char cpuusage(void);
 
@@ -67,6 +68,9 @@ void Usage(char *prog, int option){
   printf("  -d dtime  - wait dtime seconds before running prog in the background\n");
   printf("  -m max    - wait to run prog until memory usage is less than max (25-100%s)\n", pp);
   printf("  -u max    - wait to run prog until cpu usage is less than max (25-100%s)\n", pp);
+#ifdef WIN32
+  printf("  -U max    - wait to run prog until number of instances of prog is less than max \n");
+#endif
   UsageCommon(HELP_SUMMARY);
   printf("  prog      - program to run in the background\n");
   printf("  arguments - command line arguments of prog\n\n");
@@ -98,6 +102,8 @@ int main(int argc, char **argv){
   float delay_time=0.0;
   int cpu_usage, cpu_usage_max=25;
   int mem_usage, mem_usage_max=75;
+  int nprocs_max=-1;
+  int nprocs;
 #ifdef pp_LINUX
   FILE *stream=NULL;
 #endif
@@ -105,7 +111,7 @@ int main(int argc, char **argv){
   int itime;
   char *arg;
 #ifdef WIN32
-  char *command;
+  char *command, *base;
 #endif
 
   SetStdOut(stdout);
@@ -197,6 +203,14 @@ int main(int argc, char **argv){
               if(cpu_usage_max>100)cpu_usage_max=100;
             }
             break;
+          case 'U':
+            i++;
+            if(i<argc){
+              arg=argv[i];
+              sscanf(arg,"%i",&nprocs_max);
+              nprocs_max = CLAMP(nprocs_max, 1, 100);
+            }
+            break;
           default:
             printf("Unknown option: %s\n",arg);
             Usage(argv[0],HELP_ALL);
@@ -255,17 +269,34 @@ int main(int argc, char **argv){
 
 #ifdef WIN32
   GetSystemTimesAddress();
-  cpu_usage=cpuusage();
-  mem_usage=memusage();
-  Sleep(200);
-  cpu_usage=cpuusage();
-  mem_usage=memusage();
-  while(cpu_usage>cpu_usage_max||mem_usage>mem_usage_max){
-    Sleep(1000);
+  command=argv[argstart];
+  base = strrchr(command,'\\');
+  if(base!=NULL){
+    base++;
+  }
+  else{
+    base=command;
+  }
+
+  if(nprocs_max>0){
+    nprocs = getnprocs(base);
+    while(nprocs>=nprocs_max){
+      Sleep(1000);
+      nprocs = getnprocs(base);
+    }
+  }
+  else{
     cpu_usage=cpuusage();
     mem_usage=memusage();
+    Sleep(200);
+    cpu_usage=cpuusage();
+    mem_usage=memusage();
+    while(cpu_usage>cpu_usage_max || mem_usage>mem_usage_max){
+      Sleep(1000);
+      cpu_usage = cpuusage();
+      mem_usage = memusage();
+    }
   }
-  command=argv[argstart];
   _spawnvp(_P_NOWAIT,command, argv+argstart);
 #else
   strcpy(command_buffer,"");
@@ -336,7 +367,7 @@ static HMODULE s_hKernel = NULL;
 
 void GetSystemTimesAddress(){
   if( s_hKernel == NULL ){
-    s_hKernel = LoadLibrary((wchar_t *)"Kernel32.dll" );
+    s_hKernel = LoadLibrary((LPCSTR)"Kernel32.dll" );
     if( s_hKernel != NULL ){
       s_pfnGetSystemTimes = (pfnGetSystemTimes)GetProcAddress( s_hKernel, "GetSystemTimes" );
       if( s_pfnGetSystemTimes == NULL ){
@@ -345,6 +376,42 @@ void GetSystemTimesAddress(){
     }
   }
 }
+
+/* ------------------ getnprocs ------------------------ */
+
+#ifdef WIN32
+int getnprocs(char *command){
+  FILE *stream;
+  int count=0;
+  char com_copy[256], *ext;
+
+  system("tasklist > process.out");
+
+  stream = fopen("process.out","r");
+  if(stream==NULL)return 0;
+
+  strcpy(com_copy, command);
+  ext = strchr(com_copy, ' ');
+  if(ext!=NULL)*ext = 0;
+
+  ext = strchr(com_copy, '.');
+  if(ext!=NULL)*ext = 0;
+
+  while(!feof(stream)){
+    char buffer[255];
+
+    if(fgets(buffer, 255, stream)==NULL)break;
+    ext = strchr(buffer, ' ');
+    if(ext!=NULL)*ext = 0;
+
+    ext = strchr(buffer,'.');
+    if(ext!=NULL)*ext=0;
+    if(STRCMP(buffer,com_copy)==0)count++;
+  }
+  fclose(stream);
+  return count;
+}
+#endif
 
 /* ------------------ cpuusage ------------------------ */
 
@@ -603,7 +670,7 @@ float get_load(void){
 
 #ifndef WIN32
 
-/* ------------------ cpuusage ------------------------ */
+/* ------------------ cpuusage_host ------------------------ */
 
 unsigned char cpuusage_host(char *host, int ncores){
   float load;

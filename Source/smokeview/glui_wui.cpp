@@ -57,7 +57,6 @@ extern "C" void UpdateGluiWui(void){
 /* ------------------ GluiWuiSetup ------------------------ */
 
 extern "C" void GluiWuiSetup(int main_window){
-  update_glui_wui=0;
   if(glui_wui!=NULL){
     glui_wui->close();
     glui_wui=NULL;
@@ -101,7 +100,7 @@ extern "C" void GluiWuiSetup(int main_window){
     RADIOBUTTON_wui_1b->disable();
     RADIOBUTTON_wui_1c->disable();
 
-    if(terrain_texture==NULL||terrain_texture->loaded==0){
+    if(terrain_textures==NULL){
       RADIOBUTTON_texture->disable();
     }
 
@@ -122,7 +121,9 @@ extern "C" void GluiWuiSetup(int main_window){
 
     BUTTON_wui_1=glui_wui->add_button("Save settings",SAVE_SETTINGS_WUI,WuiCB);
     BUTTON_wui_2=glui_wui->add_button("Close",WUI_CLOSE,WuiCB);
-
+#ifdef pp_CLOSEOFF
+    BUTTON_wui_2->disable();
+#endif
   }
 
   glui_wui->set_main_gfx_window( main_window );
@@ -155,12 +156,8 @@ extern "C" void WuiCB(int var){
       list_slice_index=fire_line_type;
       UpdateSliceList(list_slice_index);
 
-      SliceBoundCB(FILETYPEINDEX);
+      SliceBoundCB(FILETYPE_INDEX);
 
-#ifndef pp_NEWBOUND_DIALOG
-      glui_setslicemin = SET_MIN;
-      glui_setslicemax = SET_MAX;
-#endif
       glui_slicemin=20.0;
       glui_slicemax=fire_line_max;
       glui_setslicechopmin = 1;
@@ -177,7 +174,7 @@ extern "C" void WuiCB(int var){
       SliceBoundCB(CHOPVALMIN);
       SliceBoundCB(CHOPVALMAX);
 
-      SliceBoundCB(FILEUPDATE);
+      SliceBoundCB(FILE_UPDATE);
       SliceBoundCB(CHOPUPDATE);
       break;
     case TERRAIN_COLORS:

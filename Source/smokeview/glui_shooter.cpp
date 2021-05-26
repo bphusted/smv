@@ -6,7 +6,6 @@
 #include GLUT_H
 #include <math.h>
 
-#include "update.h"
 #include "smokeviewvars.h"
 
 GLUI *glui_shooter=NULL;
@@ -275,7 +274,6 @@ void ShooterCB(int var){
 
 extern "C" void GluiShooterSetup(int main_window){
 
-  update_glui_shooter=0;
   if(glui_shooter!=NULL){
     glui_shooter->close();
     glui_shooter=NULL;
@@ -386,6 +384,9 @@ extern "C" void GluiShooterSetup(int main_window){
   BUTTON_shooter_2=glui_shooter->add_button_to_panel(PANEL_shooter_win,_("Save settings"),SAVE_SETTINGS_SHOOTER,ShooterCB);
   glui_shooter->add_column_to_panel(PANEL_shooter_win,false);
   BUTTON_shooter_3=glui_shooter->add_button_to_panel(PANEL_shooter_win,_("Close"),SHOOTER_CLOSE,ShooterCB);
+#ifdef pp_CLOSEOFF
+  BUTTON_shooter_3->disable();
+#endif
 
   ShooterCB(SHOOTER_VEL_TYPE);
   ShooterCB(SHOOTER_VEL);

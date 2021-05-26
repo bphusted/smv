@@ -10,7 +10,7 @@
 !  IF (N_FACE_D>0)  WRITE(LU_GEOM) (SURF_D(I),I=1,N_FACE_D)
 
 
-#ifdef pp_INTEL
+#ifdef __INTEL_COMPILER
 #define pp_FSEEK
 #endif
 #ifdef pp_GCC
@@ -20,7 +20,7 @@
 !  ------------------ module cio ------------------------
 
 module cio
-#ifdef pp_INTEL
+#ifdef __INTEL_COMPILER
 use ifport, only: seek_set, seek_cur
 #else
 integer, parameter :: seek_set=0, seek_cur=1
@@ -32,7 +32,7 @@ contains
 !  ------------------ ffseek ------------------------
 
 subroutine ffseek(unit,sizes,nsizes,mode,error)
-#ifdef pp_INTEL
+#ifdef __INTEL_COMPILER
 use ifport, only: fseek
 #endif
 implicit none
@@ -52,7 +52,7 @@ do i = 1, nsizes
 end do
 #endif
 
-#ifdef pp_INTEL
+#ifdef __INTEL_COMPILER
 error = fseek(unit,size,mode)
 #endif
 
@@ -542,6 +542,44 @@ endif
 
 return
 end subroutine openpart
+
+!  ------------------ write_bingeom------------------------
+
+subroutine write_bingeom(filename, verts, faces, surfs, n_verts, n_faces, n_surf_id, error)
+implicit none
+integer :: i
+
+character(len=*), intent(in) :: filename
+integer, intent(in) :: n_verts, n_faces, n_surf_id
+real, dimension(*), intent(in) :: verts
+integer, dimension(*), intent(in) :: faces
+integer, dimension(*), intent(in) :: surfs
+integer, intent(out) :: error
+integer, parameter :: double = selected_real_kind(12)
+
+
+integer :: n_volus
+integer, dimension(4) :: volus
+
+integer :: unitnum, integer_one=1
+
+error=0
+n_volus =0
+volus(1:4)=0
+
+open(newunit=unitnum,file=filename,form="unformatted",action="write")
+
+write(unitnum) integer_one
+write(unitnum) n_verts, n_faces, n_surf_id, n_volus
+write(unitnum) (real(verts(i),double),i=1,3*n_verts)
+write(unitnum) faces(1:3*n_faces)
+write(unitnum) surfs(1:n_surf_id)
+write(unitnum) volus(1:4*n_volus)
+
+close(unitnum)
+
+return
+end subroutine write_bingeom
 
 !  ------------------ openslice ------------------------
 
@@ -1573,7 +1611,6 @@ real :: dummy, qval
 
 integer :: nxpts, nypts, nzpts
 integer :: i, j, k, n
-real :: r2
 
 integer :: u_in
 
@@ -1604,8 +1641,8 @@ if(isotest.eq.0)then
     do i = 1, nx
     do j = 1, ny
     do k = 1, nz
-      r2 = sqrt(float((i-nx/2)**2 + (j-ny/2)**2 + (k-nz/2)**2))
-      qval = r2
+      qval = (i-nx/2)**2 + (j-ny/2)**2 + (k-nz/2)**2
+      qval = sqrt(qval)
       if(isotest.eq.1)then
         qq(i,j,k,1) = 0.0
         qq(i,j,k,2) = 0.0
@@ -1642,7 +1679,7 @@ real :: dummy
 error3 = 0
 
 dummy = 0.0
-open(newunit=u_out,file=trim(outfile),form="unformatted",action="write",iostat=error3)
+open(newunit=u_out,file=outfile,form="unformatted",action="write",iostat=error3)
 if(error3.ne.0)return
 
 write(u_out,iostat=error3)nx, ny, nz

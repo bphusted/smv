@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include GLUT_H
 
-#include "update.h"
 #include "smokeviewvars.h"
 #include "compress.h"
 #include "IOscript.h"
@@ -28,13 +27,19 @@ int CompareFloat( const void *arg1, const void *arg2 ){
   return 0;
 }
 
-/* ------------------ UpdateHrrinfo ------------------------ */
+/* ------------------ UpdateHRRInfo ------------------------ */
 
-void UpdateHrrinfo(int vis){
-  if(hrrinfo != NULL && hrrinfo->display!=vis&&hrrinfo->loaded==1){
+void UpdateHRRInfo(int vis){
+  if(hrrinfo!=NULL&&hrrinfo->loaded==1){
     hrrinfo->display = vis;
-    UpdateTimes();
+    if(hrrinfo->display == 0)show_hrrpuv_plot = 0;
   }
+  if(visHRRlabel == 0)show_hrrpuv_plot=0;
+
+  UpdateShowHRRPUVPlot(show_hrrpuv_plot);
+  plotstate = GetPlotState(DYNAMIC_PLOTS);
+  UpdateShow();
+  update_times = 1;
 }
 
 /* ------------------ UpdateFrameNumber ------------------------ */
@@ -140,7 +145,6 @@ void UpdateFrameNumber(int changetime){
           }
           CheckMemory;
         }
-
       }
     }
     for(i=0;i<ngeominfoptrs;i++){
@@ -164,7 +168,12 @@ void UpdateFrameNumber(int changetime){
           patchi = sd->patchgeom;
           if(patchi->geom_timeslist == NULL)continue;
           if(patchi->structured == YES || patchi->boundary == 1 || patchi->geom_times == NULL || patchi->geom_timeslist == NULL)continue;
-          patchi->geom_itime = patchi->geom_timeslist[itimes];
+          if(current_script_command!=NULL && current_script_command->command == SCRIPT_LOADSLICERENDER){
+            patchi->geom_itime = 0; // only one frame loaded at a time when using LOADSLICERNDER
+          }
+          else{
+            patchi->geom_itime = patchi->geom_timeslist[itimes];
+          }
           patchi->geom_ival_static = patchi->geom_ivals_static[patchi->geom_itime];
           patchi->geom_ival_dynamic = patchi->geom_ivals_dynamic[patchi->geom_itime];
           patchi->geom_nval_static = patchi->geom_nstatics[patchi->geom_itime];
@@ -351,7 +360,7 @@ void UpdateFileLoad(void){
 /* ------------------ UpdateShow ------------------------ */
 
 void UpdateShow(void){
-  int i,evacflag,sliceflag,vsliceflag,partflag,patchflag,isoflag,smoke3dflag,tisoflag;
+  int i,evacflag,sliceflag,vsliceflag,partflag,patchflag,isoflag,smoke3dflag,tisoflag,showdeviceflag;
   int slicecolorbarflag;
   int shooter_flag;
 
@@ -375,6 +384,7 @@ void UpdateShow(void){
   show3dsmoke=0;
   smoke3dflag=0;
   showtours=0;
+  showdeviceflag = 0;
   visTimeParticles=1; visTimeSlice=1; visTimeBoundary=1; visTimeZone=1; visTimeIso=1;
 
   RenderTime=0;
@@ -393,7 +403,20 @@ void UpdateShow(void){
 
     if(settmin_z==1&&global_times[itimes]<tmin_z)visTimeZone=0;
     if(settmax_z==1&&global_times[itimes]>tmax_z)visTimeZone=0;
+  }
+  if(visHRRlabel==1&&show_hrrpuv_plot==1&&hrrinfo!=NULL){
+    showdeviceflag = 1;
+  }
+  if(showdevice_val==1||showdevice_plot!=DEVICE_PLOT_HIDDEN){
+    for(i = 0; i<ndeviceinfo; i++){
+      devicedata *devicei;
 
+      devicei = deviceinfo+i;
+      if(devicei->type2==devicetypes_index&&devicei->object->visible==1){
+        showdeviceflag = 1;
+        break;
+      }
+    }
   }
 
   {
@@ -629,7 +652,7 @@ void UpdateShow(void){
   }
 
   if( plotstate==DYNAMIC_PLOTS &&
-    ( sliceflag==1 || vsliceflag==1 || partflag==1 || patchflag==1 ||
+    ( showdeviceflag==1 || sliceflag==1 || vsliceflag==1 || partflag==1 || patchflag==1 ||
     shooter_flag==1|| smoke3dflag==1 || showtours==1 || evacflag==1 ||
     (ReadZoneFile==1&&visZone==1&&visTimeZone==1)||showvolrender==1
     )
@@ -676,7 +699,7 @@ void UpdateShow(void){
   if(showsmoke==1||showevac==1||showpatch==1||showslice==1||showvslice==1||showzone==1||showiso==1||showevac==1)RenderTime=1;
   if(showtours==1||show3dsmoke==1||touring==1||showvolrender==1)RenderTime=1;
   if(showshooter==1)RenderTime=1;
-  if(plotstate==STATIC_PLOTS&&ReadPlot3dFile==1&&plotn>0&&plotn<=numplot3dvars)showplot3d=1;
+  if(plotstate==STATIC_PLOTS&&nplot3dloaded>0&&plotn>0&&plotn<=numplot3dvars)showplot3d=1;
   if(showplot3d==1){
     for(i=0;i<nmeshes;i++){
       meshdata *meshi;
@@ -703,16 +726,17 @@ void UpdateShow(void){
   }
 
   num_colorbars=0;
-  if(evacflag==1)num_colorbars++;
-  if(ReadPartFile==1)num_colorbars++;
-  if(plotstate==DYNAMIC_PLOTS&&(slicecolorbarflag==1||vslicecolorbarflag==1))num_colorbars++;
-  if(plotstate==DYNAMIC_PLOTS&&patchflag==1&&wall_cell_color_flag==0)num_colorbars++;
-  if(plotstate==DYNAMIC_PLOTS&&ReadZoneFile==1)num_colorbars++;
-  if(plotstate==DYNAMIC_PLOTS&&tisoflag==1&&1==0){ // disable isosurface colorbar label for now
-    showiso_colorbar=1;
-    num_colorbars++;
+  if(plotstate==DYNAMIC_PLOTS){
+    if(evacflag==1||(partflag==1&&parttype!=0))num_colorbars++;
+    if(slicecolorbarflag==1||vslicecolorbarflag==1)num_colorbars++;
+    if(patchflag==1&&wall_cell_color_flag==0)num_colorbars++;
+    if(ReadZoneFile==1)num_colorbars++;
+    if(tisoflag==1&&1==0){ // disable isosurface colorbar label for now
+      showiso_colorbar = 1;
+      num_colorbars++;
+    }
   }
-  if(ReadPlot3dFile==1&&num_colorbars==0)num_colorbars=1;
+  if(nplot3dloaded>0&&num_colorbars==0)num_colorbars=1;
 
   // note: animated iso-contours do not need a colorbar, so we don't test for isosurface files
 
@@ -726,11 +750,13 @@ void UpdateShow(void){
   }
 
   if(showtime2==1)showtime=1;
-  if(plotstate==DYNAMIC_PLOTS&&stept==1){
-    if(use_graphics==1)glutIdleFunc(IdleCB);
-  }
-  else{
-    if(use_graphics==1)glutIdleFunc(NULL);
+  if(use_graphics==1){
+    if(plotstate==DYNAMIC_PLOTS&&stept==1){
+      glutIdleFunc(IdleCB);
+    }
+    else{
+      glutIdleFunc(NULL);
+    }
   }
 }
 
@@ -753,18 +779,6 @@ void SynchTimes(void){
   int n,i,istart,igrid;
 
   /* synchronize smooth blockage times */
-
-#ifdef pp_SLICE_DEBUG
-// debug output
-  printf("SynchTimes ntimes: ");
-  for(i=0;i<nslice_loaded;i++){
-    slicedata *slicei;
-
-    slicei = sliceinfo + slice_loaded_list[i];
-    printf("%i ", slicei->ntimes);
-  }
-  printf("\n");
-#endif
 
   for(n=0;n<nglobal_times;n++){
     int j,jj;
@@ -1063,9 +1077,7 @@ void UpdateTimes(void){
   int i;
   float global_timemin=1000000000.0, global_timemax=-1000000000.0;
 
-  LOCK_TRIANGLES;
   GetGeomInfoPtrs(0);
-  UNLOCK_TRIANGLES;
 
   UpdateShow();
   CheckMemory;
@@ -1073,11 +1085,43 @@ void UpdateTimes(void){
 
   // determine min time, max time and number of times
 
+  if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+    scriptdata *ss;
+
+    ss = current_script_command;
+    float ss_tmin = ss->fval2;
+    float ss_tmax = ss->fval3;
+    if(ss_tmin<=ss_tmax){
+      nglobal_times = MAX(nglobal_times, 1);
+      global_timemin = MIN(global_timemin, ss_tmin);
+      global_timemax = MAX(global_timemax, ss_tmax);
+    }
+  }
+
+  if(visHRRlabel==1&&show_hrrpuv_plot==1&&hrrinfo!=NULL){
+    nglobal_times = MAX(nglobal_times, hrrinfo->ntimes_csv);
+    global_timemin = MIN(global_timemin, hrrinfo->times_csv[0]);
+    global_timemax = MAX(global_timemax, hrrinfo->times_csv[hrrinfo->ntimes_csv-1]);
+  }
+  if(showdevice_val==1||showdevice_plot!=DEVICE_PLOT_HIDDEN){
+    for(i = 0; i<ndeviceinfo; i++){
+      devicedata *devicei;
+
+      devicei = deviceinfo+i;
+      if(devicei->object->visible==0||devicei->nvals==0)continue;
+      if(devicei->type2==devicetypes_index){
+        nglobal_times = MAX(nglobal_times, devicei->nvals);
+        global_timemin = MIN(global_timemin, devicei->times[0]);
+        global_timemax = MAX(global_timemax, devicei->times[devicei->nvals-1]);
+      }
+    }
+  }
+
   for(i=0;i<ngeominfoptrs;i++){
     geomdata *geomi;
 
     geomi = geominfoptrs[i];
-    if(geomi->loaded==0||geomi->display==0)continue;
+    if(geomi->loaded==0||geomi->display==0||geomi->ntimes<=1)continue;
     nglobal_times = MAX(nglobal_times,geomi->ntimes);
     global_timemin = MIN(global_timemin, geomi->times[0]);
     global_timemax = MAX(global_timemax, geomi->times[geomi->ntimes-1]);
@@ -1190,6 +1234,10 @@ void UpdateTimes(void){
   // setup global_times array
 
   FREEMEMORY(global_times);
+
+  if(ReadZoneFile==1&&visZone==1){
+    nglobal_times = nzone_times;
+  }
   if(nglobal_times>0){
     int i;
     NewMemory((void **)&global_times, nglobal_times*sizeof(float));
@@ -1199,6 +1247,11 @@ void UpdateTimes(void){
 
       f1 = (float)i/(float)(nglobal_times-1);
       global_times[i] = (1.0-f1)*global_timemin+f1*global_timemax;
+    }
+  }
+  if(ReadZoneFile==1&&visZone==1){
+    for(i = 0; i<nglobal_times; i++){
+      global_times[i] = zone_times[i];
     }
   }
 
@@ -1236,12 +1289,14 @@ void UpdateTimes(void){
     FREEMEMORY(hrrinfo->timeslist);
     FREEMEMORY(hrrinfo->times);
     FREEMEMORY(hrrinfo->hrrval);
+    FREEMEMORY(hrrinfo->hrrval_orig);
     if(hrrinfo->loaded==1&&hrrinfo->display==1&&nglobal_times>0){
       int jstart=0;
 
       NewMemory((void **)&hrrinfo->timeslist,nglobal_times*sizeof(int));
       NewMemory((void **)&hrrinfo->times,nglobal_times*sizeof(float));
       NewMemory((void **)&hrrinfo->hrrval,nglobal_times*sizeof(float));
+      NewMemory((void **)&hrrinfo->hrrval_orig, nglobal_times*sizeof(float));
       hrrinfo->ntimes=nglobal_times;
       for(i=0;i<nglobal_times;i++){
         int j, foundit;
@@ -1261,12 +1316,14 @@ void UpdateTimes(void){
               f1=0.0;
             }
             hrrinfo->hrrval[i]=(1.0-f1)*hrrinfo->hrrval_csv[j]+f1*hrrinfo->hrrval_csv[j+1];
+            hrrinfo->hrrval_orig[i]=hrrinfo->hrrval[i];
             jstart=j;
             break;
           }
         }
         if(foundit==0){
           hrrinfo->hrrval[i]=hrrinfo->hrrval_csv[hrrinfo->ntimes_csv-1];
+          hrrinfo->hrrval_orig[i]=hrrinfo->hrrval[i];
         }
       }
     }
@@ -1521,9 +1578,9 @@ void UpdateTimes(void){
   CheckMemory;
 }
 
-/* ------------------ GetPlotState ------------------------ */
+/* ------------------ GetPlotStateSub ------------------------ */
 
-int GetPlotState(int choice){
+int GetPlotStateSub(int choice){
   int i;
 
   UpdateLoadedLists();
@@ -1548,6 +1605,22 @@ int GetPlotState(int choice){
       break;
     case DYNAMIC_PLOTS:
     case DYNAMIC_PLOTS_NORECURSE:
+      if(visHRRlabel==1&&show_hrrpuv_plot==1&&hrrinfo!=NULL){
+        stept = 1;
+        return DYNAMIC_PLOTS;
+      }
+      if(showdevice_val==1||showdevice_plot!=DEVICE_PLOT_HIDDEN){
+        for(i = 0; i<ndeviceinfo; i++){
+          devicedata *devicei;
+
+          devicei = deviceinfo+i;
+          if(devicei->object->visible==0)continue;
+          if(devicei->type2==devicetypes_index){
+            stept = 1;
+            return DYNAMIC_PLOTS;
+          }
+        }
+      }
       for(i=0;i<nslice_loaded;i++){
         slicedata *slicei;
 
@@ -1632,6 +1705,29 @@ int GetPlotState(int choice){
   }
   stept = 0;
   return NO_PLOTS;
+}
+
+/* ------------------ GetPlotState ------------------------ */
+
+int GetPlotState(int choice){
+  int plot_state;
+
+  plot_state = GetPlotStateSub(choice);
+#ifdef pp_REFRESH
+  if(plot_state==DYNAMIC_PLOTS){
+    periodic_refresh = 0;
+  }
+  else{
+    if(periodic_refresh==0&&glui_refresh_rate>0){
+      periodic_refresh = 1;
+      PeriodicRefresh(refresh_interval);
+    }
+  }
+#endif
+  if(plot_state!=DYNAMIC_PLOTS&&last_time_paused==1){
+    last_time_paused = 0;
+  }
+  return plot_state;
 }
 
 /* ------------------ GetIndex ------------------------ */
@@ -1740,6 +1836,38 @@ void UpdateColorTable(colortabledata *ctableinfo, int nctableinfo){
 /* ------------------ UpdateShowScene ------------------------ */
 
 void UpdateShowScene(void){
+  if(open_movie_dialog==1){
+    open_movie_dialog = 0;
+    if(have_slurm==1&&nmovie_queues>0){
+      ShowGluiMotion(DIALOG_MOVIE_BATCH);
+    }
+    else{
+      ShowGluiMotion(DIALOG_MOVIE);
+    }
+  }
+  if(update_generate_part_histograms==1){
+    update_generate_part_histograms = 0;
+    GeneratePartHistogramsMT();
+    update_generate_part_histograms = -1;
+  }
+  if(update_stept==1){
+    update_stept = 0;
+    SetTimeVal(time_paused);
+  }
+  if(update_movie_parms==1){
+    update_movie_parms = 0;
+    UpdateMovieParms();
+  }
+#ifdef pp_REFRESH
+  if(update_refresh==1){
+    update_refresh = 0;
+    PeriodicRefresh(refresh_interval);
+  }
+#endif
+  if(update_glui_devices==1){
+    update_glui_devices = 0;
+    UpdateGluiDevices();
+  }
   if(update_times==1){
     update_times = 0;
     UpdateTimes();
@@ -1771,17 +1899,19 @@ void UpdateShowScene(void){
   if(loadfiles_at_startup==1&&update_load_files == 1){
     LoadFiles();
   }
-  if(update_startup_view == 1){
-    cameradata *ca;
-
-    ca = GetCamera(startup_view_label);
-    if(ca != NULL){
-      ResetMenu(ca->view_id);
-      startup_view_ini = ca->view_id;
-    }
+  if(update_startup_view>0){
+    SetCurrentViewPoint(viewpoint_label_startup);
     update_rotation_center = 0;
     update_rotation_center_ini = 0;
-    update_startup_view = 0;
+    update_startup_view--;
+  }
+  if(update_saving_viewpoint>0){
+    SetCurrentViewPoint(viewpoint_label_saved);
+    update_saving_viewpoint--;
+  }
+  if(update_viewpoint_script>0){
+    SetCurrentViewPoint(viewpoint_script);
+    update_viewpoint_script--;
   }
   if(update_tour_list == 1){
     UpdateTourList();
@@ -1832,6 +1962,10 @@ void UpdateShowScene(void){
   if(global_times!=NULL&&updateUpdateFrameRateMenu==1)FrameRateMenu(frameratevalue);
   if(updatefaces==1)UpdateFaces();
   if(updatefacelists==1)UpdateFaceLists();
+  if(update_draw_hist==1){
+    update_draw_hist = 0;
+    SetPercentileDrawOff();
+  }
 }
 
 /* ------------------ UpdateFlippedColorbar ------------------------ */
@@ -1870,8 +2004,261 @@ int GetColorbarState(void){
   visColorbarHorizontal = 0;
   visColorbarVertical_save = 0;
   visColorbarHorizontal_save = 0;
-  research_mode = 0;
   return COLORBAR_HIDDEN;
+}
+
+
+/* ------------------ OutputMinMax  ------------------------ */
+
+void OutputMinMax(char *meshlabel, char *label, char *unit, float valmin_fds, float valmax_fds, float valmin_smv, float valmax_smv){
+  char cvalmin_fds[20], cvalmax_fds[20];
+  char cdiff_min[20], cdiff_max[20];
+  char cmin[100], cmax[100];
+  char labelunit[50];
+
+  Float2String(cvalmin_fds, valmin_fds, 6, force_fixedpoint);
+  Float2String(cvalmax_fds, valmax_fds, 6, force_fixedpoint);
+
+  Float2String(cdiff_min, valmin_fds-valmin_smv, 3, force_fixedpoint);
+  Float2String(cdiff_max, valmax_fds-valmax_smv, 3, force_fixedpoint);
+
+  strcpy(cmin,cvalmin_fds);
+  strcat(cmin,"(");
+  strcat(cmin,cdiff_min);
+  strcat(cmin,")");
+
+  strcpy(cmax,cvalmax_fds);
+  strcat(cmax,"(");
+  strcat(cmax,cdiff_max);
+  strcat(cmax,")");
+
+  strcpy(labelunit, label);
+  strcat(labelunit," ");
+  strcat(labelunit,unit);
+
+  if(show_bound_diffs==1){
+    printf("%s: %23.23s, min(delta)=%22.22s, max(delta)=%22.22s\n", meshlabel, labelunit, cmin, cmax);
+  }
+  else{
+    printf("%s: %s, min=%12.12s, max=%12.12s\n", meshlabel, labelunit, cvalmin_fds, cvalmax_fds);
+  }
+}
+
+/* ------------------ UpdateBounds ------------------------ */
+
+void OutputBounds(void){
+// slice bounds
+  if(update_slice_bounds != -1){
+    float valmin_fds=1.0, valmax_fds=0.0, valmin_smv=1.0, valmax_smv=0.0;
+    char *label, *unit;
+    int i;
+
+    label = sliceinfo[update_slice_bounds].label.longlabel;
+    unit = sliceinfo[update_slice_bounds].label.unit;
+    for(i=0;i<nsliceinfo;i++){
+      slicedata *slicei;
+      char *labeli;
+      meshdata *meshi;
+
+      slicei = sliceinfo + i;
+      if(slicei->loaded==0)continue;
+      meshi = meshinfo+slicei->blocknumber;
+      labeli = slicei->label.longlabel;
+      if(strcmp(label,labeli)!=0)continue;
+      if(nmeshes>1&&bounds_each_mesh==1){
+        OutputMinMax(meshi->label, label, unit, slicei->valmin_fds, slicei->valmax_fds, slicei->valmin_smv, slicei->valmax_smv);
+      }
+      if(valmin_fds>valmax_fds){
+        valmin_fds = slicei->valmin_fds;
+        valmax_fds = slicei->valmax_fds;
+      }
+      else{
+        valmin_fds = MIN(slicei->valmin_fds, valmin_fds);
+        valmax_fds = MAX(slicei->valmax_fds, valmax_fds);
+      }
+      if(valmin_smv>valmax_smv){
+        valmin_smv = slicei->valmin_smv;
+        valmax_smv = slicei->valmax_smv;
+      }
+      else{
+        valmin_smv = MIN(slicei->valmin_smv, valmin_smv);
+        valmax_smv = MAX(slicei->valmax_smv, valmax_smv);
+      }
+    }
+    OutputMinMax("global", label, unit, valmin_fds, valmax_fds, valmin_smv, valmax_smv);
+  }
+
+// boundary file bounds
+  if(update_patch_bounds != -1){
+    float valmin_fds=1.0, valmax_fds=0.0, valmin_smv=1.0, valmax_smv=0.0;
+    char *label, *unit;
+    int i;
+
+    label = patchinfo[update_patch_bounds].label.longlabel;
+    unit = patchinfo[update_patch_bounds].label.unit;
+    for(i=0;i<npatchinfo;i++){
+      patchdata *patchi;
+      char *labeli;
+      meshdata *meshi;
+
+      patchi = patchinfo + i;
+      if(patchi->loaded==0)continue;
+      meshi = meshinfo+patchi->blocknumber;
+      labeli = patchi->label.longlabel;
+      if(strcmp(label,labeli)!=0)continue;
+      if(nmeshes>1&&bounds_each_mesh==1){
+        OutputMinMax(meshi->label, label, unit, patchi->valmin_fds, patchi->valmax_fds, patchi->valmin_smv, patchi->valmax_smv);
+      }
+      if(valmin_fds>valmax_fds){
+        valmin_fds = patchi->valmin_fds;
+        valmax_fds = patchi->valmax_fds;
+      }
+      else{
+        valmin_fds = MIN(patchi->valmin_fds, valmin_fds);
+        valmax_fds = MAX(patchi->valmax_fds, valmax_fds);
+      }
+      if(valmin_smv>valmax_smv){
+        valmin_smv = patchi->valmin_smv;
+        valmax_smv = patchi->valmax_smv;
+      }
+      else{
+        valmin_smv = MIN(patchi->valmin_smv, valmin_smv);
+        valmax_smv = MAX(patchi->valmax_smv, valmax_smv);
+      }
+    }
+    OutputMinMax("global", label, unit, valmin_fds, valmax_fds, valmin_smv, valmax_smv);
+  }
+
+// particle file bounds
+  if(update_part_bounds!=-1){
+    float valmin_fds = 1.0, valmax_fds = 0.0, valmin_smv = 1.0, valmax_smv = 0.0;
+    char *label, *unit;
+    int i, j;
+
+    if(nmeshes>1&&nmeshes>1&&bounds_each_mesh==1){
+      for(i = 0; i<npartinfo; i++){
+        partdata *parti;
+        meshdata *meshi;
+
+        parti = partinfo+i;
+        if(parti->loaded==0)continue;
+        meshi = meshinfo + parti->blocknumber;
+        for(j = 0; j<npart5prop; j++){
+          partpropdata *propj;
+
+          if(j==0)continue;
+          propj = part5propinfo+j;
+
+          label = propj->label->longlabel;
+          unit = propj->label->unit;
+          OutputMinMax(meshi->label, label, unit, parti->valmin_fds[j], parti->valmax_fds[j], parti->valmin_smv[j], parti->valmax_smv[j]);
+        }
+        printf("\n");
+      }
+    }
+
+    for(j = 0; j<npart5prop; j++){
+      partpropdata *propj;
+
+      if(j==0)continue;
+      propj = part5propinfo+j;
+
+      label = propj->label->longlabel;
+      unit = propj->label->unit;
+      valmin_fds = 1.0;
+      valmax_fds = 0.0;
+      valmin_smv = 1.0;
+      valmax_smv = 0.0;
+      for(i = 0; i<npartinfo; i++){
+        partdata *parti;
+
+        parti = partinfo+i;
+        if(parti->loaded==0)continue;
+        if(valmin_fds>valmax_fds){
+          valmin_fds = parti->valmin_fds[j];
+          valmax_fds = parti->valmax_fds[j];
+        }
+        else{
+          valmin_fds = MIN(parti->valmin_fds[j], valmin_fds);
+          valmax_fds = MAX(parti->valmax_fds[j], valmax_fds);
+        }
+        if(valmin_smv>valmax_smv){
+          valmin_smv = parti->valmin_smv[j];
+          valmax_smv = parti->valmax_smv[j];
+        }
+        else{
+          valmin_smv = MIN(parti->valmin_smv[j], valmin_smv);
+          valmax_smv = MAX(parti->valmax_smv[j], valmax_smv);
+        }
+      }
+      OutputMinMax("global", label, unit, valmin_fds, valmax_fds, valmin_smv, valmax_smv);
+    }
+  }
+
+// plot3d file bounds
+  if(update_plot3d_bounds!=-1){
+    float valmin_fds = 1.0, valmax_fds = 0.0, valmin_smv = 1.0, valmax_smv = 0.0;
+    char *label, *unit;
+    int i, j;
+    plot3ddata *p;
+
+    p = plot3dinfo+update_plot3d_bounds;
+
+    if(nmeshes>1&&bounds_each_mesh==1){
+      printf("\n");
+      for(i = 0; i<nplot3dinfo; i++){
+        plot3ddata *plot3di;
+        meshdata *meshi;
+
+        plot3di = plot3dinfo+i;
+        if(plot3di->loaded==0)continue;
+        meshi = meshinfo+plot3di->blocknumber;
+        for(j = 0; j<MAXPLOT3DVARS; j++){
+
+          label = p->label[j].longlabel;
+          unit = p->label[j].unit;
+
+          OutputMinMax(meshi->label, label, unit, plot3di->valmin_fds[j], plot3di->valmax_fds[j], plot3di->valmin_smv[j], plot3di->valmax_smv[j]);
+        }
+        printf("\n");
+      }
+    }
+
+    p = plot3dinfo+update_plot3d_bounds;
+    for(j=0;j<MAXPLOT3DVARS;j++){
+
+      label = plot3dinfo[update_plot3d_bounds].label[j].longlabel;
+      unit = plot3dinfo[update_plot3d_bounds].label[j].unit;
+      valmin_fds = 1.0;
+      valmax_fds = 0.0;
+      valmin_smv = 1.0;
+      valmax_smv = 0.0;
+      for(i = 0; i<nplot3dinfo; i++){
+        plot3ddata *plot3di;
+
+        plot3di = plot3dinfo+i;
+        if(plot3di->loaded==0)continue;
+        if(valmin_fds>valmax_fds){
+          valmin_fds = plot3di->valmin_fds[j];
+          valmax_fds = plot3di->valmax_fds[j];
+        }
+        else{
+          valmin_fds = MIN(plot3di->valmin_fds[j], valmin_fds);
+          valmax_fds = MAX(plot3di->valmax_fds[j], valmax_fds);
+        }
+        if(valmin_smv>valmax_smv){
+          valmin_smv = plot3di->valmin_smv[j];
+          valmax_smv = plot3di->valmax_smv[j];
+        }
+        else{
+          valmin_smv = MIN(plot3di->valmin_smv[j], valmin_smv);
+          valmax_smv = MAX(plot3di->valmax_smv[j], valmax_smv);
+        }
+      }
+      OutputMinMax("global", label, unit, valmin_fds, valmax_fds, valmin_smv, valmax_smv);
+    }
+  }
+  printf("\n");
 }
 
 /* ------------------ UpdateDisplay ------------------------ */
@@ -1879,6 +2266,14 @@ int GetColorbarState(void){
 void UpdateDisplay(void){
 
   LOCK_IBLANK;
+  if(update_adjust_y>0){
+    AdjustY(camera_current);
+    update_adjust_y--;
+  }
+  if(update_ini_boundary_type==1){
+    update_ini_boundary_type = 0;
+    ShowBoundaryMenu(INI_EXTERIORwallmenu);
+  }
   if(update_fire_alpha==1){
     update_fire_alpha=0;
     UpdateFireAlpha();
@@ -1891,7 +2286,29 @@ void UpdateDisplay(void){
     SetVentDirs();
     update_setvents=0;
   }
-  UNLOCK_IBLANK
+  UNLOCK_IBLANK;
+  if(update_ini==1){
+    update_ini = 0;
+    ReadIni(NULL);
+
+    update_glui_bounds = 0;
+    UpdateGluiBounds();
+  }
+  if(update_glui_bounds==1){
+    update_glui_bounds = 0;
+    UpdateGluiBounds();
+  }
+  if(update_cache_data==1){
+    update_cache_data = 0;
+    SetCacheFlag(BOUND_PLOT3D, cache_plot3d_data);
+    SetCacheFlag(BOUND_PART, cache_part_data);
+    SetCacheFlag(BOUND_PATCH, cache_boundary_data);
+    SetCacheFlag(BOUND_SLICE, cache_slice_data);
+  }
+  if(update_chop_colors==1){
+    update_chop_colors = 0;
+    UpdateChopColors();
+  }
   if(update_zaxis_custom == 1){
     update_zaxis_custom = 0;
     UpdateZAxisCustom();
@@ -1926,11 +2343,6 @@ void UpdateDisplay(void){
     updatezoommenu = 0;
     ZoomMenu(zoomindex);
   }
-#ifdef pp_MAKE_SMOKEIBLANK
-  if(update_makeiblank_smoke3d == 1){
-    MakeIBlankSmoke3D();
-  }
-#endif
   if(update_streaks == 1 && ReadPartFile == 1){
     ParticleStreakShowMenu(streak_index);
     update_streaks = 0;
@@ -1938,6 +2350,12 @@ void UpdateDisplay(void){
   if(update_screensize == 1){
     update_screensize = 0;
     UpdateWindowSizeList();
+#ifdef pp_OSX_HIGHRES
+    if(double_scale==1){
+      screenWidthINI  /= 2;
+      screenHeightINI /= 2;
+    }
+#endif
     ResizeWindow(screenWidthINI, screenHeightINI);
   }
   if(updatemenu == 1 && usemenu == 1 && menustatus == GLUT_MENU_NOT_IN_USE){
@@ -1945,6 +2363,16 @@ void UpdateDisplay(void){
     InitMenus(LOAD);
     glutAttachMenu(GLUT_RIGHT_BUTTON);
     updatemenu = 0;
+  }
+  if(update_patch_bounds!=-1||update_slice_bounds!=-1||update_part_bounds!=-1||update_plot3d_bounds!=-1){
+
+    if(current_script_command==NULL||current_script_command->command!=SCRIPT_LOADSLICERENDER){
+      OutputBounds();
+    }
+    update_patch_bounds = -1;
+    update_slice_bounds = -1;
+    update_part_bounds = -1;
+    update_plot3d_bounds = -1;
   }
   if(update_fire_colorbar_index == 1){
     SmokeColorbarMenu(fire_colorbar_index_ini);
@@ -1973,22 +2401,27 @@ void UpdateDisplay(void){
     update_research_mode = 0;
     UpdateResearchMode();
   }
+  if(update_percentile_mode==1){
+    update_percentile_mode = 0;
+    SetPercentileMode(percentile_mode);
+  }
   if(update_visColorbars==1){
     update_visColorbars = 0;
     visColorbarVertical = visColorbarVertical_val;
     visColorbarHorizontal = visColorbarHorizontal_val;
     vis_colorbar = GetColorbarState();
-    if(visColorbarHorizontal==0&&visColorbarVertical==0){
-      research_mode = 0;
-     // update_research_mode = 1;
-      SliceBoundCB(RESEARCH_MODE);
-    }
     updatemenu = 1;
   }
   if(update_windrose==1){
     update_windrose = 0;
     DeviceData2WindRose(nr_windrose, ntheta_windrose);
   }
+#ifdef pp_REFRESH
+  if(refresh_glui_dialogs>=-1){
+    refresh_glui_dialogs--;
+    RefreshGluiDialogs();
+  }
+#endif
 }
 
 /* ------------------ ShiftColorbars ------------------------ */

@@ -97,6 +97,8 @@ function usage {
     exit
   fi
   echo "Other options:"
+  echo " -a - use vtune"
+  echo " -b email_address - send an email to email_address when jobs starts, aborts and finishes"
   echo " -c file - loads Intel Trace Collector configuration file "
   echo " -C   - use modules currently loaded rather than modules loaded when fds was built."
   echo " -d dir - specify directory where the case is found [default: .]"
@@ -105,6 +107,7 @@ function usage {
   echo "      This options adds export I_MPI_FABRICS=shm:tcp to the run script"
   echo " -f repository root - name and location of repository where FDS is located"
   echo "    [default: $FDSROOT]"
+  echo " -g   - only run if input file and executable are not dirty"
   echo " -i use installed fds"
   echo " -I use Intel MPI version of fds"
   echo " -j prefix - specify a job prefix"
@@ -116,15 +119,20 @@ function usage {
   echo "        MIN ( number of cores, number of mpi processes)"
   echo " -O n - run cases casea.fds, caseb.fds, ... using 1, ..., N OpenMP threads"
   echo "        where case is specified on the command line. N can be at most 9."
+  echo " -r   - use Intel Trace Collector"
   echo " -s   - stop job"
   echo " -S   - use startup files to set the environment, do not load modules"
-  echo " -r   - append trace flag to the mpiexec call generated"
   echo " -t   - used for timing studies, run a job alone on a node (reserving $NCORES_COMPUTENODE cores)"
-  echo " -T type - run dv (development), db (debug), inspect, advise, or vtune version of fds"
+  echo " -T type - run dv (development) or db (debug) version of fds"
   echo "           if -T is not specified then the release version of fds is used"
+  echo " -U n - only allow n jobs owned by `whoami` to run at a time"
   echo " -V   - show command line used to invoke qfds.sh"
   echo " -w time - walltime, where time is hh:mm for PBS and dd-hh:mm:ss for SLURM. [default: $walltime]"
+  echo " -x   - analyze the case with Intel Inspector"
+  echo " -y dir - run case in directory dir"
+  echo " -Y   - run case in directory casename where casename.fds is the case being run"
   echo ""
+  echo " Resource manager: $RESOURCE_MANAGER"
   exit
 }
 
@@ -144,13 +152,17 @@ if [ "$FIREMODELS" != "" ]; then
   FDSROOT=$FIREMODELS
 fi
 
-#*** define resource manager that is used
-
-
-
 #*** determine platform
 
 platform="linux"
+if [ "$WINDIR" != "" ]; then
+  platform="win"
+  if [ "$I_MPI_ROOT" != "" ]; then
+    echo $I_MPI_ROOT | sed 's/\\/\//g' -  | sed 's/C:/\/C/g' -  > var.out.$$
+    I_MPI_ROOT=`head -1 var.out.$$`
+    rm var.out.$$
+  fi
+fi
 if [ "`uname`" == "Darwin" ] ; then
   platform="osx"
 fi
@@ -161,7 +173,11 @@ if [ "$platform" == "osx" ]; then
   queue=none
   ncores=`system_profiler SPHardwareDataType|grep Cores|awk -F' ' '{print $5}'`
 else
-  queue=batch
+  if [ "$platform" == "win" ]; then
+    queue=terminal
+  else
+    queue=batch
+  fi
   ncores=`grep processor /proc/cpuinfo | wc -l`
 fi
 if [ "$NCORES_COMPUTENODE" == "" ]; then
@@ -188,14 +204,14 @@ if [ "$MPIRUN_MCA" != "" ]; then
 fi
 
 n_mpi_processes=1
-n_mpi_processes_per_node=1
+n_mpi_processes_per_node=2
 if [ "$platform" == "linux" ]; then
 max_processes_per_node=`cat /proc/cpuinfo | grep cores | wc -l`
 else
 max_processes_per_node=1
 fi
 n_openmp_threads=1
-trace=
+use_trace=
 use_installed=
 use_debug=
 use_devel=
@@ -203,20 +219,36 @@ use_inspect=
 use_advise=
 use_vtune=
 use_intel_mpi=1
-iinspectresdir=
 iinspectargs=
 vtuneresdir=
 vtuneargs=
 use_config=""
+EMAIL=
+CHECK_DIRTY=
+USERMAX=
+casedir=
+use_default_casedir=
+
+# by default maximize cores used if psm module is loaded
+MAX_MPI_PROCESSES_PER_NODE=
+if [ "$USE_PSM" != "" ]; then
+  MAX_MPI_PROCESSES_PER_NODE=1
+fi
 
 # determine which resource manager is running (or none)
 
-missing_slurm=`srun -V |& tail -1 | grep "not found" | wc -l`
+STATUS_FILE=status_file.$$
+srun -V >& $STATUS_FILE
+missing_slurm=`cat $STATUS_FILE | tail -1 | grep "not found" | wc -l`
+rm -f $STATUS_FILE
+
 RESOURCE_MANAGER="NONE"
 if [ $missing_slurm -eq 0 ]; then
   RESOURCE_MANAGER="SLURM"
 else
-  missing_torque=`echo | qmgr -n |& tail -1 | grep "not found" | wc -l`
+  echo | qmgr -n >& $STATUS_FILE
+  missing_torque=`cat $STATUS_FILE | tail -1 | grep "not found" | wc -l`
+  rm -f $STATUS_FILE
   if [ $missing_torque -eq 0 ]; then
     RESOURCE_MANAGER="TORQUE"
   fi
@@ -238,8 +270,8 @@ dir=.
 benchmark=no
 showinput=0
 exe=
+
 STARTUP=
-SET_MPI_PROCESSES_PER_NODE=
 if [ "$QFDS_STARTUP" != "" ]; then
   STARTUP=$QFDS_STARTUP
 fi
@@ -262,7 +294,7 @@ commandline=`echo $* | sed 's/-V//' | sed 's/-v//'`
 
 #*** read in parameters from command line
 
-while getopts 'Aa:c:Cd:D:e:Ef:hHiIj:Lm:Mn:No:O:p:Pq:rsStT:vVw:x:' OPTION
+while getopts 'Aa:b:c:Cd:D:e:Ef:ghHiIj:Lm:Mn:No:O:p:Pq:rsStT:U:vVw:xy:Y' OPTION
 do
 case $OPTION  in
   A) # used by timing scripts to identify benchmark cases
@@ -271,6 +303,9 @@ case $OPTION  in
   a)
    vtuneresdir="$OPTARG"
    use_vtune=1
+   ;;
+  b)
+   EMAIL="$OPTARG"
    ;;
   c)
    use_config="$OPTARG"
@@ -292,6 +327,9 @@ case $OPTION  in
    ;;
   f)
    FDSROOT="$OPTARG"
+   ;;
+  g)
+   CHECK_DIRTY=1
    ;;
   h)
    usage
@@ -322,9 +360,10 @@ case $OPTION  in
    ;;
   n)
    n_mpi_processes_per_node="$OPTARG"
+   MAX_MPI_PROCESSES_PER_NODE=
    ;;
   N)
-   SET_MPI_PROCESSES_PER_NODE=1
+   MAX_MPI_PROCESSES_PER_NODE=1
    ;;
   o)
    n_openmp_threads="$OPTARG"
@@ -360,7 +399,7 @@ case $OPTION  in
    queue="$OPTARG"
    ;;
   r)
-   trace="-trace"
+   use_trace=1
    ;;
   s)
    stopjob=1
@@ -386,15 +425,9 @@ case $OPTION  in
    if [ "$TYPE" == "db" ]; then
      use_debug=1
    fi
-   if [ "$TYPE" == "inspect" ]; then
-     use_inspect=1
-   fi
-   if [ "$TYPE" == "advise" ]; then
-     use_advise=1
-   fi
-   if [ "$TYPE" == "vtune" ]; then
-     use_vtune=1
-   fi
+   ;;
+  U)
+   USERMAX="$OPTARG"
    ;;
   v)
    showinput=1
@@ -406,8 +439,13 @@ case $OPTION  in
    walltime="$OPTARG"
    ;;
   x)
-  iinspectresdir="$OPTARG"
    use_inspect=1
+   ;;
+  y)
+   casedir="$OPTARG"
+   ;;
+  Y)
+   use_default_casedir=1
    ;;
    
 esac
@@ -419,7 +457,12 @@ if [ "$showcommandline" == "1" ]; then
   exit
 fi
 
-if [ "$SET_MPI_PROCESSES_PER_NODE" == "1" ]; then
+if [ "$n_mpi_processes" == "1" ]; then
+  n_mpi_processes_per_node=1
+fi
+
+# use as many processes per node as possible (fewest number of nodes)
+if [ "$MAX_MPI_PROCESSES_PER_NODE" == "1" ]; then
    n_mpi_processes_per_node=$n_mpi_processes
    if test $n_mpi_processes_per_node -gt $ncores ; then
      n_mpi_processes_per_node=$ncores
@@ -430,6 +473,18 @@ fi
 
 in=$1
 infile=${in%.*}
+
+# run case in a sub-directory
+if [ "$use_default_casedir" != "" ]; then
+  casedir=$infile
+fi
+if [ "$casedir" != "" ]; then
+  if [ ! -d $casedir ]; then
+    mkdir $casedir
+  fi
+  cp $in $casedir/.
+  cd $casedir
+fi
 
 if [[ "$TCP" != "" ]] && [[ "$use_intel_mpi" == "" ]]; then
   echo "***error: -The E option for specifying tcp transport is only available"
@@ -487,16 +542,12 @@ else
     DB=_dv
   fi
   if [ "$use_inspect" == "1" ]; then
-    DB=_inspect
-    if [ "$iinspectresdir" != "" ]; then
-    iinspectargs="inspxe-cl -collect ti2 -knob stack-depth=32 -s-f $FDSROOT/fds/Build/impi_intel_linux_64_inspect/suppressions/default.sup  -result-dir $iinspectresdir --"
-    fi
+    iinspectargs="inspxe-cl -collect ti2 --"
   fi
   if [ "$use_advise" == "1" ]; then
     DB=_advise
   fi
   if [ "$use_vtune" == "1" ]; then
-    DB=_vtune
     if [ "$vtuneresdir" != "" ]; then
     vtuneargs="amplxe-cl -collect hpc-performance -result-dir $vtuneresdir --"
     fi
@@ -564,6 +615,15 @@ if test $nodes -lt 1 ; then
   nodes=1
 fi
 
+# don't let other jobs run on nodes used by this job if you are using psm and more than 1 node
+if [ "$USE_PSM" != "" ]; then
+  if test $nodes -gt 1 ; then
+    SLURM_PSM="#SBATCH --exclusive"
+  else
+    PROVIDER="export I_MPI_FABRICS=shm"
+  fi
+fi
+
 #*** define processes per node
 
 let ppn="$n_mpi_processes_per_node*n_openmp_threads"
@@ -627,9 +687,9 @@ if [ "$use_intel_mpi" == "1" ]; then
       ABORTRUN=y
     else
       MPIRUNEXE=$I_MPI_ROOT/intel64/bin/mpiexec
-      if [ ! -e $MPIRUNEXE ]; then
-        MPIRUNEXE=$I_MPI_ROOT/bin/mpiexec
-        if [ ! -e $MPIRUNEXE ]; then
+      if [ ! -e "$MPIRUNEXE" ]; then
+        MPIRUNEXE="$I_MPI_ROOT/bin/mpiexec"
+        if [ ! -e "$MPIRUNEXE" ]; then
           echo "Intel mpiexec not found at:"
           echo "$I_MPI_ROOT/intel64/bin/mpiexec or"
           echo "$I_MPI_ROOT/bin/mpiexec"
@@ -661,10 +721,46 @@ else                                 # using OpenMPI
 fi
 
 TITLE="$infile"
-MPIRUN="$MPIRUNEXE $REPORT_BINDINGS $SOCKET_OPTION $MCA -np $n_mpi_processes $trace"
+MPIRUN="$MPIRUNEXE $REPORT_BINDINGS $SOCKET_OPTION $MCA -np $n_mpi_processes"
 
 cd $dir
 fulldir=`pwd`
+
+#*** check if exe and/or input file is dirty before running
+if [[ "$CHECK_DIRTY" == "1" ]] && [[ "$exe" != "" ]]; then
+  if [ -e $exe ]; then
+    is_dirty_exe=`echo "" | $exe |& grep dirty |& wc -l`
+    dirty_exe=`   echo "" | $exe |& grep dirty |& awk '{print $3}'`
+    is_dirty_input=`git diff $in   |& wc -l`
+
+    is_dirty=
+    if [ $is_dirty_exe -gt 0 ]; then
+      is_dirty=1
+    fi
+    if [ $is_dirty_input -gt 0 ]; then
+      is_dirty=1
+    fi
+
+    if [ "$is_dirty" == "1" ]; then
+      echo ""
+      if [ $is_dirty_exe -gt 0 ]; then
+        echo "***error: source used to build FDS is dirty."
+      fi
+      echo "executable: $exe"
+      echo "          $dirty_exe"
+      if [ $is_dirty_input -gt 0 ]; then
+        echo "***error: input file $in is dirty."
+      else
+        echo "input file: $in"
+      fi
+    fi
+    if [ "$is_dirty" == "1" ]; then
+      echo "Use the -g option to ignore this error"
+      echo "Exiting."
+      exit 1
+    fi
+  fi
+fi
 
 #*** define files
 
@@ -748,7 +844,14 @@ else
 
   if [ "$RESOURCE_MANAGER" == "SLURM" ]; then
     QSUB="sbatch -p $queue --ignore-pbs"
-    MPIRUN="srun -N $nodes -n $n_mpi_processes --ntasks-per-node $ppn"
+    MPIRUN="srun -N $nodes -n $n_mpi_processes --ntasks-per-node $n_mpi_processes_per_node"
+  fi
+
+#*** run without a queueing system
+
+  if [ "$queue" == "terminal" ]; then
+    QSUB=
+    MPIRUN=
   fi
 fi
 
@@ -758,7 +861,7 @@ walltimestring_pbs=
 walltimestring_slurm=
 if [ "$walltime" != "" ]; then
   walltimestring_pbs="-l walltime=$walltime"
-  walltimestring_slurm="-t $walltime"
+  walltimestring_slurm="--time=$walltime"
 fi
 
 #*** create a random script file for submitting jobs
@@ -770,31 +873,56 @@ cat << EOF > $scriptfile
 # $0 $commandline
 EOF
 
-if [ "$queue" != "none" ]; then
+USE_SLURM_PBS=1
+if [ "$queue" == "none" ]; then
+  USE_SLURM_PBS=
+fi
+if [ "$queue" == "terminal" ]; then
+  USE_SLURM_PBS=
+fi
+
+if [ "$USE_SLURM_PBS" == "1" ]; then
   if [ "$RESOURCE_MANAGER" == "SLURM" ]; then
     cat << EOF >> $scriptfile
 #SBATCH -J $JOBPREFIX$infile
 #SBATCH -e $outerr
 #SBATCH -o $outlog
-#SBATCH -p $queue
-#SBATCH -n $n_mpi_processes
+#SBATCH --partition=$queue
+#SBATCH --ntasks=$n_mpi_processes
 #SBATCH --nodes=$nodes
 #SBATCH --cpus-per-task=$n_openmp_threads
-#SBATCH --ntasks-per-node=$ppn
+#SBATCH --ntasks-per-node=$n_mpi_processes_per_node
 EOF
+if [ "$EMAIL" != "" ]; then
+    cat << EOF >> $scriptfile
+#SBATCH --mail-user=$EMAIL
+#SBATCH --mail-type=ALL
+EOF
+fi
 
 if [ "$benchmark" == "yes" ]; then
 cat << EOF >> $scriptfile
 #SBATCH --exclusive
+#SBATCH --cpu-freq=Performance
 EOF
 fi
 
+if [ "$SLURM_MEM" != "" ]; then
 cat << EOF >> $scriptfile
 $SLURM_MEM
 EOF
+fi
+
+if [ "$SLURM_PSM" != "" ]; then
+cat << EOF >> $scriptfile
+$SLURM_PSM
+EOF
+fi
+
     if [ "$walltimestring_slurm" != "" ]; then
       cat << EOF >> $scriptfile
 #SBATCH $walltimestring_slurm
+
 EOF
     fi
 
@@ -806,6 +934,12 @@ EOF
 #PBS -o $outlog
 #PBS -l nodes=$nodes:ppn=$ppn
 EOF
+if [ "$EMAIL" != "" ]; then
+    cat << EOF >> $scriptfile
+#PBS -m abe
+#PBS -M $EMAIL
+EOF
+fi
     if [ "$walltimestring_pbs" != "" ]; then
       cat << EOF >> $scriptfile
 #PBS $walltimestring_pbs
@@ -827,24 +961,20 @@ module load $MODULES
 EOF
 fi
 
+if [ "$use_trace" == "1" ]; then
+  cat << EOF >> $scriptfile
+export LD_PRELOAD=/opt/intel/oneapi/itac/latest/slib/libVT.so
+export VT_LOGFILE_FORMAT=stfsingle
+export VT_PCTRACE=5
+export VT_CONFIG=$FDSROOT/fds/Build/Scripts/fds_trace.conf
+EOF
+fi
+
 if [ "$OPENMPCASES" == "" ]; then
 cat << EOF >> $scriptfile
 export OMP_NUM_THREADS=$n_openmp_threads
 EOF
 fi
-
-if [ "$use_vtune" == "1" ]; then
-cat << EOF >> $scriptfile
-source /opt/intel19/vtune_amplifier_2019/amplxe-vars.sh quiet
-EOF
-fi
-
-if [ "$use_inspect" == "1" ]; then
-cat << EOF >> $scriptfile
-source /opt/intel19/inspector_2019/inspxe-vars.sh quiet
-EOF
-fi
-
 
 if [ "$use_intel_mpi" == "1" ]; then
 cat << EOF >> $scriptfile
@@ -870,7 +1000,15 @@ export VT_CONFIG=$use_config
 EOF
 fi
 
+
+if [ "$PROVIDER" != "" ]; then
 cat << EOF >> $scriptfile
+$PROVIDER
+EOF
+fi
+
+cat << EOF >> $scriptfile
+
 cd $fulldir
 echo
 echo \`date\`
@@ -880,6 +1018,11 @@ if [ "$OPENMPCASES" == "" ]; then
 cat << EOF >> $scriptfile
 echo "    Input file: $in"
 EOF
+if [ "$casedir" != "" ]; then
+cat << EOF >> $scriptfile
+echo "     Input dir: $casedir"
+EOF
+fi
 else
 cat << EOF >> $scriptfile
 echo "    Input files: "
@@ -890,56 +1033,31 @@ echo "       ${files[$i]}"
 EOF
 done
 fi
+
 cat << EOF >> $scriptfile
 echo "     Directory: \`pwd\`"
 echo "          Host: \`hostname\`"
 echo "----------------" >> $qlog
 echo "started running at \`date\`" >> $qlog
 EOF
+
 if [ "$OPENMPCASES" == "" ]; then
-if [ "$vtuneresdir" == "" ]; then
-if [ "$iinspectresdir" == "" ]; then
-cat << EOF >> $scriptfile
-$MPIRUN $exe $in $OUT2ERROR
-EOF
-else
 cat << EOF >> $scriptfile
 $MPIRUN $iinspectargs $exe $in $OUT2ERROR
 EOF
-fi
-else
-cat << EOF >> $scriptfile
-$MPIRUN $vtuneargs $exe $in $OUT2ERROR
-EOF
-fi
 else
 for i in `seq 1 $OPENMPCASES`; do
-if [ "$vtuneresdir" == "" ]; then
-if [ "$iinspectresdir" == "" ]; then
 cat << EOF >> $scriptfile
-
-export OMP_NUM_THREADS=${nthreads[$i]}
-$MPIRUN $exe ${files[$i]} $OUT2ERROR
-EOF
-else
-cat << EOF >> $scriptfile
-
 export OMP_NUM_THREADS=${nthreads[$i]}
 $MPIRUN $iinspectargs $exe ${files[$i]} $OUT2ERROR
 EOF
-fi
-else
-cat << EOF >> $scriptfile
-
-export OMP_NUM_THREADS=${nthreads[$i]}
-$MPIRUN $vtuneargs $exe ${files[$i]} $OUT2ERROR
-EOF
-fi
 done
 fi
+
 cat << EOF >> $scriptfile
 echo "finished running at \`date\`" >> $qlog
 EOF
+
 if [ "$queue" == "none" ]; then
 cat << EOF >> $scriptfile
 rm -f $scriptfile
@@ -954,11 +1072,24 @@ if [ "$showinput" == "1" ]; then
   exit
 fi
 
+# wait until number of jobs running alread by user is less than USERMAX
+if [ "$USERMAX" != "" ]; then
+  nuser=`squeue | grep -v JOBID | awk '{print $2 $4}' | grep $queue | grep $USER | wc -l`
+  while [ $nuser -gt $USERMAX ]
+  do
+    nuser=`squeue | grep -v JOBID | awk '{print $2 $4}' | grep $queue | grep $USER | wc -l`
+    sleep 10
+  done
+fi
+
 #*** output info to screen
 echo "submitted at `date`"                          > $qlog
 if [ "$queue" != "none" ]; then
 if [ "$OPENMPCASES" == "" ]; then
   echo "         Input file:$in"             | tee -a $qlog
+if [ "$casedir" != "" ]; then
+  echo "          Input dir:$casedir"             | tee -a $qlog
+fi
 else
   echo "         Input files:"               | tee -a $qlog
 for i in `seq 1 $OPENMPCASES`; do
@@ -1005,7 +1136,13 @@ fi
 
 $SLEEP
 echo 
-$QSUB $scriptfile | tee -a $qlog
+chmod +x $scriptfile
+
+if [ "$queue" != "none" ]; then
+  $QSUB $scriptfile | tee -a $qlog
+else
+  $QSUB $scriptfile
+fi
 if [ "$queue" != "none" ]; then
   cat $scriptfile > $scriptlog
   echo "#$QSUB $scriptfile" >> $scriptlog

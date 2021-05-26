@@ -62,6 +62,7 @@ typedef struct _tridata {
   struct _texturedata *textureinfo;
   struct _surfdata *geomsurf;
   struct _geomlistdata *geomlisti;
+  struct _geomobjdata *geomobj;
   int vert_index[3], exterior, geomtype, insolid, outside_domain;
   vertdata *verts[3];
   edgedata *edges[3];
@@ -76,6 +77,13 @@ typedef struct _tetdata {
   vertdata *verts[4];
   edgedata *edges[4];
 } tetdata;
+
+/* --------------------------  volfacedata ------------------------------------ */
+
+typedef struct _volfacedata {
+  tetdata *vol;
+  int faceindex;
+} volfacedata;
 
 /* --------------------------  geomlistdata ------------------------------------ */
 
@@ -94,26 +102,33 @@ typedef struct _geomlistdata {
 typedef struct _geomobjdata {
   struct _surfdata *surf;
   struct _texturedata *texture;
+  float *bounding_box, *color;
   char *texture_name;
   float texture_width, texture_height, texture_center[3];
   int texture_mapping;
+  int use_geom_color;
 } geomobjdata;
 
 /* --------------------------  geomdata ------------------------------------ */
 
 typedef struct _geomdata {
-  char *file, *topo_file;
+  char *file, *file2, *topo_file;
+  int read_status;
   int cache_defined;
   int memory_id, loaded, display;
+  int is_terrain;
   float *float_vals;
+  float bounding_box[6];
+  int *file2_tris, nfile2_tris;
   int *int_vals, nfloat_vals, nint_vals;
   float *times;
   int ntimes,itime,*timeslist;
   int ngeomobjinfo, geomtype, patchactive, fdsblock;
-  struct _surfdata *surf;
+  struct _surfdata *surfgeom;
   geomlistdata *geomlistinfo,*geomlistinfo_0, *currentframe;
   geomobjdata *geomobjinfo;
 } geomdata;
+
 
 /* --------------------------  geomdiagdata ------------------------------------ */
 
@@ -221,6 +236,9 @@ typedef struct _scriptdata {
   char *cval,*cval2;
   float fval,fval2,fval3,fval4,fval5;
   int exit,first,remove_frame;
+  char *quantity, *id, *c_pbxyz;
+  float pbxyz_val;
+  int pbxyz_dir, cell_centered, vector;
 } scriptdata;
 
 /* --------------------------  treedata ------------------------------------ */
@@ -277,15 +295,6 @@ typedef struct _outlinedata {
   float *x2, *y2, *z2;
 } outlinedata;
 
-/* --------------------------  rampdata ------------------------------------- */
-
-typedef struct _rampdata {
-  char *name;
-  /* values a striped in the form t-f-t-f... */
-  int nentries;
-  float *values;
-} rampdata;
-
 /* --------------------------  labeldata ------------------------------------ */
 
 typedef struct _labeldata {
@@ -302,7 +311,7 @@ typedef struct _labeldata {
 
 typedef struct _texturedata {
   char *file;
-  int loaded, display, used;
+  int loaded, display, used, is_transparent;
   GLuint name;
 } texturedata;
 
@@ -310,6 +319,7 @@ typedef struct _texturedata {
 
 typedef struct _terraindata {
   char *file;
+  int defined;
   texturedata *ter_texture;
   int ibar, jbar;
   float xmin, xmax, ymin, ymax;
@@ -349,14 +359,12 @@ typedef struct _surfdata {
   int location;
   int transparent;
   int used_by_obst,used_by_vent;
-#ifdef pp_SELECT_GEOM
   int used_by_geom;
   int glui_color[3];
   float axis[3];
   int in_geom_list;
   int ntris;
   float geom_area;
-#endif
 } surfdata;
 
 /* --------------------------  facedata ------------------------------------ */
@@ -426,10 +434,6 @@ typedef struct _blockagedata {
   int nshowtime, show;
   char *label;
   float *color;
-#ifdef pp_BLOCK_COLOR
-  float transparency;
-  int use_block_transparency;
-#endif
   int colorindex;
   int useblockcolor;
   facedata *faceinfo[6];
@@ -509,7 +513,7 @@ typedef struct _ventdata {
   int hideboundary;
   int dir,dir2,vent_id;
   int useventcolor;
-  int isOpenvent;
+  int isOpenvent, isMirrorvent;
   float xvent1_orig, xvent2_orig;
   float yvent1_orig, yvent2_orig;
   float zvent1_orig, zvent2_orig;
@@ -754,7 +758,6 @@ typedef struct _meshdata {
   int *boundarytype;
   int *patchdir,*patch_surfindex;
   int *pi1, *pi2, *pj1, *pj2, *pk1, *pk2;
-  contour **patch_contours;
   int *blockonpatch;
   struct _meshdata **meshonpatch;
   struct _meshdata *nabors[6], *above;
@@ -941,6 +944,8 @@ typedef struct _device {
   char label[30], csvlabel[30], *labelptr;
   char quantity[30], unit[30];
   float *times, *vals;
+  float *vals_orig;
+  int update_avg;
   int *valids;
   int ival,nvals,type2,type2vis;
   int in_devc_csv;
@@ -949,6 +954,7 @@ typedef struct _device {
   char *texturefile;
   int ntextures;
   float xyz[3], xyz1[3], xyz2[3], eyedist;
+  int have_xyz, have_xyz1, have_xyz2;
   float val;
   float xyzplot[3];
   float xyznorm[3];
@@ -957,6 +963,7 @@ typedef struct _device {
   float *color, line_width;
   int filetype;
   float *act_times;
+  float global_valmin, global_valmax;
   int *state_values;
   int nparams;
   float *params;
@@ -968,6 +975,7 @@ typedef struct _device {
   sv_object *object;
   struct _vdevicedata *vdevice;
   int type, is_beam;
+  int selected;
 } devicedata;
 
 /* --------------------------  windrosedata ------------------------------------ */
@@ -1000,6 +1008,13 @@ typedef struct _treedevicedata {
   int first, last, n, nz;
   float *xyz;
 } treedevicedata;
+
+/* --------------------------  ztreedevicedata ------------------------------------ */
+
+typedef struct _ztreedevicedata {
+  char *quantity, *unit;
+  int first, n;
+} ztreedevicedata;
 
 /* --------------------------  camviewdata ------------------------------------ */
 
@@ -1091,7 +1106,7 @@ typedef struct _partclassdata {
 
 typedef struct _partpropdata {
   flowlabels *label;
-  char **partlabels, *scale;
+  char **partlabels;
   unsigned char *class_present, *class_vis;
   unsigned int *class_types;
   int human_property, particle_property;
@@ -1099,7 +1114,7 @@ typedef struct _partpropdata {
   float ppartlevels256[256];
   float valmin, valmax;
   int imin, imax;
-  float global_min, global_max;
+  float dlg_global_valmin, dlg_global_valmax;
   int set_global_bounds;
   float percentile_min, percentile_max;
   float user_min, user_max;
@@ -1134,6 +1149,7 @@ typedef struct _partdata {
   FILE_m *stream;
 
   char *file, *comp_file, *size_file, *reg_file, *hist_file, *bound_file;
+  int have_bound_file;
   int seq_id, autoload, loaded, skipload, request_load, display, reload, finalize;
   int loadstatus, boundstatus;
   int compression_type, evac;
@@ -1153,6 +1169,9 @@ typedef struct _partdata {
   histogramdata **histograms;
   int bounds_set;
   float *global_min, *global_max;
+  float *valmin_fds, *valmax_fds;   // read in from .bnd files
+  float *valmin_smv, *valmax_smv;   // computed by smokeview
+  int nfilebounds;
   unsigned char *vis_part;
   int *tags;
   int *sort_tags;
@@ -1181,7 +1200,9 @@ typedef struct _menudata {
 typedef struct _hrrdata {
   char *file, hrrlabel[256];
   int loaded, display, *timeslist, itime;
+  int update_avg;
   float *times_csv, *times, *hrrval_csv, *hrrval;
+  float *hrrval_orig;
   int ntimes, ntimes_csv;
 } hrrdata;
 
@@ -1191,8 +1212,10 @@ typedef struct _slicedata {
   int mesh_type;
   int seq_id, autoload;
   char *file, *size_file, *bound_file;
+  int have_bound_file;
   char *comp_file, *reg_file, *vol_file;
   char *geom_file;
+  int nframes;
   int finalize;
   int slcf_index;
   char *slicelabel;
@@ -1211,6 +1234,7 @@ typedef struct _slicedata {
   int loaded_save, display_save;
   float position_orig;
   int blocknumber;
+  int cell_center_edge;
   int firstshort_slice;
   int vec_comp;
   int skipdup;
@@ -1218,9 +1242,8 @@ typedef struct _slicedata {
   float valmin, valmax;
   float globalmin, globalmax;
   float valmin_data, valmax_data;
-#ifdef pp_NEWBOUND_DIALOG
-  float file_min, file_max;
-#endif
+  float valmin_fds, valmax_fds;   // read in from .bnd files
+  float valmin_smv, valmax_smv;   // computed by smokeview
   float diff_valmin,  diff_valmax;
   flowlabels label;
   float *qslicedata, *qsliceframe, *times, *qslice;
@@ -1256,16 +1279,24 @@ typedef struct _slicedata {
   float delta_orig, dplane_min, dplane_max;
   int extreme_min, extreme_max;
   histogramdata *histograms;
+  histogramdata *histogram;
   int nhistograms;
   struct _patchdata *patchgeom;
-#ifdef pp_NEWBOUND_DIALOG
-  struct _boundsdata *bounds;
-#endif
   FILE_SIZE file_size;
+  int *geom_offsets;
 #ifdef pp_SLICETHREAD
-  int skipload, loadstatus, boundstatus;
+  int loadstatus;
+#endif
+#ifdef pp_SLICE_BUFFER
+  FILEBUFFER *stream_slice;
 #endif
 } slicedata;
+
+/* --------------------------  slicemenudata ------------------------------------ */
+
+typedef struct _slicemenudata {
+  slicedata *sliceinfo;
+} slicemenudata;
 
 /* --------------------------  multislicedata ------------------------------------ */
 
@@ -1293,6 +1324,16 @@ typedef struct _multivslicedata {
   char menulabel2[128];
 } multivslicedata;
 
+/* --------------------------  cpp_boundsdata ------------------------------------ */
+
+typedef struct _cpp_boundsdata {
+  char label[32], unit[32];
+  int set_valmin, set_valmax, set_chopmin, set_chopmax;
+  float valmin[4], valmax[4], chopmin, chopmax;
+  float glui_valmin, glui_valmax;
+  int set_valtype, cache;
+  histogramdata *hist;
+} cpp_boundsdata;
 /* --------------------------  boundsdata ------------------------------------ */
 
 typedef struct _boundsdata {
@@ -1302,25 +1343,20 @@ typedef struct _boundsdata {
   float chopmin, chopmax;
   float dlg_valmin, dlg_valmax;
   float data_valmin,data_valmax;
-  float global_valmin, global_valmax;
-#ifdef pp_NEWBOUND_DIALOG
-  float percentile_valmin, percentile_valmax;
-#endif
+  float dlg_global_valmin, dlg_global_valmax;
   float line_contour_min;
   float line_contour_max;
   int line_contour_num;
   char  colorlabels[12][11];
   float colorvalues[12];
   float levels256[256];
-  float fscale;
-  char scale[31];
   flowlabels *label;
 } boundsdata;
 
 /* --------------------------  vslicedata ------------------------------------ */
 
 typedef struct _vslicedata {
-  int seq_id, autoload;
+  int seq_id, autoload, reload;
   slicedata *u,*v,*w,*val;
   int volslice;
   int iu, iv, iw, ival;
@@ -1392,9 +1428,11 @@ typedef struct _smoke3ddata {
 typedef struct _patchdata {
   int seq_id, autoload;
   char *file,*size_file,*bound_file;
+  int have_bound_file;
   char *comp_file, *reg_file;
-  char *geomfile, *filetype_label;
+  char *filetype_label;
   geomdata *geominfo;
+  int *geom_offsets;
   //int *patchsize;
   int skip,dir;
   float xyz_min[3], xyz_max[3];
@@ -1404,14 +1442,14 @@ typedef struct _patchdata {
   int shortlabel_index;
   int boundary;
   int inuse,inuse_getbounds;
-  int unit_start;
   int firstshort;
   int compression_type;
   int setvalmin, setvalmax;
+  float valmin_fds, valmax_fds;   // read in from .bnd files
+  float valmin_smv, valmax_smv;   // computed by smokeview
   float valmin, valmax;
   int setchopmin, setchopmax;
   float chopmin, chopmax;
-  float local_valmin, local_valmax;
   float diff_valmin, diff_valmax;
   int blocknumber,loaded,display;
   float *geom_times, *geom_vals;
@@ -1422,13 +1460,14 @@ typedef struct _patchdata {
   int *geom_nstatics, *geom_ndynamics;
   int geom_nvals, ngeom_times;
   flowlabels label;
-  char scale[31];
   char menulabel[128], menulabel_base[128], menulabel_suffix[128], gslicedir[50];
   int ijk[6];
   int extreme_min, extreme_max;
   time_t modtime;
+  int finalize;
   histogramdata *histogram;
   bounddata bounds;
+  boundsdata *bounds2;
 } patchdata;
 
 /* --------------------------  plot3ddata ------------------------------------ */
@@ -1436,14 +1475,21 @@ typedef struct _patchdata {
 typedef struct _plot3ddata {
   int seq_id, autoload;
   char *file,*reg_file,*comp_file;
+  char *bound_file;
+  int have_bound_file;
   int compression_type;
+  int finalize;
+  int memory_id;
   float time;
   int u, v, w, nvars;
-  float diff_valmin[5], diff_valmax[5];
-  int extreme_min[6], extreme_max[6];
+  float diff_valmin[MAXPLOT3DVARS], diff_valmax[MAXPLOT3DVARS];
+  int extreme_min[MAXPLOT3DVARS], extreme_max[MAXPLOT3DVARS];
   int blocknumber,loaded,display;
-  flowlabels label[6];
+  float valmin_fds[MAXPLOT3DVARS], valmax_fds[MAXPLOT3DVARS];   // read in from .bnd files
+  float valmin_smv[MAXPLOT3DVARS], valmax_smv[MAXPLOT3DVARS];   // computed by smokeview
+  flowlabels label[MAXPLOT3DVARS];
   char menulabel[256], longlabel[256], timelabel[256];
+  histogramdata *histograms[MAXPLOT3DVARS];
 } plot3ddata;
 
 /* --------------------------  zonedata ------------------------------------ */
@@ -1456,7 +1502,6 @@ typedef struct _zonedata {
   flowlabels label[4];
   int setvalmin, setvalmax;
   float valmin, valmax;
-  char scale[31];
 } zonedata;
 
 /* --------------------------  roomdata ------------------------------------ */

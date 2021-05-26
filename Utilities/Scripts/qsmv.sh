@@ -31,6 +31,7 @@ function usage {
   echo " -r     - redirect output"
   echo " -s     - first frame rendered [default: 1]"
   echo " -S     - interval between frames [default: 1]"
+  echo " -T     - share nodes"
   echo ""
   exit
 }
@@ -43,6 +44,7 @@ QSMV=$0
 QSMV_PATH=$(dirname `which $0`)
 cd $QSMV_PATH/../../..
 REPOROOT=`pwd`
+SHARE="--exclusive"
 
 cd $CURDIR
 
@@ -52,7 +54,17 @@ XSTART=$REPOROOT/smv/Utilities/Scripts/startXserver.sh
 XSTOP=$REPOROOT/smv/Utilities/Scripts/stopXserver.sh
 
 #*** define resource manager that is used
-#    (not tested with slurm yet)
+
+missing_slurm=`srun -V |& tail -1 | grep "not found" | wc -l`
+RESOURCE_MANAGER="NONE"
+if [ $missing_slurm -eq 0 ]; then
+  RESOURCE_MANAGER="SLURM"
+else
+  missing_torque=`echo | qmgr -n |& tail -1 | grep "not found" | wc -l`
+  if [ $missing_torque -eq 0 ]; then
+    RESOURCE_MANAGER="TORQUE"
+  fi
+fi
 
 if [ "$RESOURCE_MANAGER" == "SLURM" ]; then
   if [ "$SLURM_MEM" != "" ]; then
@@ -100,7 +112,9 @@ j_arg=
 N_ARG=
 q_arg=
 r_arg=
+T_arg=
 v_arg=
+one_frame=
 
 if [ $# -lt 1 ]; then
   usage
@@ -110,7 +124,7 @@ commandline=`echo $* | sed 's/-V//' | sed 's/-v//'`
 
 #*** read in parameters from command line
 
-while getopts 'Ab:c:C:d:e:fhHij:n:N:p:P:q:rs:S:tv' OPTION
+while getopts 'Ab:c:C:d:e:fFhHij:n:N:Op:P:q:rs:S:tTv' OPTION
 do
 case $OPTION  in
   A)
@@ -162,6 +176,9 @@ case $OPTION  in
   N)
    NRESERVE="${OPTARG}"
    ;;
+  O)
+   one_frame=1
+   ;;
   p)
    dummy="${OPTARG}"
    ;;
@@ -187,6 +204,10 @@ case $OPTION  in
   t)
    dummy=1
    ;;
+  T)
+   SHARE=
+   T_arg="-T"
+   ;;
   v)
    showinput=1
    v_arg="-v"
@@ -211,9 +232,13 @@ fi
 N_ARG="-N $NRESERVE"
 
 if [ $nprocs != 1 ]; then
-  for i in $(seq 1 $nprocs); do
-    $QSMV $b_arg $c_arg $d_arg $e_arg $f_arg $i_arg $j_arg $N_ARG $q_arg $r_arg $v_arg -s $i -S $nprocs $in
-  done
+  if [ "$one_frame" == "" ]; then
+    for i in $(seq 1 $nprocs); do
+      $QSMV $b_arg $c_arg $d_arg $e_arg $f_arg $i_arg $j_arg $N_ARG $q_arg $r_arg $v_arg $T_arg -s $i -S $nprocs $in
+    done
+  else
+    $QSMV $b_arg $c_arg $d_arg $e_arg $f_arg $i_arg $j_arg $N_ARG $q_arg $r_arg $v_arg $T_arg -s $nprocs -S $nprocs $in
+  fi
   exit
 fi
 
@@ -285,7 +310,6 @@ else
     fi
   fi
 fi
-echo SMVBINDIR=$SMVBINDIR
 
 let ppn=$NRESERVE
 let nodes=1
@@ -295,12 +319,23 @@ TITLE="$infile"
 cd $dir
 fulldir=`pwd`
 
+touch test.$$ >& /dev/null
+if [ -e test.$$ ]; then
+  rm test.$$
+  logdir=`pwd`
+else
+  logdir=$HOME/.smokeview
+  if [ ! -e $fulldir ]; then
+    mkdir $fulldir
+  fi
+fi
+
 #*** define files
 
 basefile=${infile}_f${first}_s${skip}
-outerr=$fulldir/$basefile.err
-outlog=$fulldir/$basefile.log
-scriptlog=$fulldir/$basefile.slog
+outerr=$logdir/$basefile.err
+outlog=$logdir/$basefile.log
+scriptlog=$logdir/$basefile.slog
 in_full_file=$fulldir/$infile
 smvfile=${infile}.smv
 in_full_smvfile=$fulldir/$smvfile
@@ -336,8 +371,7 @@ QSUB="qsub -q $queue"
 #*** setup for SLURM (alternative to torque)
 
 if [ "$RESOURCE_MANAGER" == "SLURM" ]; then
-  QSUB="sbatch -p $queue --ignore-pbs"
-  MPIRUN='srun'
+  QSUB="sbatch -p $queue --ignore-pbs $SHARE"
 fi
 
 if [ "$queue" == "terminal" ]; then
@@ -359,6 +393,7 @@ scriptfile=`mktemp /tmp/script.$$.XXXXXX`
 
 cat << EOF > $scriptfile
 #!/bin/bash
+# $QSUB  $scriptfile
 # $0 $commandline
 EOF
 
@@ -369,7 +404,9 @@ if [ "$queue" != "none" ]; then
 #SBATCH -e $outerr
 #SBATCH -o $outlog
 #SBATCH -p $queue
-#SBATCH --nodes=$nodes
+#SBATCH --nodes=1
+
+
 $SLURM_MEM
 EOF
     if [ "$walltimestring_slurm" != "" ]; then

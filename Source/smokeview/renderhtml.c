@@ -630,7 +630,7 @@ void GetSliceNodeVerts(int option, int option2,
     slicedata *slicei;
 
     slicei = sliceinfo+islice;
-    if(slicei->loaded==0||slicei->display==0||slicei->slice_filetype!=SLICE_NODE_CENTER||slicei->volslice==1)continue;
+    if(slicei->loaded==0||slicei->display==0||(slicei->slice_filetype!=SLICE_NODE_CENTER&&slicei->slice_filetype!=SLICE_TERRAIN)||slicei->volslice==1)continue;
     if(slicei->idir!=XDIR&&slicei->idir!=YDIR&&slicei->idir!=ZDIR)continue;
     slicetime = slicei;
     if(first==1){
@@ -669,7 +669,7 @@ void GetSliceNodeVerts(int option, int option2,
 
       slicei = sliceinfo+islice;
 
-      if(slicei->loaded==0||slicei->display==0||slicei->slice_filetype!=SLICE_NODE_CENTER||slicei->volslice==1)continue;
+      if(slicei->loaded==0||slicei->display==0||(slicei->slice_filetype!=SLICE_NODE_CENTER&&slicei->slice_filetype!=SLICE_TERRAIN)||slicei->volslice==1)continue;
       if(slicei->idir!=XDIR&&slicei->idir!=YDIR&&slicei->idir!=ZDIR)continue;
 
       iq = slicei->slicelevel+itime*slicei->nsliceijk;
@@ -702,6 +702,7 @@ void GetSliceNodeVerts(int option, int option2,
           int ii, jj, kk;
           char *iblank;
           int nx, ny, nxy;
+          float agl;
 
           meshi = meshinfo+slicei->blocknumber;
           nx = meshi->ibar+1;
@@ -710,7 +711,13 @@ void GetSliceNodeVerts(int option, int option2,
           iblank = meshi->c_iblank_node_html;
           xplt = meshi->xplt;
           yplt = meshi->yplt;
-          zplt = meshi->zplt;
+          if(slicei->slice_filetype==SLICE_TERRAIN){
+            agl = SCALE2FDS(.005) + slicei->above_ground_level;
+            zplt = meshi->terrain->znode;
+          }
+          else{
+            zplt = meshi->zplt;
+          }
           plotx = slicei->is1;
           ploty = slicei->js1;
           plotz = slicei->ks1;
@@ -836,7 +843,12 @@ void GetSliceNodeVerts(int option, int option2,
                 for(j = slicei->js1; j<=slicei->js2; j++){
                   *verts++ = xplt[i];
                   *verts++ = yplt[j];
-                  *verts++ = constval;
+                  if(slicei->slice_filetype==SLICE_TERRAIN){
+                    *verts++ = NORMALIZE_Z(zplt[i*ny+j] + agl);
+                  }
+                  else{
+                    *verts++ = constval;
+                  }
 
                 // define blank array
 
@@ -1555,9 +1567,7 @@ void GeomLitTriangles2Geom(float **vertsptr, float **normalsptr, float **colorsp
   if(ngeominfoptrs>0){
     int ngeom_verts, ngeom_tris;
 
-    LOCK_TRIANGLES;
     GetGeomInfoPtrs(0);
-    UNLOCK_TRIANGLES;
     ShowHideSortGeometry(0, NULL);
     GetGeometryNodes(0, NULL, NULL, NULL, NULL, &ngeom_verts, NULL, &ngeom_tris);
 
@@ -1617,13 +1627,13 @@ int GetHtmlFileName(char *htmlfile_full, int option, int vr_flag){
   // directory - put files in '.' or smokevewtempdir
 
   if(Writable(htmlfile_dir)==NO){
-    if(Writable(smokeviewtempdir)==YES){
-      strcpy(htmlfile_dir, smokeviewtempdir);
+    if(Writable(smokeview_scratchdir)==YES){
+      strcpy(htmlfile_dir, smokeview_scratchdir);
     }
     else{
-      if(smokeviewtempdir!=NULL&&strlen(smokeviewtempdir)>0){
+      if(smokeview_scratchdir!=NULL&&strlen(smokeview_scratchdir)>0){
         fprintf(stderr, "*** Error: unable to output html file to either directories %s or %s\n",
-          htmlfile_dir, smokeviewtempdir);
+          htmlfile_dir, smokeview_scratchdir);
       }
       else{
         fprintf(stderr, "*** Error: unable to output html file to directory %s \n", htmlfile_dir);

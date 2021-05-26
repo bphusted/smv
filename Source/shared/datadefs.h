@@ -13,6 +13,9 @@
 
 #define ONEORZERO(val) if(val!=0)val=1
 
+#define INIT_PRINT_TIMER(timer)  timer=-1.0
+#define PRINT_TIMER(timer, label) PrintTime(__FILE__, __LINE__, &timer, label)
+
 #define K2C(T) ((T)-273.15)
 #define C2K(T) ((T)+273.15)
 
@@ -21,8 +24,8 @@
 
 #define SCALE2FDSL(x) ((x)*xyzmaxdiff_local)
 
-#define YES 1
-#define NO 0
+#define NO      0
+#define YES     1
 
 #define PLANEDIST(norm,xyz0,xyz) ((xyz[0]-xyz0[0])*norm[0]+(xyz[1]-xyz0[1])*norm[1]+(xyz[2]-xyz0[2])*norm[2])
 
@@ -36,10 +39,6 @@
 #define DENORMALIZE_X(x) (xbar0+(x)*xyzmaxdiff)
 #define DENORMALIZE_Y(y) (ybar0+(y)*xyzmaxdiff)
 #define DENORMALIZE_Z(z) (zbar0+(z)*xyzmaxdiff)
-
-#define DENORMALIZE_XX(x) (xbar0+(x)*(xbarORIG-xbar0))
-#define DENORMALIZE_YY(y) (ybar0+(y)*(ybarORIG-ybar0))
-#define DENORMALIZE_ZZ(z) (zbar0+(z)*(zbarORIG-zbar0))
 
 #define VERT_AVG2(v1,v2,vavg) \
   vavg[0]=(v1[0]+v2[0])/2.0;\
@@ -283,7 +282,7 @@
 
 #ifndef GET_QVAL
 #define GET_QVAL(i,j,k,n) \
-  if(cache_qdata==1){\
+  if(qdata!=NULL){\
     qval=qdata[IJKN(i,j,k,n)];\
   }\
   else{\

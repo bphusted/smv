@@ -28,6 +28,25 @@
 
 FILE *alt_stdout=NULL;
 
+/* ------------------ TestWrite ------------------------ */
+
+void TestWrite(char *scratchdir, char **fileptr){
+  char *file, filecopy[1024], newfile[1024], *beg;
+
+  if(Writable(".")==1||fileptr==NULL||scratchdir==NULL)return;
+  strcpy(filecopy, *fileptr);
+  FREEMEMORY(*fileptr);
+
+  strcpy(newfile, scratchdir);
+  strcat(newfile, dirseparator);
+  file = filecopy;
+  beg = strrchr(filecopy, SEP);
+  if(beg!=NULL)file = beg+1;
+  strcat(newfile, file);
+  NewMemory((void **)fileptr, strlen(newfile)+1);
+  strcpy(*fileptr, newfile);
+}
+
 /* ------------------ FFLUSH ------------------------ */
 
 int FFLUSH(void){
@@ -455,177 +474,6 @@ FILE_SIZE GetFileSizeSMV(const char *filename){
   return return_val;
 }
 
-#ifdef pp_READBUFFER
-/* ------------------ FeofBuffer ------------------------ */
-
-int FeofBuffer(filedata *fileinfo){
-  if(fileinfo->iline>=fileinfo->nlines)return 1;
-  return 0;
-}
-
-/* ------------------ FgetsBuffer ------------------------ */
-
-char *FgetsBuffer(filedata *fileinfo,char *buffer,int size){
-  char *file_buffer, *from, *to;
-  int iline, i;
-
-  if(fileinfo==NULL)return NULL;
-  iline = fileinfo->iline;
-  if(iline>=fileinfo->nlines)return NULL;
-  file_buffer = fileinfo->lines[iline];
-  from = file_buffer;
-  to = buffer;
-  for(i = 0;i<size;i++){
-    *to++ = *from++;
-    if(from[-1]==0)break;
-  }
-  to[-1] = 0;
-  fileinfo->iline++;
-  return buffer;
-}
-
-/* ------------------ RewindFileBuffer ------------------------ */
-
-void RewindFileBuffer(filedata *fileinfo){
-  if(fileinfo==NULL)return;
-  fileinfo->iline=0;
-}
-
-/* ------------------ FreeFileBuffer ------------------------ */
-
-void FreeFileBuffer(filedata *fileinfo){
-  char *buffer;
-
-  if(fileinfo==NULL)return;
-  buffer = fileinfo->buffer;
-  FREEMEMORY(buffer);
-  FREEMEMORY(fileinfo);
-}
-
-/* ------------------ OutputFileBuffer ------------------------ */
-
-void OutputFileBuffer(filedata *fileinfo){
-  int i;
-
-  if(fileinfo==NULL)return;
-  for(i = 0;i<fileinfo->nlines;i++){
-    char *buffer;
-
-    buffer = fileinfo->lines[i];
-    if(buffer==NULL||strlen(buffer)==0)continue;
-    printf("%s\n", buffer);
-  }
-}
-
-/* ------------------ AppendFileBuffer ------------------------ */
-
-int AppendFileBuffer(filedata *file1, filedata *file2){
-  char *new_buffer, *new_buffer1, *new_buffer2, **new_lines;
-  int new_filesize, new_nlines, i;
-
-  new_filesize = file1->filesize + file2->filesize;
-  if(NewMemory((void **)&new_buffer, new_filesize)==0){
-    readfile_option = READFILE;
-    return -1;
-  }
-  new_buffer1 = new_buffer;
-  new_buffer2 = new_buffer + file1->filesize;
-  memcpy(new_buffer1, file1->buffer, file1->filesize);
-  memcpy(new_buffer2, file2->buffer, file2->filesize);
-
-  new_nlines = file1->nlines+file2->nlines;
-  if(NewMemory((void **)&new_lines, new_nlines*sizeof(char *))==0){
-    FREEMEMORY(new_buffer);
-    readfile_option = READFILE;
-    return  -1;
-  }
-
-  for(i = 0;i<file1->nlines;i++){
-    new_lines[i]               = file1->lines[i] + (new_buffer  - file1->buffer);
-  }
-  for(i = 0;i<file2->nlines;i++){
-    new_lines[i+file1->nlines] = file2->lines[i] + (new_buffer2 - file2->buffer);
-  }
-
-  FREEMEMORY(file1->buffer);
-  FREEMEMORY(file1->lines);
-  file1->buffer = new_buffer;
-  file1->lines = new_lines;
-  file1->filesize = new_filesize;
-  file1->nlines = new_nlines;
-  return 0;
-}
-
-  /* ------------------ File2Buffer ------------------------ */
-
-filedata *File2Buffer(char *filename){
-  FILE_SIZE i,filesize;
-  filedata *fileinfo;
-  char *buffer, **lines;
-  int nlines;
-  FILE *stream;
-
-  if(FILE_EXISTS(filename)==NO)return NULL;
-  filesize = GetFileSizeSMV(filename);
-  if(filesize==0)return NULL;
-  stream = fopen(filename,"rb");
-  if(stream==NULL)return NULL;
-  NewMemory((void **)&fileinfo, sizeof(filedata));
-  if(NewMemory((void **)&buffer, filesize+1)==0){
-    FREEMEMORY(fileinfo);
-    readfile_option = READFILE;
-    fclose(stream);
-    return NULL;
-  }
-  fread(buffer, sizeof(char), filesize, stream);
-  fclose(stream);
-
-  filesize++;           // add an extra character to file and set it to the end of string character
-  buffer[filesize-1]=0;
-
-  fileinfo->buffer = buffer;
-  fileinfo->filesize = filesize;
-  fileinfo->iline = 0;
-  CheckMemory;
-
-  // count number of lines
-
-  nlines = 0;
-  for(i = 0;i<filesize;i++){
-    int ch;
-
-    ch = buffer[i];
-    if(ch=='\r'){      // end of line is \r\n or \n
-      buffer[i]=' ';   //  if a \r is found set it to a blank character
-      continue;
-    }
-    if(ch=='\n'||ch==EOF||ch==0){
-      buffer[i]=0;
-      nlines++;
-    }
-  }
-  CheckMemory;
-  NewMemory((void **)&lines, (nlines+1)*sizeof(char *));
-  fileinfo->lines = lines;
-
-  nlines = 0;
-  lines[0] = buffer;
-  for(i = 0;i<filesize;i++){
-    int ch;
-
-    ch = buffer[i];
-    if(ch!=0)continue;
-    if(i+1<filesize){
-      nlines++;
-      lines[nlines] = buffer+i+1;
-    }
-  }
-  fileinfo->nlines = nlines;
-  CheckMemory;
-  return fileinfo;
-}
-#endif
-
 /* ------------------ FileExistsOrig ------------------------ */
 
 int FileExistsOrig(char *filename){
@@ -639,22 +487,16 @@ int FileExistsOrig(char *filename){
 
   /* ------------------ FileExists ------------------------ */
 
-#ifdef pp_FILELIST
 int FileExists(char *filename, filelistdata *filelist, int nfilelist, filelistdata *filelist2, int nfilelist2){
-#else
-int FileExists(char *filename){
-#endif
 
 // returns YES if the file filename exists, NO otherwise
 
   if(filename == NULL)return NO;
-#ifdef pp_FILELIST
   if(filelist != NULL&&nfilelist>0){
     if(FileInList(filename, filelist, nfilelist, filelist2, nfilelist2) != NULL){
       return YES;
     }
   }
-#endif
   if(ACCESS(filename,F_OK)==-1){
     return NO;
   }
@@ -694,6 +536,31 @@ int GetFileListSize(const char *path, char *filter){
   return maxfiles;
 }
 
+
+/* ------------------ fopen_indir  ------------------------ */
+
+FILE *fopen_indir(char *dir, char *file, char *mode){
+  FILE *stream;
+
+  if(file==NULL||strlen(file)==0)return NULL;
+  if(dir==NULL||strlen(dir)==0){
+    stream = fopen(file,mode);
+  }
+  else{
+    char *filebuffer;
+    int lenfile;
+
+    lenfile = strlen(dir)+1+strlen(file)+1;
+    NewMemory((void **)&filebuffer,lenfile*sizeof(char));
+    strcpy(filebuffer,dir);
+    strcat(filebuffer,dirseparator);
+    strcat(filebuffer,file);
+    stream = fopen(filebuffer,mode);
+    FREEMEMORY(filebuffer);
+  }
+  return stream;
+}
+
 /* ------------------ CompareFileList ------------------------ */
 
 int CompareFileList(const void *arg1, const void *arg2){
@@ -706,7 +573,6 @@ int CompareFileList(const void *arg1, const void *arg2){
 }
 
 /* ------------------ getfile ------------------------ */
-#ifdef pp_FILELIST
 filelistdata *FileInList(char *file, filelistdata *filelist, int nfiles, filelistdata *filelist2, int nfiles2){
   filelistdata *entry=NULL, fileitem;
 
@@ -722,7 +588,6 @@ filelistdata *FileInList(char *file, filelistdata *filelist, int nfiles, filelis
   }
   return entry;
 }
-#endif
 
 /* ------------------ MakeFileList ------------------------ */
 
@@ -928,16 +793,6 @@ char *LastName(char *argi){
   char *lastdirsep;
   char *dir, *filename, cwdpath[1000];
 
-#ifdef WIN32
-#define CHDIR _chdir
-#define GETCWD _getcwd
-#define SEP '\\'
-#else
-#define CHDIR chdir
-#define GETCWD getcwd
-#define SEP '/'
-#endif
-
   filename=argi;
   lastdirsep=strrchr(argi,SEP);
   if(lastdirsep!=NULL){
@@ -984,7 +839,7 @@ char *GetZoneFileName(char *bufptr){
   return filename;
 }
 
-/* ------------------ file_modtime ------------------------ */
+/* ------------------ FileModtime ------------------------ */
 
 time_t FileModtime(char *filename){
 

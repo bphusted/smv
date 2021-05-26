@@ -6,7 +6,6 @@
 #include GLUT_H
 #include <math.h>
 
-#include "update.h"
 #include "smokeviewvars.h"
 #include "glui_tour.h"
 
@@ -55,6 +54,7 @@ GLUI_Spinner *SPINNER_viewx = NULL;
 GLUI_Spinner *SPINNER_viewy = NULL;
 GLUI_Spinner *SPINNER_viewz = NULL;
 GLUI_Spinner *SPINNER_tourzoom=NULL;
+GLUI_Spinner *SPINNER_tourzoom_circular = NULL;
 
 GLUI_Spinner *SPINNER_tour_circular_view[3];
 GLUI_Spinner *SPINNER_tour_circular_center[3];
@@ -126,7 +126,6 @@ extern "C" void GluiTourSetup(int main_window){
 
   int i;
 
-  update_glui_tour=0;
   if(glui_tour!=NULL){
     glui_tour->close();
     glui_tour=NULL;
@@ -151,6 +150,7 @@ extern "C" void GluiTourSetup(int main_window){
   SPINNER_tour_circular_center[2]=glui_tour->add_spinner_to_panel(PANEL_tour_circular_center,"z",GLUI_SPINNER_FLOAT,tour_circular_center+2,TOUR_CIRCULAR_UPDATE,TourCB);
 
   PANEL_tour_circular_view = glui_tour->add_panel_to_panel(ROLLOUT_circular,_("target"),true);
+  SPINNER_tourzoom_circular = glui_tour->add_spinner_to_panel(PANEL_tour_circular_view, _("Zoom:"), GLUI_SPINNER_FLOAT, &tourzoom_circular, TOUR_CIRCULAR_UPDATE, TourCB);
   SPINNER_tour_circular_view[0]=glui_tour->add_spinner_to_panel(PANEL_tour_circular_view,"x",GLUI_SPINNER_FLOAT,tour_circular_view,TOUR_CIRCULAR_UPDATE,TourCB);
   SPINNER_tour_circular_view[1]=glui_tour->add_spinner_to_panel(PANEL_tour_circular_view,"y",GLUI_SPINNER_FLOAT,tour_circular_view+1,TOUR_CIRCULAR_UPDATE,TourCB);
   SPINNER_tour_circular_view[2]=glui_tour->add_spinner_to_panel(PANEL_tour_circular_view,"z",GLUI_SPINNER_FLOAT,tour_circular_view+2,TOUR_CIRCULAR_UPDATE,TourCB);
@@ -257,7 +257,12 @@ extern "C" void GluiTourSetup(int main_window){
   PANEL_close_tour = glui_tour->add_panel("",false);
   glui_tour->add_button_to_panel(PANEL_close_tour,_("Save settings"),SAVE_SETTINGS_TOUR,TourCB);
   glui_tour->add_column_to_panel(PANEL_close_tour,false);
+#ifdef pp_CLOSEOFF
+  GLUI_Button *BUTTON_button2 = glui_tour->add_button_to_panel(PANEL_close_tour,"Close",TOUR_CLOSE,TourCB);
+  BUTTON_button2->disable();
+#else
   glui_tour->add_button_to_panel(PANEL_close_tour,"Close",TOUR_CLOSE,TourCB);
+#endif
 
   ROLLOUT_keyframe->close();
   ROLLOUT_settings->close();
