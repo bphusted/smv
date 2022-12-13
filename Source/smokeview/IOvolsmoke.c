@@ -159,9 +159,7 @@ void GetSmokeColor(float *smoke_tran, float **smoke_color, float *scaled_intensi
       *inobst = 1;
       return;
     }
-    else{
-      *inobst = 0;
-    }
+    *inobst = 0;
   }
 
   *scaled_intensity = 1.0;
@@ -287,16 +285,12 @@ void InitVolRenderSurface(int flag){
 #ifdef pp_GPU
 void InitVolsmokeSuperTexture(supermeshdata *smesh){
   GLint border_size = 0;
-  int supermesh_index;
   GLsizei nx, ny, nz;
   int i;
 
   nx = smesh->ibar+1;
   ny = smesh->jbar+1;
   nz = smesh->kbar+1;
-
-  supermesh_index = smesh-supermeshinfo;
-  supermesh_index++;
 
   FFLUSH();
 
@@ -383,6 +377,22 @@ void InitVolsmokeSuperTexture(supermeshdata *smesh){
   FFLUSH();
 }
 #endif
+
+/* ------------------ IsBottomMesh ------------------------ */
+
+int IsBottomMesh(meshdata *mesh_from){
+  float xyz[3];
+  float *boxmax, *boxmin;
+  int return_val;
+
+  boxmin = mesh_from->boxmin;
+  boxmax = mesh_from->boxmax;
+  xyz[0] = (boxmin[0]+boxmax[0])/2.0;
+  xyz[1] = (boxmin[1]+boxmax[1])/2.0;
+  xyz[2] = boxmin[2]-(boxmax[2]-boxmin[2])/100.0;
+  return_val = 1-InMesh(xyz);
+  return return_val;
+}
 
 /* ------------------ MeshConnect ------------------------ */
 
@@ -579,6 +589,7 @@ void InitNabors(void){
     int j;
 
     meshi = meshinfo+i;
+    meshi->is_bottom = IsBottomMesh(meshi);
     for(j = 0;j<nmeshes;j++){
       meshdata *meshj;
 
@@ -786,7 +797,6 @@ void InitVolRender(void){
   int i;
 
   nvolrenderinfo=0;
-  update_fileload = 1;
   for(i=0;i<nmeshes;i++){
     meshdata *meshi;
     volrenderdata *vr;
@@ -2784,7 +2794,6 @@ void UnloadVolsmokeFrameAllMeshes(int framenum){
   int i;
 
   PRINTF("Unloading smoke frame: %i\n",framenum);
-  update_fileload = 1;
   for(i=0;i<nmeshes;i++){
     meshdata *meshi;
     volrenderdata *vr;
@@ -2805,7 +2814,6 @@ void UnloadVolsmokeAllFrames(volrenderdata *vr){
   int i;
 
   PRINTF("Unloading smoke %s - ",vr->rendermeshlabel);
-  update_fileload = 1;
   for(i=0;i<vr->ntimes;i++){
     FREEMEMORY(vr->firedataptrs[i]);
     FREEMEMORY(vr->smokedataptrs[i]);
@@ -2826,7 +2834,6 @@ void ReadVolsmokeAllFrames(volrenderdata *vr){
   int i;
   int first=1;
 
-  update_fileload = 1;
   nframes = vr->ntimes;
   for(i=0;i<nframes;i++){
     ReadVolsmokeFrame(vr, i, &first);
@@ -2855,7 +2862,6 @@ void ReadVolsmokeFrameAllMeshes(int framenum, supermeshdata *smesh){
   int first=1;
   int nm;
 
-  update_fileload = 1;
   if(smesh==NULL){
     nm=nmeshes;
   }
@@ -2970,7 +2976,7 @@ void InitVolsmokeTexture(meshdata *meshi){
   int i;
 
   //UnloadVolsmokeSuperTextures();
-  PRINTF("defining smoke and fire textures for %s - ", meshi->label);
+  if(verbose_output==1)PRINTF("defining smoke and fire textures for %s - ", meshi->label);
   FFLUSH();
 
   nx = meshi->ibar+1;
@@ -3067,8 +3073,8 @@ void InitVolsmokeTexture(meshdata *meshi){
   }
 
   glActiveTexture(GL_TEXTURE0);
-  PRINTF("complete");
-  PRINTF("\n");
+  if(verbose_output==1)PRINTF("complete");
+  if(verbose_output==1)PRINTF("\n");
   FFLUSH();
 }
 
@@ -3103,7 +3109,6 @@ void DefineVolsmokeTextures(void){
 void ReadVolsmokeAllFramesAllMeshes(void){
   int i;
 
-  update_fileload = 1;
   compress_volsmoke=glui_compress_volsmoke;
   load_volcompressed=glui_load_volcompressed;
   for(i=0;i<nmeshes;i++){

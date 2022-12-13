@@ -6,6 +6,7 @@
 
 #include "smokeviewvars.h"
 #include "IOvolsmoke.h"
+#include "smokestream.h"
 
 /* ------------------ InitMultiThreading ------------------------ */
 
@@ -19,6 +20,9 @@ void InitMultiThreading(void){
   pthread_mutex_init(&mutexCOMPRESS,NULL);
   pthread_mutex_init(&mutexVOLLOAD,NULL);
   pthread_mutex_init(&mutexIBLANK, NULL);
+#ifdef pp_STREAM
+  pthread_mutex_init(&mutexSTREAM, NULL);
+#endif
 #endif
 }
 
@@ -61,6 +65,16 @@ void CompressSVZip2(void){
 }
 
 #ifdef pp_THREAD
+/* ------------------ LockUnlockCompress ------------------------ */
+
+void LockUnlockCompress(int flag){
+  if(flag==1){
+    LOCK_COMPRESS;
+  }
+  else{
+    UNLOCK_COMPRESS;
+  }
+}
  /* ------------------ MtCompressSVZip ------------------------ */
 
 void *MtCompressSVZip(void *arg){
@@ -93,41 +107,6 @@ typedef struct _slicethreaddata {
   int slice_index;
   FILE_SIZE file_size;
 } slicethreaddata;
-
-FILE_SIZE LoadSlicei(int set_slicecolor, int value, int time_frame, float *time_value);
-
-/* ------------------ LoadAllMSlicesMT ------------------------ */
-
-FILE_SIZE LoadAllMSlicesMT(int last_slice, multislicedata *mslicei,  int *fcount){
-  FILE_SIZE file_size = 0;
-  int file_count = 0;
-  int i;
-//  slicethreaddata slicethreadinfo[MAX_THREADS];
-
-  file_count = 0;
-  file_size = 0;
-  for(i = 0; i<mslicei->nslices; i++){
-    slicedata *slicei;
-    int set_slicecolor;
-
-    slicei = sliceinfo+mslicei->islices[i];
-    set_slicecolor = DEFER_SLICECOLOR;
-
-    slicei->finalize = 0;
-    if(last_slice==mslicei->islices[i]){
-      slicei->finalize = 1;
-      set_slicecolor = SET_SLICECOLOR;
-    }
-    if(slicei->skipdup==0&&last_slice!=mslicei->islices[i]){
-      file_size += LoadSlicei(set_slicecolor, mslicei->islices[i], ALL_FRAMES, NULL);
-      file_count++;
-    }
-  }
-  file_size += LoadSlicei(SET_SLICECOLOR, last_slice, ALL_FRAMES, NULL);
-  file_count++;
-  *fcount = file_count;
-  return file_size;
-}
 
 /* ------------------ MtLoadAllPartFiles ------------------------ */
 
@@ -186,6 +165,41 @@ void LoadAllPartFilesMT(int partnum){
   LoadAllPartFiles(partnum);
 }
 #endif
+
+FILE_SIZE LoadSlicei(int set_slicecolor, int value, int time_frame, float *time_value);
+
+/* ------------------ LoadAllMSlicesMT ------------------------ */
+
+FILE_SIZE LoadAllMSlicesMT(int last_slice, multislicedata *mslicei, int *fcount){
+  FILE_SIZE file_size = 0;
+  int file_count = 0;
+  int i;
+  //  slicethreaddata slicethreadinfo[MAX_THREADS];
+
+  file_count = 0;
+  file_size = 0;
+  for(i = 0; i < mslicei->nslices; i++){
+    slicedata *slicei;
+    int set_slicecolor;
+
+    slicei = sliceinfo + mslicei->islices[i];
+    set_slicecolor = DEFER_SLICECOLOR;
+
+    slicei->finalize = 0;
+    if(last_slice == mslicei->islices[i]){
+      slicei->finalize = 1;
+      set_slicecolor = SET_SLICECOLOR;
+      }
+    if(slicei->skipdup == 0 && last_slice != mslicei->islices[i]){
+      file_size += LoadSlicei(set_slicecolor, mslicei->islices[i], ALL_FRAMES, NULL);
+      file_count++;
+      }
+    }
+  file_size += LoadSlicei(SET_SLICECOLOR, last_slice, ALL_FRAMES, NULL);
+  file_count++;
+  *fcount = file_count;
+  return file_size;
+  }
 
 #ifdef pp_THREAD
 /* ------------------ MtClassifyAllGeom ------------------------ */
@@ -248,6 +262,18 @@ void *MTGeneratePartHistograms(void *arg){
 void GeneratePartHistogramsMT(void){
   pthread_create(&generate_part_histogram_id, NULL, MTGeneratePartHistograms, NULL);
 }
+#else
+void GeneratePartHistogramsMT(void){
+  GeneratePartHistograms();
+}
+void ClassifyAllGeomMT(void){
+  SetupReadAllGeom();
+  ClassifyAllGeom();
+}
+void ReadAllGeomMT(void){
+  SetupReadAllGeom();
+  ReadAllGeom();
+}
 #endif
 
 #ifdef pp_THREAD
@@ -284,7 +310,88 @@ void GetAllPartBoundsMT(void){
 }
 #endif
 
-//***************************** multi threading triangle update ***********************************
+#ifdef pp_THREAD
+/* ------------------ MtReadBufferi ------------------------ */
+
+void *MtReadBufferi(void *arg){
+  ReadBufferi(arg);
+  pthread_exit(NULL);
+  return NULL;
+}
+#endif
+
+#ifdef pp_THREADBUFFER
+/* ------------------ ReadBuffer ------------------------ */
+
+int ReadBuffer(char *filename, int filesize, char *buffer, int nthreads, int use_multithread){
+  int i, filesizei, returnval;
+  readbufferdata *readbufferinfo;
+
+  returnval = 1;
+  filesizei = filesize/nthreads;
+
+  NewMemory((void **)&readbufferinfo, nthreads*sizeof(readbufferdata));
+#ifdef pp_THREAD
+  if(use_multithread==1&&nthreads>1){
+    NewMemory((void **)&readbuffer_ids, nthreads*sizeof(pthread_t));
+  }
+#endif
+
+  for(i = 0; i<nthreads; i++){
+    readbufferdata *readbufferi;
+    int start, end;
+
+    start = i*filesizei;
+    if(i==nthreads-1){
+      end = filesize;
+    }
+    else{
+      end = start+filesizei;
+    }
+    if(end>filesize)end = filesize;;
+
+    readbufferi = readbufferinfo+i;
+    readbufferi->buffer = buffer;
+    readbufferi->filename = filename;
+    readbufferi->start = start;
+    readbufferi->size = end-start;
+#ifdef pp_THREAD
+    if(use_multithread==1&&nthreads>1){
+      pthread_create(readbuffer_ids+i, NULL, MtReadBufferi, readbufferi);
+    }
+    else{
+      ReadBufferi(readbufferi);
+    }
+  }
+  if(use_multithread==1&&nthreads>1){
+    for(i = 0; i<nthreads; i++){
+      pthread_join(readbuffer_ids[i], NULL);
+    }
+  }
+#else
+    ReadBufferi(readbufferi);
+  }
+#endif
+  for(i = 0; i<nthreads; i++){
+    readbufferdata *readbufferi;
+
+    readbufferi = readbufferinfo+i;
+    if(readbufferi->returnval==0){
+      returnval = 0;
+      break;
+    }
+  }
+  FREEMEMORY(readbufferinfo);
+#ifdef pp_THREAD
+  if(use_multithread==1&&nthreads>1){
+    FREEMEMORY(readbuffer_ids);
+  }
+#endif
+  return returnval;
+}
+#endif
+
+  //***************************** multi threading triangle update ***********************************
 
 /* ------------------ MtUpdateTriangles ------------------------ */
 
@@ -384,6 +491,73 @@ void SampleMT(void){
 #endif
 #endif
 
+/* ------------------ I/O streaming ------------------------ */
+
+#ifdef pp_STREAM
+
+#ifdef pp_THREAD
+
+/* ------------------ MtStreamReadList ------------------------ */
+
+void *MtStreamReadList(void *arg){
+  streamlistargdata *streamlist;
+  streamdata **streams;
+  int nstreams;
+
+  streamlist = (streamlistargdata *)arg;
+
+  streams  = streamlist->streams;
+  nstreams = streamlist->nstreams;
+
+  StreamReadList(streams, nstreams);
+  pthread_exit(NULL);
+  return NULL;
+}
+
+/* ------------------ GetThreads ------------------------ */
+
+pthread_t *GetThreads(int nthreads){
+  pthread_t *threads = NULL;
+
+  if(nthreads<=0)return NULL;
+  NewMemory((void **)&threads, nthreads*sizeof(pthread_t));
+  return threads;
+}
+
+/* ------------------ StreamReadListMT ------------------------ */
+
+void StreamReadListMT(streamlistargdata *arg, int nthreads){
+  pthread_t *threads=NULL;
+
+  if(nthreads>0&&stream_multithread==1)threads = GetThreads(nthreads);
+  if(threads!=NULL){
+    int i;
+
+    for(i=0;i<nthreads;i++){
+      pthread_create(threads+i, NULL, MtStreamReadList, (void *)arg);
+    }
+  }
+  else{
+    streamdata **streams;
+    int nstreams;
+
+    streams = arg->streams;
+    nstreams = arg->nstreams;
+    StreamReadList(streams, nstreams);
+  }
+}
+#else
+void StreamReadListMT(streamlistargdata *arg){
+  streamdata **streams;
+  int nstreams;
+
+  streams = arg->streams;
+  nstreams = arg->nstreams;
+  StreamReadList(streams, nstreams);
+}
+#endif
+#endif
+
 /* ------------------ makeiblank_all ------------------------ */
 
 #ifdef pp_THREAD
@@ -394,7 +568,6 @@ void MakeIBlankAll(void){
 void MakeIBlankAll(void){
   MakeIBlank();
   SetCVentDirs();
-  update_set_vents=1;
 }
 #endif
 
@@ -431,7 +604,7 @@ void PSystem(char *commandline){
 }
 #else
 void PSystem(char *commandline){
-  system(commandline)
+  system(commandline);
 }
 #endif
 

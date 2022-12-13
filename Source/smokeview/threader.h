@@ -17,6 +17,15 @@
 // setup LOCKS
 
 #ifdef pp_THREAD
+  MMEXTERN pthread_mutex_t mutexSLICE_BOUND, mutexPATCH_BOUND, mutexPART2ISO, mutexPRINT, mutexMEM;
+
+#ifdef pp_STREAM
+  #define LOCK_STREAM     pthread_mutex_lock(&mutexSTREAM);
+  #define UNLOCK_STREAM   pthread_mutex_unlock(&mutexSTREAM);
+#else
+  #define LOCK_STREAM
+  #define UNLOCK_STREAM
+#endif
 
   #define LOCK_READALLGEOM     pthread_mutex_lock(&mutexREADALLGEOM);
   #define UNLOCK_READALLGEOM   pthread_mutex_unlock(&mutexREADALLGEOM);
@@ -53,6 +62,9 @@
 
 // blank out all preprocessing symbols if we arn't using threading
 #ifndef pp_THREAD
+
+  #define LOCK_STREAM
+  #define UNLOCK_STREAM
 
   #define LOCK_READALLGEOM
   #define UNLOCK_READALLGEOM
@@ -96,10 +108,16 @@ MT_EXTERN pthread_mutex_t mutexPART_LOAD;
 MT_EXTERN pthread_mutex_t mutexIBLANK;
 MT_EXTERN pthread_mutex_t mutexVOLLOAD;
 MT_EXTERN pthread_mutex_t mutexCOMPRESS;
+#ifdef pp_STREAM
+MT_EXTERN pthread_mutex_t mutexSTREAM;
+#endif
 #ifdef pp_SAMPLE
 MT_EXTERN pthread_mutex_t mutexSAMPLE;
 #endif
 
+#ifdef pp_STREAM
+MT_EXTERN pthread_t stream_thread_id;
+#endif
 MT_EXTERN pthread_t makeiblank_thread_id;
 MT_EXTERN pthread_t system_thread_id;
 MT_EXTERN pthread_t compress_thread_id;
@@ -108,6 +126,7 @@ MT_EXTERN pthread_t read_volsmoke_id;
 MT_EXTERN pthread_t triangles_id;
 MT_EXTERN pthread_t partthread_ids[MAX_THREADS];
 MT_EXTERN pthread_t generate_part_histogram_id;
+MT_EXTERN pthread_t *readbuffer_ids;
 #ifdef pp_SLICETHREAD
 MT_EXTERN pthread_t slicethread_ids[MAX_THREADS];
 #endif

@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#ifdef pp_OSX
+#include <unistd.h>
+#endif
 #include "glew.h"
 #include GLUT_H
 
@@ -57,6 +60,19 @@ void InitMisc(void){
 
   FREEMEMORY(plotiso);
   NewMemory((void **)&plotiso, MAXPLOT3DVARS*sizeof(int));
+
+  if(colorbar_vals==NULL){
+    NewMemory((void **)&colorbar_vals, nrgb*sizeof(float));
+  }
+  if(colorbar_exponents==NULL){
+    NewMemory((void **)&colorbar_exponents, nrgb*sizeof(int));
+  }
+  if(colorbar_labels==NULL){
+    NewMemory((void **)&colorbar_labels, nrgb*sizeof(char *));
+    for(i = 0; i<nrgb; i++){
+      NewMemory((void **)&colorbar_labels[i], 256);
+    }
+  }
 
   for(i=0;i<16;i++){
     if(i%5==0){
@@ -119,6 +135,21 @@ void InitMisc(void){
   mat_ambient2[3] = 1.0;
   mat_specular2[3] = 1.0;
 
+  glui_curve_default.use_foreground_color = 1;
+  glui_curve_default.color[0]           = 0;
+  glui_curve_default.color[1]           = 0;
+  glui_curve_default.color[2]           = 0;
+  glui_curve_default.linewidth          = 1.0;
+  glui_curve_default.vmin               = 0.0;
+  glui_curve_default.vmax               = 1.0;
+  glui_curve_default.curve_factor       = 1.0;
+  glui_curve_default.apply_curve_factor = 0;
+  glui_curve_default.update_avg         = 0;
+  glui_curve_default.vals               = NULL;
+  memcpy(&glui_curve, &glui_curve_default, sizeof(curvedata));
+  strcpy(glui_curve_default.scaled_label, "");
+  strcpy(glui_curve_default.scaled_unit,  "");
+
   ResetGluiView(startup_view_ini);
   UpdateShow();
 }
@@ -137,8 +168,10 @@ void ReadBoundINI(void){
     FREEMEMORY(fullfilename);
     return;
   }
-  PRINTF("%s", _("reading: "));
-  PRINTF("%s\n", fullfilename);
+  if(verbose_output==1){
+    PRINTF("%s", _("reading: "));
+    PRINTF("%s\n", fullfilename);
+  }
 
   while(!feof(stream)){
     char buffer[255], buffer2[255];
@@ -222,6 +255,9 @@ int SetupCase(char *filename){
     if(smv_streaminfo!=NULL){
       FCLOSE(smv_streaminfo);
     }
+
+  // read casename.smo (only OBST lines) to define a one mesh version of OBST's
+    ReadSMVOrig();
   }
   if(return_code==0&&trainer_mode==1){
     ShowGluiTrainer();
@@ -244,19 +280,23 @@ int SetupCase(char *filename){
   }
 
   /* initialize units */
-
+  INIT_PRINT_TIMER(timer_start);
   InitUnits();
   InitUnitDefs();
   SetUnitVis();
+  PRINT_TIMER(timer_start, "init units");
 
   CheckMemory;
   readini_output = 0;
   ReadIni(NULL);
   readini_output = 1;
+  PRINT_TIMER(timer_start, "init ReadINI");
 
   ReadBoundINI();
+  PRINT_TIMER(timer_start, "ReadBoundINI");
 
   UpdateRGBColors(COLORBAR_INDEX_NONE);
+  PRINT_TIMER(timer_start, "UpdateRGBColors");
 
   if(use_graphics==0){
     SliceBoundsSetupNoGraphics();
@@ -265,6 +305,7 @@ int SetupCase(char *filename){
   glui_defined = 1;
   InitTranslate(smokeview_bindir, tr_name);
 
+  PRINT_TIMER(timer_start, "InitTranslate");
   if(ntourinfo==0)SetupTour();
   InitRolloutList();
   GluiColorbarSetup(mainwindow_id);
@@ -273,13 +314,14 @@ int SetupCase(char *filename){
   GluiShooterSetup(mainwindow_id);
   GluiGeometrySetup(mainwindow_id);
   GluiClipSetup(mainwindow_id);
-  GluiWuiSetup(mainwindow_id);
   GluiLabelsSetup(mainwindow_id);
   GluiDeviceSetup(mainwindow_id);
+  GluiPlot2DSetup(mainwindow_id);
   GluiTourSetup(mainwindow_id);
   GluiAlertSetup(mainwindow_id);
   GluiStereoSetup(mainwindow_id);
   Glui3dSmokeSetup(mainwindow_id);
+  PRINT_TIMER(timer_start, "dialogs");
 
   UpdateLights(light_position0, light_position1);
 
@@ -299,6 +341,7 @@ int SetupCase(char *filename){
   }
   // initialize info header
   initialiseInfoHeader(&titleinfo, release_title, smv_githash, fds_githash, chidfilebase, fds_title);
+  PRINT_TIMER(timer_start, "glut routines");
   return 0;
 }
 
@@ -310,7 +353,7 @@ int GetScreenHeight(void){
   char command[1000], height_file[1000], *full_height_file, buffer[255];
   int screen_height=-1;
 
-  strcpy(command,"system_profiler SPDisplaysDataType | grep Resolution | awk '{print $4}' >& ");
+  strcpy(command,"system_profiler SPDisplaysDataType | grep Resolution | awk '{print $4}' | tail -1 >& ");
   strcpy(height_file, fdsprefix);
   strcat(height_file, ".hgt");
   full_height_file = GetFileName(smokeview_scratchdir, height_file, NOT_FORCE_IN_DIR);
@@ -327,11 +370,28 @@ int GetScreenHeight(void){
 }
 #endif
 
+/* ------------------ GetHomeDir ------------------------ */
+
+char *GetHomeDir(){
+  char *homedir;
+
+#ifdef WIN32
+  homedir = getenv("userprofile");
+#else
+  homedir = getenv("HOME");
+#endif
+
+  if(homedir==NULL){
+    NewMemory((void **)&homedir, 2);
+    strcpy(homedir, ".");
+  }
+  return homedir;
+}
+
 /* ------------------ InitStartupDirs ------------------------ */
 
 void InitStartupDirs(void){
   char *homedir = NULL;
-  int freehome = 0;
 
 // get smokeview bin directory from argv[0] which contains the full path of the smokeview binary
 
@@ -353,17 +413,7 @@ void InitStartupDirs(void){
 
   startup_pass = 2;
 
-#ifdef WIN32
-  homedir = getenv("userprofile");
-#else
-  homedir = getenv("HOME");
-#endif
-
-  if(homedir==NULL){
-    NewMemory((void **)&homedir, 2);
-    freehome = 1;
-    strcpy(homedir, ".");
-  }
+  homedir = GetHomeDir();
 
   NewMemory((void **)&smokeview_scratchdir, strlen(homedir)+strlen(dirseparator)+strlen(".smokeview")+strlen(dirseparator)+1);
   strcpy(smokeview_scratchdir, homedir);
@@ -379,13 +429,8 @@ void InitStartupDirs(void){
   strcat(smokeviewini_filename, dirseparator);
   strcat(smokeviewini_filename, "smokeview.ini");
 
-  PRINTF("Scratch directory: %s\n", smokeview_scratchdir);
-  PRINTF("    smokeview.ini: %s\n", smokeviewini_filename);
-
-  if(freehome==1){
-  // don't free homedir if it is a pointer defined by getenv
-    FREEMEMORY(homedir);
-  }
+  if(verbose_output==1)PRINTF("Scratch directory: %s\n", smokeview_scratchdir);
+  if(verbose_output==1)PRINTF("    smokeview.ini: %s\n", smokeviewini_filename);
 
 #ifdef pp_OSX
   monitor_screen_height = GetScreenHeight();
@@ -411,9 +456,13 @@ void SetupGlut(int argc, char **argv){
 #endif
   if(use_graphics==1){
     PRINTF("\n");
-    PRINTF("%s\n",_("initializing Glut"));
+    if(verbose_output==1)PRINTF("%s","initializing Glut");
     glutInit(&argc, argv);
-    PRINTF("%s\n",_("complete"));
+#ifdef pp_OSX
+    if(verbose_output==1)PRINTF("(%i/%i)", GetScreenHeight(), glutGet(GLUT_SCREEN_HEIGHT));
+#endif
+    if(verbose_output==1)PRINTF("\n%s\n",_("complete"));
+
   }
 #ifdef pp_OSX
   chdir(workingdir);
@@ -421,21 +470,34 @@ void SetupGlut(int argc, char **argv){
 
   if(use_graphics==1){
 #ifdef _DEBUG
-    PRINTF("%s",_("initializing Smokeview graphics window - "));
+    if(verbose_output==1)PRINTF("%s",_("initializing Smokeview graphics window - "));
 #endif
     glutInitWindowSize(screenWidth, screenHeight);
 #ifdef _DEBUG
-    PRINTF("%s\n",_("initialized"));
+    if(verbose_output==1)PRINTF("%s\n",_("initialized"));
 #endif
 
     max_screenWidth = glutGet(GLUT_SCREEN_WIDTH);
     max_screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
 #ifdef pp_OSX_HIGHRES
+    if(force_scale==0){
+      if(monitor_screen_height!=max_screenHeight)double_scale=1;
+      if(monitor_screen_height==max_screenHeight)double_scale=0;
+    }
     if(double_scale==1){
       max_screenWidth  *= 2;
       max_screenHeight *= 2;
     }
 #endif
+    font_ptr          = GLUT_BITMAP_HELVETICA_12;
+    colorbar_font_ptr = GLUT_BITMAP_HELVETICA_10;
+#ifdef pp_OSX_HIGHRES
+    if(double_scale==1){
+      font_ptr = (void *)GLUT_BITMAP_HELVETICA_24;
+      colorbar_font_ptr = (void *)GLUT_BITMAP_HELVETICA_20;
+    }
+#endif
+
     if(trainer_mode==1){
       int TRAINER_WIDTH;
       int TRAINER_HEIGHT;
@@ -492,7 +554,7 @@ int GetOpenGLVersion(char *version_label){
   }
   strcpy(version_label2,(char *)version_string);
   strcpy(version_label,version_label2);
-  for(i=0;i<strlen(version_label2);i++){
+  for(i=0;i<(int)strlen(version_label2);i++){
     if(version_label2[i]=='.')version_label2[i]=' ';
   }
   sscanf(version_label2,"%i %i %i",&major,&minor,&subminor);
@@ -510,7 +572,9 @@ void InitOpenGL(int option){
   int type;
   int err;
 
-  if(option==PRINT)PRINTF("%s\n",_("initializing OpenGL"));
+  if(option==PRINT){
+    if(verbose_output==1)PRINTF("%s\n", _("initializing OpenGL"));
+  }
 
   type = GLUT_RGB|GLUT_DEPTH;
   if(buffertype==GLUT_DOUBLE){
@@ -619,7 +683,9 @@ void InitOpenGL(int option){
     if(nblueshift<0)nblueshift=0;
   }
   opengldefined=1;
-  if(option==PRINT)PRINTF("%s\n\n",_("complete"));
+  if(option==PRINT){
+    if(verbose_output==1)PRINTF("%s\n\n", _("complete"));
+  }
 }
 
 /* ------------------ Set3DSmokeStartup ------------------------ */
@@ -1070,13 +1136,31 @@ void InitOpenGL(int option){
     }
     if(update_readiso_geom_wrapup == UPDATE_ISO_ALL_NOW)ReadIsoGeomWrapup(BACKGROUND);
     update_readiso_geom_wrapup = UPDATE_ISO_OFF;
+
+    int lastslice;
+    for(i = nvsliceinfo-1; i>=0; i--){
+      vslicedata *vslicei;
+
+      vslicei = vsliceinfo+i;
+      if(vslicei->autoload==1){
+        lastslice = i;
+        break;
+      }
+    }
     for(i = 0; i<nvsliceinfo; i++){
       vslicedata *vslicei;
 
       vslicei = vsliceinfo + i;
-      if(vslicei->autoload==0&&vslicei->loaded==1)ReadVSlice(i,ALL_FRAMES, NULL, UNLOAD,&errorcode);
+      if(vslicei->autoload==0&&vslicei->loaded==1){
+        ReadVSlice(i, ALL_FRAMES, NULL, UNLOAD, DEFER_SLICECOLOR, &errorcode);
+      }
       if(vslicei->autoload==1){
-        ReadVSlice(i,ALL_FRAMES, NULL, LOAD,&errorcode);
+        if(lastslice==i){
+          ReadVSlice(i,ALL_FRAMES, NULL, LOAD, SET_SLICECOLOR, &errorcode);
+        }
+        else{
+          ReadVSlice(i,ALL_FRAMES, NULL, LOAD, DEFER_SLICECOLOR, &errorcode);
+        }
       }
     }
     // note:  only slices that are NOT a part of a vector slice will be loaded here
@@ -1244,15 +1328,10 @@ void InitVars(void){
   }
 #endif
 
-#ifdef pp_SPECTRAL
-  GetBlackBodyColors(300.0,1200.0, blackbody_colors, 256);
-#endif
-
   beam_color[0] = 255 * foregroundcolor[0];
   beam_color[1] = 255 * foregroundcolor[1];
   beam_color[2] = 255 * foregroundcolor[2];
 
-  cos_geom_max_angle = cos(DEG2RAD*geom_max_angle);
   if(movie_filetype==WMV){
     strcpy(movie_ext, ".wmv");
   }
@@ -1272,21 +1351,8 @@ void InitVars(void){
   for(i=0;i<7;i++){
     b_state[i]=-1;
   }
-#ifdef pp_DEG
-  degC[0]=DEG_SYMBOL;
-  degC[1]='C';
-  degC[2]='\0';
-#else
-  strcpy(degC,"C");
-#endif
-
-#ifdef pp_DEG
-  degF[0]=DEG_SYMBOL;
-  degF[1]='F';
-  degF[2]='\0';
-#else
-  strcpy(degF,"F");
-#endif
+  strcpy((char *)degC,"C");
+  strcpy((char *)degF,"F");
 
   strcpy(default_fed_colorbar,"FED");
 
@@ -1426,8 +1492,6 @@ void InitVars(void){
   selected_avatar_tag=-1;
   select_device_color_ptr=NULL;
   avatar_types=NULL;
-  navatar_colors=0;
-  avatar_colors=NULL;
   view_from_selected_avatar=0;
   GetGitInfo(smv_githash,smv_gitdate);
   force_isometric=0;
@@ -1556,8 +1620,6 @@ void InitVars(void){
 
   slicefilenumber=0;
   nspr=0;
-  smoke3dframestep=1;
-  smoke3dframeskip=0;
   vectorskip=1;
   rotation_type=ROTATION_2AXIS;
   eyeview_level=1;
@@ -1576,10 +1638,6 @@ void InitVars(void){
   vis_onlythreshold=0, vis_threshold=0;
   activate_threshold=1;
   canshow_threshold=1;
-  settmin_p=0, settmin_b=0, settmin_s=0, settmin_z=0, settmin_i=0;
-  settmax_p=0, settmax_b=0, settmax_s=0, settmax_z=0, settmax_i=0;
-  tmin_p=1., tmin_b=1., tmin_s=1., tmin_z=1., tmin_i=1.;
-  tmax_p=0., tmax_b=0., tmax_s=0., tmax_z=0., tmax_i=0.;
   speedmax=0.0;
   hrrpuv_max_smv=1200.0;
   FlowDir=1,ClipDir=1;
@@ -1620,7 +1678,6 @@ void InitVars(void){
   n_devices=0;
 
   npartinfo=0, nsliceinfo=0, nvsliceinfo=0, npatch2=0, nplot3dinfo=0, npatchinfo=0;
-  nevac=0;
   nsmoke3dinfo=0;
   nisoinfo=0, niso_bounds=0;
   ntrnx=0, ntrny=0, ntrnz=0,npdim=0,nmeshes=0,clip_mesh=0;
@@ -1666,20 +1723,12 @@ void InitVars(void){
 #endif
   visBlocks=visBLOCKAsInput;
   visTransparentBlockage=0;
-  visBlocksSave=visBLOCKAsInput;
   blocklocation=BLOCKlocation_grid;
   ncadgeom=0;
   visFloor=0, visFrame=1;
   visNormalEditColors=1;
   visWalls=0, visGrid=0, visCeiling=0;
   visSensor=1, visSensorNorm=1, hasSensorNorm=0;
-  partframestep=1, sliceframestep=1, boundframestep=1;
-  partframeskip=0, sliceframeskip=0, boundframeskip=0;
-  boundzipstep=1, boundzipskip=0;
-  smoke3dzipstep=1, smoke3dzipskip=0;
-  isozipstep=1, isozipskip=0;
-  slicezipstep=1, slicezipskip=0;
-  evacframeskip=0, evacframestep=1;
   render_window_size=RenderWindow;
   RenderMenu(render_window_size);
   viewoption=0;
@@ -1695,7 +1744,6 @@ void InitVars(void){
   solidlinewidth=linewidth;
   visBLOCKold=-1;
 
-  nrgb=NRGB;
   nrgb_ini=0;
   nrgb2_ini=0;
   rgb_white=NRGB, rgb_yellow=NRGB+1, rgb_blue=NRGB+2, rgb_red=NRGB+3;
@@ -1708,13 +1756,6 @@ void InitVars(void){
   eyexfactor=0.5f, eyeyfactor=-0.9f, eyezfactor=0.5f;
 
   frameinterval=1.0;
-
-  use_tload_begin=0;
-  use_tload_end=0;
-  use_tload_skip=0;
-  tload_begin=0.0;
-  tload_end=1.0;
-  tload_skip=0;
 
   blockages_dirty=0;
   usetextures=0;
@@ -1762,35 +1803,15 @@ void InitVars(void){
   heatoffcolor[2]=0.0;
   heatoffcolor[3]=1.0;
 
-  backgroundbasecolor[0]=0.0;
-  backgroundbasecolor[1]=0.0;
-  backgroundbasecolor[2]=0.0;
-  backgroundbasecolor[3]=1.0;
-
   glui_backgroundbasecolor[0] = 255 * backgroundbasecolor[0];
   glui_backgroundbasecolor[1] = 255 * backgroundbasecolor[1];
   glui_backgroundbasecolor[2] = 255 * backgroundbasecolor[2];
   glui_backgroundbasecolor[3] = 255 * backgroundbasecolor[3];
 
-  backgroundcolor[0]=0.0;
-  backgroundcolor[1]=0.0;
-  backgroundcolor[2]=0.0;
-  backgroundcolor[3]=1.0;
-
-  foregroundbasecolor[0]=1.0;
-  foregroundbasecolor[1]=1.0;
-  foregroundbasecolor[2]=1.0;
-  foregroundbasecolor[3]=1.0;
-
   glui_foregroundbasecolor[0] = 255 * foregroundbasecolor[0];
   glui_foregroundbasecolor[1] = 255 * foregroundbasecolor[1];
   glui_foregroundbasecolor[2] = 255 * foregroundbasecolor[2];
   glui_foregroundbasecolor[3] = 255 * foregroundbasecolor[3];
-
-  foregroundcolor[0]=1.0;
-  foregroundcolor[1]=1.0;
-  foregroundcolor[2]=1.0;
-  foregroundcolor[3]=1.0;
 
   boundcolor[0]=0.5;
   boundcolor[1]=0.5;
@@ -1891,8 +1912,6 @@ void InitVars(void){
 
   cpuframe=0;
 
-  adjustalphaflag=3;
-
   highlight_block=-1, highlight_mesh=0, highlight_flag=2;
 
   visUSERticks=0;
@@ -1907,10 +1926,8 @@ void InitVars(void){
   do_threshold=0;
   updateindexcolors=0;
   show_path_knots=0;
-  keyframe_snap=0;
   tourrad_avatar=0.1;
   dirtycircletour=0;
-  iavatar_evac=0;
   viewtourfrompath=0,viewalltours=0,viewanytours=0,edittour=0;
   tour_usecurrent=0;
   visFDSticks=0;
@@ -1968,7 +1985,6 @@ void InitVars(void){
   smokecullflag=1;
   visMAINmenus=0;
 #ifdef pp_GPU
-  smoke3d_rthick=1.0;
   usegpu=0;
 #endif
   ijkbarmax=5;

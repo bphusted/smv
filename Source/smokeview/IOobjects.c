@@ -7,6 +7,7 @@
 #include "datadefs.h"
 #include "smokeviewvars.h"
 #include "IOobjects.h"
+#include "getdata.h"
 
 static float *cos_long = NULL, *sin_long = NULL, *cos_lat = NULL, *sin_lat = NULL;
 static float specular[4] = {0.4,0.4,0.4,1.0};
@@ -285,7 +286,21 @@ void RGBTest(void){
       rgb_test_xyz[0], rgb_test_xyz[1], rgb_test_xyz[2],
       rgb_test_rgb[0], rgb_test_rgb[1], rgb_test_rgb[2]);
   }
-  use_lighting = 1;
+  use_lighting = 0;
+}
+
+/* ----------------------- HaveSmokeSensor ----------------------------- */
+
+int HaveSmokeSensor(void){
+  int i;
+
+  for(i = 0; i<ndeviceinfo; i++){
+    devicedata *devicei;
+
+    devicei = deviceinfo+i;
+    if(STRCMP(devicei->object->label, "smokesensor")==0)return 1;
+  }
+  return 0;
 }
 
 /* ----------------------- GetDeviceScreenCoords ----------------------------- */
@@ -571,8 +586,8 @@ void OutputDeviceVal(devicedata *devicei){
     }
     strcpy(label, "");
     sprintf(valuelabel, "%.1f",val);
-    if(showdevice_id==1&&strcmp(devicei->label,"null")!=0&&strlen(devicei->label)>0){
-      strcat(label, devicei->label);
+    if(showdevice_id==1&&strcmp(devicei->deviceID,"null")!=0&&strlen(devicei->deviceID)>0){
+      strcat(label, devicei->deviceID);
       strcat(label, ": ");
     }
     if(showdevice_type == 1){
@@ -1749,7 +1764,7 @@ void DrawCuboid(float *origin, float verts[8][3], unsigned char *rgbcolor, int d
   if(origin!=NULL)glPopMatrix();
 }
 
-/* ----------------------- DrawBox ----------------------------- */
+/* ----------------------- DrawBox2 ----------------------------- */
 
 void DrawBox2(float *origin, float *dxyz, float *color, int draw_outline){
   if(origin!=NULL){
@@ -1806,6 +1821,7 @@ void DrawBox2(float *origin, float *dxyz, float *color, int draw_outline){
     glEnd();
   }
   else{
+    glLineWidth(4.0);
     glBegin(GL_LINES);
     if(color!=NULL)glColor3fv(color);
     glVertex3f(0.0, 0.0,     0.0);     glVertex3f(dxyz[0], 0.0,     0.0);
@@ -3267,282 +3283,6 @@ void GetGlobalDeviceBounds(int type){
   }
 }
 
-  /* ------------------ DrawPlot ------------------------ */
-
-void DrawPlot(int option, float *xyz0, float factor, float *x, float *z, int n,
-              float highlight_x, float highlight_y, int valid,
-              float global_valmin, float global_valmax, char *quantity, char *unit){
-  float xmin, xmax, zmin, zmax, dx, dz;
-  float xscale=1.0, zscale=1.0;
-  float origin[3];
-  int i;
-  char cvalmin[20], cvalmax[20], cval[20];
-  int ndigits = 3;
-
-  origin[0] = xyz0[0];
-  origin[1] = xyz0[1];
-  origin[2] = xyz0[2];
-
-  xmin = x[0];
-  xmax = xmin;
-  zmin = z[0];
-  zmax = zmin;
-  for(i = 1; i<n; i++){
-    xmin = MIN(xmin, x[i]);
-    xmax = MAX(xmax, x[i]);
-    zmin = MIN(zmin, z[i]);
-    zmax = MAX(zmax, z[i]);
-  }
-  if(xmax>xmin)xscale = 1.0/(xmax-xmin);
-  if(global_valmin<global_valmax){
-    zmin = global_valmin;
-    zmax = global_valmax;
-  }
-  if(zmax>zmin)zscale = 1.0/(zmax-zmin);
-  Float2String(cvalmin, zmin, ndigits, force_fixedpoint);
-  Float2String(cvalmax, zmax, ndigits, force_fixedpoint);
-  Float2String(cval, highlight_y, ndigits, force_fixedpoint);
-
-  dx = (xmax - xmin)/20.0;
-  dz = (zmax - zmin)/20.0;
-
-  glPushMatrix();
-  glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-  glTranslatef(-xbar0, -ybar0, -zbar0);
-  glTranslatef(device_xyz_offset[0], device_xyz_offset[1], device_xyz_offset[2]);
-
-  glTranslatef(origin[0], origin[1], origin[2]);
-
-  float az = camera_current->az_elev[0];
-  glRotatef(-az, 0.0,0.0,1.0);
-
-  float elev = camera_current->az_elev[1];
-  glRotatef(-elev, 1.0, 0.0, 0.0);
-
-  glScalef(factor, factor, factor);
-  glScalef(xscale, 1.0, zscale);
-  glTranslatef(-xmin, 0.0, -zmin);
-  glColor3fv(foregroundcolor);
-  glLineWidth(device_plot_line_width);
-  glBegin(GL_LINES);
-  for(i = 0; i<n-1; i++){
-    glVertex3f(x[i],   0.0, z[i]);
-    glVertex3f(x[i+1], 0.0, z[i+1]);
-  }
-
-  if(option == PLOT_ALL){
-    glVertex3f(xmin - dx, 0.0, zmin - dz);
-    glVertex3f(xmax + dx, 0.0, zmin - dz);
-
-    glVertex3f(xmax + dx, 0.0, zmin - dz);
-    glVertex3f(xmax + dx, 0.0, zmax + dz);
-
-    glVertex3f(xmax + dx, 0.0, zmax + dz);
-    glVertex3f(xmin - dx, 0.0, zmax + dz);
-
-    glVertex3f(xmin - dx, 0.0, zmax + dz);
-    glVertex3f(xmin - dx, 0.0, zmin - dz);
-
-    glVertex3f(xmax,      0.0, zmax);
-    glVertex3f(xmax + dx, 0.0, zmax);
-
-    glVertex3f(xmax,      0.0, zmin);
-    glVertex3f(xmax + dx, 0.0, zmin);
-  }
-  glEnd();
-
-  float dfont = (float)GetFontHeight()/((float)screenHeight*zscale*factor*SCALE2SMV(1.0));
-
-  if(option == PLOT_ALL && showdevice_labels==1){
-    float zmid;
-
-    zmid = (zmax-2.0*dfont+zmin)/2.0;
-    Output3Text(foregroundcolor, xmax + 2.0*dx, 0.0, zmin-0.5*dfont, cvalmin);
-    Output3Text(foregroundcolor, xmax + 2.0*dx, 0.0, zmax-0.5*dfont, cvalmax);
-    Output3Text(foregroundcolor, xmax + 2.0*dx, 0.0, zmid-0.5*dfont, cval);
-    Output3Text(foregroundcolor, xmax + 2.0*dx, 0.0, zmax-1.6*dfont, quantity);
-    Output3Text(foregroundcolor, xmax + 2.0*dx, 0.0, zmax-2.7*dfont, unit);
-  }
-
-  if(valid==1){
-    glColor3f(1.0,0.0,0.0);
-    glPointSize(device_plot_point_size);
-    glBegin(GL_POINTS);
-    glVertex3f(highlight_x, 0.0, highlight_y);
-    glEnd();
-  }
-
-  glPopMatrix();
-}
-
-/* ------------------ DeviceTimeAverage ------------------------ */
-
-void TimeAverageDeviceData(float *times, float *vals, float *vals_avg, int nvals){
-  int i;
-
-  if(nvals<=0)return;
-  if(times[nvals-1]<=device_time_average){
-    float sum = 0.0;
-
-    for(i = 0; i<nvals; i++){
-      sum += vals[i];
-    }
-    sum /= (float)nvals;
-    for(i = 0; i<nvals; i++){
-      vals_avg[i] = sum;
-    }
-    return;
-  }
-  for(i = 0; i<nvals; i++){
-    float tlower, tupper;
-    int ilower, iupper;
-    float sum;
-    int j;
-    int count;
-
-    if(times[i]>=device_time_average/2.0&&times[i]<=times[nvals-1]-device_time_average/2.0){
-      tlower = times[i]-device_time_average/2.0;
-      tupper = tlower+device_time_average;
-    }
-    else if(times[i]<=device_time_average/2.0){
-      tlower = times[0];
-      tupper = tlower+device_time_average;
-    }
-    else{
-      tupper = times[nvals-1];
-      tlower = tupper-device_time_average;
-    }
-    for(j = i; j>=0; j--){
-      ilower = j;
-      if(times[j]<=tlower)break;
-    }
-    for(j = i; j<nvals; j++){
-      iupper = j;
-      if(times[j]>=tupper)break;
-    }
-    sum = 0.0;
-    count = 0;
-    for(j = ilower; j<=iupper;j++){
-      if(times[j]>=tlower&&times[j]<=tupper){
-        sum += vals[j];
-        count++;
-      }
-    }
-    if(count>0){
-      vals_avg[i] = sum/(float)(count);
-    }
-    else{
-      vals_avg[i] = vals[i];
-    }
-  }
-}
-
-/* ----------------------- DrawDevicePlots ----------------------------- */
-
-void DrawDevicePlots(void){
-  int i;
-
-  if(showdevice_plot!=DEVICE_PLOT_HIDDEN){
-    for(i = 0; i<ndeviceinfo; i++){
-      devicedata *devicei;
-
-      devicei = deviceinfo+i;
-      if(showdevice_plot==DEVICE_PLOT_SHOW_SELECTED&&devicei->selected==0)continue;
-      if(devicei->times==NULL||devicei->vals==NULL)continue;
-      if(devicei->update_avg==1){
-        devicei->update_avg = 0;
-        TimeAverageDeviceData(devicei->times, devicei->vals_orig, devicei->vals, devicei->nvals);
-      }
-      if(devicei->nvals>1&&devicei->type2==devicetypes_index){
-        int valid;
-        float highlight_time = 0.0, highlight_val = 0.0;
-
-        valid = 0;
-        if(global_times!=NULL){
-          highlight_time = global_times[itimes];
-          highlight_val = GetDeviceVal(global_times[itimes], devicei, &valid);
-        }
-        if(devicei->global_valmin>devicei->global_valmax){
-          GetGlobalDeviceBounds(devicei->type2);
-        }
-        DrawPlot(PLOT_ALL, devicei->xyz, device_plot_factor, devicei->times, devicei->vals, devicei->nvals,
-                 highlight_time, highlight_val, valid, devicei->global_valmin, devicei->global_valmax,
-                 devicei->quantity, devicei->unit
-        );
-      }
-    }
-  }
-  if(show_hrrpuv_plot==1&&hrrinfo!=NULL){
-    float xyz[] = {0.0,0.0,0.0};
-    char quantity[] = "HRR", unit[] = "kW";
-    int valid = 1;
-    float highlight_time = 0.0, highlight_val = 0.0;
-
-    highlight_time = global_times[itimes];
-    highlight_val = hrrinfo->hrrval[hrrinfo->itime];
-
-    if(hrrinfo->update_avg==1){
-      hrrinfo->update_avg = 0;
-      TimeAverageDeviceData(hrrinfo->times, hrrinfo->hrrval_orig, hrrinfo->hrrval, hrrinfo->ntimes);
-    }
-    DrawPlot(PLOT_ALL, xyz, device_plot_factor, hrrinfo->times, hrrinfo->hrrval, hrrinfo->ntimes,
-             highlight_time, highlight_val, valid, hrr_valmin, hrr_valmax, quantity, unit);
-  }
-}
-
-/* ----------------------- DrawTreePlot ----------------------------- */
-
-void DrawTreePlot(int first, int n){
-  int j;
-  int drawplot = 0;
-  float *xyz = NULL;
-
-  for(j=0;j<n;j++){
-    devicedata *devicei;
-    int valid, option;
-    float highlight_time = 0.0, highlight_val = 0.0;
-
-    devicei = deviceinfo_sortedz[first+j];
-    if(devicei->object->visible==0)continue;
-    if(devicei->times==NULL||devicei->vals==NULL)continue;
-    if(devicei->nvals<=1||devicei->type2!=devicetypes_index)continue;
-    drawplot++;
-
-    if(drawplot==1){
-      option = PLOT_ALL;
-      xyz = devicei->xyz;
-    }
-    else{
-      option = PLOT_ONLY_DATA;
-    }
-    valid = 0;
-    if(global_times!=NULL){
-      highlight_time = global_times[itimes];
-      highlight_val = GetDeviceVal(global_times[itimes], devicei, &valid);
-    }
-    if(devicei->global_valmin>devicei->global_valmax){
-      GetGlobalDeviceBounds(devicei->type2);
-    }
-    DrawPlot(option, xyz, device_plot_factor, devicei->times, devicei->vals, devicei->nvals,
-             highlight_time, highlight_val, valid, devicei->global_valmin, devicei->global_valmax,
-             devicei->quantity, devicei->unit
-    );
-  }
-}
-
-/* ----------------------- DrawDevicePlots ----------------------------- */
-
-void DrawTreeDevicePlots(void){
-  int i;
-
-  for(i = 0; i<nztreedeviceinfo; i++){
-    ztreedevicedata *ztreei;
-
-    ztreei = ztreedeviceinfo+i;
-    DrawTreePlot(ztreei->first, ztreei->n);
-  }
-}
-
 /* ----------------------- DrawDevices ----------------------------- */
 
 void DrawDevices(int mode){
@@ -3967,8 +3707,8 @@ void DrawDevices(int mode){
     if(devicei->object->visible == 0 || (devicei->prop != NULL&&devicei->prop->smv_object->visible == 0))continue;
     if(devicei->plane_surface != NULL)continue;
     if(isZoneFireModel == 1 && STRCMP(devicei->object->label, "target") == 0 && visSensor == 0)continue;
-    if(devicei->in_zone_csv == 1&&strcmp(devicei->label,"TARGET")!=0)continue;
-    if(isZoneFireModel == 1 && STRCMP(devicei->label, "TIME") == 0)continue;
+    if(devicei->in_zone_csv == 1&&strcmp(devicei->deviceID,"TARGET")!=0)continue;
+    if(isZoneFireModel == 1 && STRCMP(devicei->deviceID, "TIME") == 0)continue;
     save_use_displaylist = devicei->object->use_displaylist;
     tagval = ii + 1;
     if(select_device == 1 && show_mode == SELECTOBJECT){
@@ -4141,7 +3881,7 @@ void DrawDevices(int mode){
 /* ----------------------- DrawSmvObject ----------------------------- */
 
 void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int recurse_level, float *valrgb, int vis_override){
-  sv_object_frame *framei, *frame0;
+  sv_object_frame *framei;
   tokendata *toknext;
   unsigned char *rgbptr_local;
   unsigned char rgbcolor[4];
@@ -4160,7 +3900,6 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
   if(object == missing_device&&show_missing_objects == 0)return;
   if(iframe_local > object->nframes - 1 || iframe_local < 0)iframe_local = 0;
   framei = object->obj_frames[iframe_local];
-  frame0 = object->obj_frames[0];
 
   ASSERT(framei->error == 0 || framei->error == 1);
 
@@ -4197,22 +3936,6 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
     int i;
 
     // copy time dependent evac data
-
-    if(prop->draw_evac == 1 && frame0->nevac_tokens > 0){
-      tokendata *tok00;
-
-      tok00 = frame0->tokens;
-      for(i = 0;i < NEVAC_TOKENS;i++){
-        tokendata *toki, *tok0;
-        int itok;
-
-        tok0 = frame0->evac_tokens[i];
-        if(tok0 == NULL)continue;
-        itok = tok0 - tok00;
-        toki = framei->tokens + itok;
-        toki->var = tok0->evac_var;
-      }
-    }
 
     // copy static data from PROP line
 
@@ -4251,11 +3974,9 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
       glPopMatrix();
       return;
     }
-    else{
-      framei->use_bw = setbw;
-      glDeleteLists(framei->display_list_ID, 1);
-      framei->display_list_ID = -1;
-    }
+    framei->use_bw = setbw;
+    glDeleteLists(framei->display_list_ID, 1);
+    framei->display_list_ID = -1;
   }
 
   if(object->use_displaylist == 1){
@@ -4852,14 +4573,12 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
     case SV_SETRGB:
     case SV_SETRGBVAL:
       if(toki->command == SV_SETCOLOR){
-        FILE_SIZE lenstring;
         int iarg[3];
         char *stringptr;
 
         stringptr = (toki - 1)->string;
 
-        lenstring = (FILE_SIZE)strlen(stringptr);
-        FORTcolor2rgb(iarg, stringptr, lenstring);
+        color2rgb(iarg, stringptr);
         arg[0] = iarg[0];
         arg[1] = iarg[1];
         arg[2] = iarg[2];
@@ -5860,8 +5579,6 @@ sv_object *InitSmvObject1(char *label, char *commands, int visible){
   framei->error=0;
   framei->use_bw=setbw;
   framei->ntextures=0;
-  framei->nevac_tokens=0;
-
   return object;
 }
 
@@ -5894,7 +5611,6 @@ sv_object *InitSmvObject2(char *label, char *commandsoff, char *commandson, int 
       framei->display_list_ID=-1;
       framei->use_bw=setbw;
       framei->ntextures=0;
-      framei->nevac_tokens=0;
     }
     else{
       NewMemory((void **)&framei,sizeof(sv_object_frame));
@@ -5905,7 +5621,6 @@ sv_object *InitSmvObject2(char *label, char *commandsoff, char *commandson, int 
       framei->display_list_ID=-1;
       framei->use_bw=setbw;
       framei->ntextures=0;
-      framei->nevac_tokens=0;
     }
   }
   return object;
@@ -5963,7 +5678,7 @@ devicedata *GetDeviceFromLabel(char *label,int index){
     devicedata *devicei;
 
     devicei = deviceinfo + i;
-    if(STRCMP(devicei->label,label)==0)return devicei;
+    if(STRCMP(devicei->deviceID,label)==0)return devicei;
   }
   return NULL;
 }
@@ -5996,7 +5711,6 @@ void RewindDeviceFile(FILE *stream){
   if(found_data==0){
     fprintf(stderr,"*** Warning //DATA keyword not found in spreadsheet file\n");
   }
-  return;
 }
 
 /* ----------------------- GetNDevices ----------------------------- */
@@ -6342,7 +6056,7 @@ void SetupZoneDevs(void){
     FILE *stream;
     char *file;
     int nrows, ncols, buffer_len,ntokens;
-    char *buffer=NULL,**devclabels=NULL;
+    char *buffer=NULL, *buffer_temp, **devclabels=NULL;
     zonedata *zonei;
     int j;
 
@@ -6353,6 +6067,7 @@ void SetupZoneDevs(void){
     stream=fopen(file,"r");
     if(stream==NULL)continue;
     buffer_len=GetRowCols(stream,&nrows,&ncols);
+    buffer_len += ncols;
     if(nrows<=0||ncols<=0||buffer_len<=0){
       fclose(stream);
       continue;
@@ -6360,11 +6075,12 @@ void SetupZoneDevs(void){
     buffer_len+=10;
     rewind(stream);
 
-    NewMemory((void **)&buffer,buffer_len);
-    NewMemory((void **)&devclabels,ncols*sizeof(char *));
+    NewMemory((void **)&buffer,      buffer_len);
+    NewMemory((void **)&buffer_temp, buffer_len);
+    NewMemory((void **)&devclabels,  ncols*sizeof(char *));
     fgets(buffer,buffer_len,stream);
     fgets(buffer,buffer_len,stream);
-    ParseCSV(buffer,devclabels,&ntokens);
+    ParseCSV(buffer, buffer_temp, devclabels, &ntokens);
     for(j=0;j<ntokens;j++){
       devicedata *devi;
 
@@ -6388,7 +6104,7 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
   float *vals=NULL;
   int *valids=NULL;
   int i;
-  char *buffer, *buffer2;
+  char *buffer, *buffer2, *buffer_temp;
   char **devcunits=NULL, **devclabels=NULL;
   devicedata **devices=NULL;
   int ntokens;
@@ -6432,6 +6148,7 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
   if(stream==NULL)return;
   RewindDeviceFile(stream);
   buffer_len=GetRowCols(stream,&nrows,&ncols);
+  buffer_len += (ncols+1);
   if(nrows<=0||ncols<=0||buffer_len<=0){
     fclose(stream);
     return;
@@ -6439,27 +6156,28 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
   buffer_len+=10;
   RewindDeviceFile(stream);
 
-  NewMemory((void **)&buffer,buffer_len);
-  NewMemory((void **)&buffer2,buffer_len);
-  NewMemory((void **)&vals,ncols*sizeof(float));
-  NewMemory((void **)&valids,ncols*sizeof(int));
-  NewMemory((void **)&devcunits,ncols*sizeof(char *));
-  NewMemory((void **)&devclabels,ncols*sizeof(char *));
-  NewMemory((void **)&devices,ncols*sizeof(devicedata *));
+  NewMemory((void **)&buffer,      buffer_len);
+  NewMemory((void **)&buffer2,     buffer_len);
+  NewMemory((void **)&buffer_temp, buffer_len);
+  NewMemory((void **)&vals,        ncols*sizeof(float));
+  NewMemory((void **)&valids,      ncols*sizeof(int));
+  NewMemory((void **)&devcunits,   ncols*sizeof(char *));
+  NewMemory((void **)&devclabels,  ncols*sizeof(char *));
+  NewMemory((void **)&devices,     ncols*sizeof(devicedata *));
 
   for(i = 0; i<ncols; i++){
     devices[i] = NULL;
   }
 
-  fgets(buffer,buffer_len,stream);
-  ParseCSV(buffer,devcunits,&ntokens);
+  fgets(buffer, buffer_len, stream);
+  ParseCSV(buffer, buffer_temp, devcunits, &ntokens);
   for(i=0;i<ntokens;i++){
     TrimBack(devcunits[i]);
     devcunits[i]=TrimFront(devcunits[i]);
   }
 
-  fgets(buffer2,buffer_len,stream);
-  ParseCSV(buffer2,devclabels,&ntokens);
+  fgets(buffer2, buffer_len, stream);
+  ParseCSV(buffer2, buffer_temp, devclabels, &ntokens);
   for(i=0;i<ntokens;i++){
     TrimBack(devclabels[i]);
     devclabels[i]=TrimFront(devclabels[i]);
@@ -6484,16 +6202,7 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
     NewMemory((void **)&devicei->valids,nrows*sizeof(int));
     devicei->times=times_local;
     NewMemory((void **)&devicei->vals_orig,nrows*sizeof(float));
-#ifdef pp_DEG
-    if(strcmp(devcunits[i],"C")==0){
-      strcpy(devicei->unit,degC);
-    }
-    else{
-      strcpy(devicei->unit,devcunits[i]);
-    }
-#else
     strcpy(devicei->unit,devcunits[i]);
-#endif
     devicei->nvals=nrows-2;
   }
 
@@ -6609,14 +6318,14 @@ int IsDupDeviceLabel(int index, int direction){
     i2=ndeviceinfo;
   }
   dev_index = deviceinfo + index;
-  if(index<0||index>=ndeviceinfo||STRCMP(dev_index->label,"null")==0||dev_index->in_devc_csv==0)return 0;
+  if(index<0||index>=ndeviceinfo||STRCMP(dev_index->deviceID,"null")==0||dev_index->in_devc_csv==0)return 0;
 
   for(i=i1;i<i2;i++){
     devicedata *devi;
 
     devi = deviceinfo + i;
-    if(STRCMP(devi->label,"null")==0)continue;
-    if(STRCMP(dev_index->label,devi->label)==0)return 1;
+    if(STRCMP(devi->deviceID, "null")==0)continue;
+    if(STRCMP(dev_index->deviceID,devi->deviceID)==0)return 1;
   }
   return 0;
 }
@@ -6716,6 +6425,9 @@ void DeviceData2WindRose(int nr, int ntheta){
           case 2:
             if(vdev!=NULL)uvals = vdev->vals;
             if(wdev!=NULL)vvals = wdev->vals;
+            break;
+          default:
+            ASSERT(FFALSE);
             break;
           }
           if(udev!=NULL)times = udev->times;
@@ -6935,7 +6647,7 @@ void SetupDeviceData(void){
     devicedata *devi;
 
     devi = deviceinfo + i;
-    if(STRCMP(devi->label,"null")==0)continue;
+    if(STRCMP(devi->deviceID,"null")==0)continue;
     if(IsDupDeviceLabel(i,AFTER)==1){
       is_dup=1;
       break;
@@ -6949,9 +6661,9 @@ void SetupDeviceData(void){
       devicedata *devi;
 
       devi = deviceinfo + ii;
-      if(STRCMP(devi->label,"null")==0)continue;
+      if(STRCMP(devi->deviceID,"null")==0)continue;
       if(IsDupDeviceLabel(ii,BEFORE)==0&& IsDupDeviceLabel(ii,AFTER)==1){
-        fprintf(stderr," %s,",devi->label);
+        fprintf(stderr," %s,",devi->deviceID);
       }
     }
     fprintf(stderr," found in %s\n",fds_filein);
@@ -7038,6 +6750,7 @@ void SetupDeviceData(void){
     }
   }
 
+  //setup devicetypes
   if(ndeviceinfo>0){
     ndevicetypes=0;
     FREEMEMORY(devicetypes);
@@ -7095,7 +6808,7 @@ void SetupDeviceData(void){
   SetupZTreeDevices();
   UpdateColorDevices();
 
-  DeviceData2WindRose(nr_windrose,ntheta_windrose);
+  if(viswindrose==1)DeviceData2WindRose(nr_windrose,ntheta_windrose);
 
   FREEMEMORY(vals);
   FREEMEMORY(valids);
@@ -7163,7 +6876,7 @@ int ReadObjectDefs(char *file){
 
   stream=fopen(file,"r");
   if(stream==NULL)return 0;
-  PRINTF("reading %s ",file);
+  if(verbose_output==1)PRINTF("reading %s ", file);
 
   firstdef=-1;
   buffer_ptr=NULL;
@@ -7248,8 +6961,6 @@ int ReadObjectDefs(char *file){
       current_frame->display_list_ID=-1;
       current_frame->use_bw=setbw;
       current_frame->device=current_object;
-      current_frame->nevac_tokens=0;
-
       current_object->nframes++;
 
       firstdef=0;
@@ -7326,8 +7037,10 @@ int ReadObjectDefs(char *file){
       objecti=objecti->next;
     }
   }
-  PRINTF("- complete");
-  PRINTF("\n\n");
+  if(verbose_output==1){
+    PRINTF("- complete");
+    PRINTF("\n\n");
+  }
   return ndevices;
 }
 
@@ -7377,7 +7090,7 @@ void UpdateDeviceTextures(void){
     devicei = deviceinfo + i;
 
     if(devicei->object==NULL){
-      devicei->object = GetSmvObjectType(devicei->label,missing_device);
+      devicei->object = GetSmvObjectType(devicei->deviceID,missing_device);
     }
   }
 
@@ -7514,7 +7227,6 @@ void InitObjectDefs(void){
   char com_buffer[1024];
   char com_buffer2[1024];
   char objectfile[1024];
-  int i;
 
   svofile_exists = 0;
 
@@ -7573,55 +7285,6 @@ void InitObjectDefs(void){
     object_defs[1] = heat_detector_object_backup;
     object_defs[2] = sprinkler_upright_object_backup;
     object_defs[3] = smoke_detector_object_backup;
-  }
-
-  for(i=0;i<navatar_types;i++){
-    sv_object_frame *obj_frame;
-    int n;
-    tokendata **evac_tokens,*evac_token;
-
-    CheckMemory;
-
-    obj_frame=avatar_types[i]->obj_frames[0];
-    evac_tokens = obj_frame->evac_tokens;
-
-    n=0;
-
-    evac_token= GetTokenPtr("W",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("D",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("H1",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("SX",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("SY",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("SZ",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("R",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("G",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("B",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("HX",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("HY",obj_frame);
-    evac_tokens[n++]=evac_token;
-
-    evac_token= GetTokenPtr("HZ",obj_frame);
-    evac_tokens[n++]=evac_token;
   }
 }
 
@@ -7835,12 +7498,6 @@ void UpdatePartClassDepend(partclassdata *partclassi){
     sv_object_frame *obj_frame;
     int nvar;
 
-    if(partclassi->kind==HUMANS){
-      partclassi->prop->draw_evac=1;
-    }
-    else{
-      partclassi->prop->draw_evac=0;
-    }
     obj_frame=partclassi->prop->smv_object->obj_frames[0];
     for(i=0;i<partclassi->nvars_dep-3;i++){
       char *var;

@@ -1,3 +1,3 @@
 #!/bin/bash
-rm -f *.o
-make -f ../Makefile gnu_linux_64
+rm -f *.o *.mod
+make -f ../Makefile gnu_linux_64 -j 4

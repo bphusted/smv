@@ -1,7 +1,9 @@
 .SUFFIXES: .c .cpp .o .obj
 
-COMPILER=icc
-COMPILER2=icc
+#COMPILER=icx
+#COMPILER2=icx
+COMPILER=icx
+COMPILER2=icx
 CC=${COMPILER}
 CPP=${COMPILER2}
 
@@ -48,7 +50,7 @@ gnu_osx_64: CFLAGS=-m64 -D pp_OSX $(NOCLOSE) -fpermissive
 gnu_osx_64: $(GLUI_OBJS)
 	ar rcs libglui.a $(GLUI_OBJS)
 
-intel_win_64: CFLAGS= $(NOCLOSE) 
+intel_win_64: CFLAGS= $(NOCLOSE) /Wno-unused_parameter
 intel_win_64 : $(GLUI_OBJSWIN)
 	lib $(GLUI_OBJSWIN) -OUT:libglui.lib 
 

@@ -8,6 +8,7 @@
 
 #include "smokeviewvars.h"
 #include "IOvolsmoke.h"
+#include "glui_motion.h"
 
 #ifdef pp_LUA
 #include "lua_api.h"
@@ -65,6 +66,13 @@ void NextXIndex(int inc,int flag){
       first=0;
       if(flag==1)iplotx_all=nplotx_all-1;
       if(flag==-1)iplotx_all=0;
+      if(clip_commandline==1){
+        float value;
+
+        value = clipinfo.xmin;
+        if(special_modifier==1)value = clipinfo.xmax;
+        iplotx_all = GetGridIndex(value, XDIR, plotx_all, nplotx_all);
+      }
       if(flag==0)iplotx_all+=inc;
     }
     else{
@@ -72,7 +80,7 @@ void NextXIndex(int inc,int flag){
     }
     if(iplotx_all<0)iplotx_all=nplotx_all-1;
     if(iplotx_all>nplotx_all-1)iplotx_all=0;
-    if(visGrid!=noGridnoProbe)return;
+    if(visGrid!=NOGRID_NOPROBE)return;
     if(plotstate==DYNAMIC_PLOTS){
       for(i=0;i<nsliceinfo;i++){
         slicedata *slicei;
@@ -120,6 +128,13 @@ void NextYIndex(int inc,int flag){
       first=0;
       if(flag==1)iploty_all=nploty_all-1;
       if(flag==-1)iploty_all=0;
+      if(clip_commandline==1){
+        float value;
+
+        value = clipinfo.ymin;
+        if(special_modifier==1)value = clipinfo.ymax;
+        iploty_all = GetGridIndex(value, YDIR, ploty_all, nploty_all);
+      }
       if(flag==0)iploty_all+=inc;
     }
     else{
@@ -127,7 +142,7 @@ void NextYIndex(int inc,int flag){
     }
     if(iploty_all<0)iploty_all=nploty_all-1;
     if(iploty_all>nploty_all-1)iploty_all=0;
-    if(visGrid!=noGridnoProbe)return;
+    if(visGrid!=NOGRID_NOPROBE)return;
     if(plotstate==DYNAMIC_PLOTS){
       for(i=0;i<nsliceinfo;i++){
         slicedata *slicei;
@@ -175,6 +190,13 @@ void NextZIndex(int inc,int flag){
       first=0;
       if(flag==1)iplotz_all=nplotz_all-1;
       if(flag==-1)iplotz_all=0;
+      if(clip_commandline==1){
+        float value;
+
+        value = clipinfo.zmin;
+        if(special_modifier==1)value = clipinfo.zmax;
+        iplotz_all = GetGridIndex(value, ZDIR, plotz_all, nplotz_all);
+      }
       if(flag==0)iplotz_all+=inc;
     }
     else{
@@ -182,7 +204,7 @@ void NextZIndex(int inc,int flag){
     }
     if(iplotz_all<0)iplotz_all=nplotz_all-1;
     if(iplotz_all>nplotz_all-1)iplotz_all=0;
-    if(visGrid!=noGridnoProbe)return;
+    if(visGrid!=NOGRID_NOPROBE)return;
     if(plotstate==DYNAMIC_PLOTS){
       for(i=0;i<nsliceinfo;i++){
         slicedata *slicei;
@@ -237,7 +259,7 @@ void WindowStatus(int state){
 
 /* ------------------ MouseEditColorbar ------------------------ */
 
-void MouseEditColorbar(int button, int state, int x, int y){
+void MouseEditColorbar(int x, int y){
   int val;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -295,7 +317,7 @@ void MouseEditColorbar(int button, int state, int x, int y){
 
 /* ------------------ MouseEditTour ------------------------ */
 
-void MouseEditTour(int button, int state, int x, int y){
+void MouseEditTour(int x, int y){
   int val, val1;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -350,7 +372,7 @@ void MouseEditTour(int button, int state, int x, int y){
 
 /* ------------------ MouseEditBlockage ------------------------ */
 
-void MouseEditBlockage(int button, int state, int x, int y){
+void MouseEditBlockage(int x, int y){
   int val, val1;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -439,7 +461,7 @@ void MouseEditBlockage(int button, int state, int x, int y){
 
 /* ------------------ MouseSelectDevice ------------------------ */
 
-void MouseSelectDevice(int button, int state, int x, int y){
+void MouseSelectDevice(int x, int y){
   int val;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -487,7 +509,7 @@ void MouseSelectDevice(int button, int state, int x, int y){
 
 /* ------------------ MouseSelectAvatar ------------------------ */
 
-void MouseSelectAvatar(int button, int state, int x, int y){
+void MouseSelectAvatar(int x, int y){
   int val;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -523,7 +545,7 @@ void MouseSelectAvatar(int button, int state, int x, int y){
 
 /* ------------------ MouseSelectGeom ------------------------ */
 
-void MouseSelectGeom(int button, int state, int x, int y){
+void MouseSelectGeom(int x, int y){
   int val;
   int mouse_x, mouse_y;
   GLubyte r, g, b;
@@ -569,6 +591,9 @@ void MouseSelectGeom(int button, int state, int x, int y){
     case GEOM_PROP_SURF:
       selected_geom_triangle = val-1;
       break;
+    default:
+      ASSERT(FFALSE);
+      break;
     }
 
     switch(select_geom){
@@ -605,6 +630,9 @@ void MouseSelectGeom(int button, int state, int x, int y){
         UpdateTriangleInfo(tri_surf, trii->area);
       }
       break;
+    default:
+      ASSERT(FFALSE);
+      break;
     }
     glShadeModel(GL_SMOOTH);
     glEnable(GL_BLEND);
@@ -630,7 +658,6 @@ void CheckTimeBound(void){
         current_script_command->exit=1;
       }
     }
-    frame_index=first_frame_index;
     for(i=0;i<nsliceinfo;i++){
       slicedata *sd;
 
@@ -712,9 +739,7 @@ int GetColorbarIndex(int flag, int x, int y){
         index = CLAMP(255*(float)(y-vcolorbar_down_pos)/(float)(vcolorbar_top_pos - vcolorbar_down_pos),0,255);
         return index;
       }
-      else{
-        return CB_SELECT_STOP;
-      }
+      return CB_SELECT_STOP;
   }
   return CB_SELECT_CONTINUE;
 }
@@ -777,23 +802,43 @@ int ColorbarClick(int x, int y){
   return 0;
 }
 
-/* ------------------ TimebarClick ------------------------ */
+/* ------------------ GetTimeFrame ------------------------ */
 
-int TimebarClick(int x, int y){
-  if(screenHeight-y<titlesafe_offset+VP_timebar.height&&nglobal_times>0){
-    int timebar_right_pos;
-    int timebar_left_pos;
+int GetTimeFrame(int xm){
+  int timebar_right_pos;
+  int timebar_left_pos;
+  int iframe;
 
-    timebar_left_pos = VP_timebar.left+timebar_left_width;
-    timebar_right_pos = VP_timebar.right-timebar_right_width;
+  timebar_left_pos = VP_timebar.left+timebar_left_width;
+  timebar_right_pos = VP_timebar.right-timebar_right_width;
 
-    if(timebar_right_pos>timebar_left_pos){
-      itimes = (float)nglobal_times*(float)(x-timebar_left_pos)/(float)(timebar_right_pos-timebar_left_pos);
+  iframe = 0;
+  if(global_times!=NULL&&timebar_right_pos>timebar_left_pos){
+    float time, factor;
+
+    factor = (float)(xm-timebar_left_pos)/(float)(timebar_right_pos-timebar_left_pos);
+    factor = CLAMP(factor, 0.0, 1.0);
+    time = global_times[0]*(1.0-factor)+global_times[nglobal_times-1]*factor;
+    if(time<=global_times[0]){
+      iframe = 0;
+    }
+    else if(time>=global_times[nglobal_times-1]){
+      iframe = nglobal_times-1;
     }
     else{
-      itimes=0;
+      iframe = GetInterval(time, global_times, nglobal_times);
+      iframe = CLAMP(iframe, 0, nglobal_times-1);
     }
+  }
+  return iframe;
+}
+
+/* ------------------ TimebarClick ------------------------ */
+
+int TimebarClick(int xm, int ym){
+  if(screenHeight-ym<titlesafe_offset+VP_timebar.height&&nglobal_times>0){
 //    PRINTF("ngt=%i xl=%i x=%i xr=%i\n",nglobal_times,timebar_left_pos,x,timebar_right_pos);
+    itimes = GetTimeFrame(xm);
     CheckTimeBound();
     timebar_drag=1;
     stept=0;
@@ -802,6 +847,17 @@ int TimebarClick(int x, int y){
     return 1;
   }
   return 0;
+}
+
+/* ------------------ TimebarDrag ------------------------ */
+
+void TimebarDrag(int xm){
+  if(nglobal_times>0){
+    itimes = GetTimeFrame(xm);
+    CheckTimeBound();
+    timebar_drag = 1;
+  }
+  IdleCB();
 }
 
 /* ------------------ UpdateMouseInfo ------------------------ */
@@ -1043,13 +1099,13 @@ void MouseCB(int button, int state, int xm, int ym){
     if(button==GLUT_LEFT_BUTTON){
       if(blockageSelect == 1){
         GetGeomDialogState();
-        if(structured_isopen == 1 && unstructured_isopen == 0)MouseEditBlockage(button, state, xm, ym);
+        if(structured_isopen == 1 && unstructured_isopen == 0)MouseEditBlockage(xm, ym);
       }
-      if(edittour==1&&blockageSelect==0)MouseEditTour(button,state,xm,ym);
-      if(viscolorbarpath==1)MouseEditColorbar(button, state, xm, ym);
-      if(select_avatar==1)MouseSelectAvatar(button,state,xm,ym);
-      if(select_device==1)MouseSelectDevice(button,state,xm,ym);
-      if(select_geom!=GEOM_PROP_NONE)MouseSelectGeom(button, state, xm, ym);
+      if(edittour==1&&blockageSelect==0)MouseEditTour(xm,ym);
+      if(viscolorbarpath==1)MouseEditColorbar(xm, ym);
+      if(select_avatar==1)MouseSelectAvatar(xm,ym);
+      if(select_device==1)MouseSelectDevice(xm,ym);
+      if(select_geom!=GEOM_PROP_NONE)MouseSelectGeom(xm, ym);
     }
     glutPostRedisplay();
     if( showtime==1 || showplot3d==1){
@@ -1144,26 +1200,6 @@ void ColorbarSplitDrag(int xm, int ym){
   }
 }
 
-/* ------------------ TimebarDrag ------------------------ */
-
-void TimebarDrag(int xm, int ym){
-  if(nglobal_times>0){
-    int timebar_right_pos;
-    int timebar_left_pos;
-
-    timebar_left_pos = VP_timebar.left+timebar_left_width;
-    timebar_right_pos=VP_timebar.right-timebar_right_width;
-
-    itimes=0;
-    if(timebar_right_pos>timebar_left_pos){
-      itimes = (float)nglobal_times*(float)(xm-timebar_left_pos)/(float)(timebar_right_pos-timebar_left_pos);
-    }
-    CheckTimeBound();
-    timebar_drag=1;
-  }
-  IdleCB();
-}
-
 /* ------------------ DragColorbarEditNode ------------------------ */
 
 void DragColorbarEditNode(int xm, int ym){
@@ -1219,7 +1255,7 @@ void DragTourNode(int xm, int ym){
   float screen_perm[9];
 
   if(showtour_dialog==1&&edittour==1&&selected_frame!=NULL){
-    GetScreenMapping(selected_frame->nodeval.eye,screen_perm);
+    GetScreenMapping(selected_frame->xyz_smv, screen_perm);
   }
   else{
     return;
@@ -1252,9 +1288,9 @@ void DragTourNode(int xm, int ym){
 
 // offset tour node location
 
-        tour_xyz[0] += dx;
-        tour_xyz[1] += dy;
-        tour_xyz[2] += dz;
+        glui_tour_xyz[0] += dx;
+        glui_tour_xyz[1] += dy;
+        glui_tour_xyz[2] += dz;
 
         mouse_down_xy0[0]=xm;
         mouse_down_xy0[1]=ym;
@@ -1501,7 +1537,7 @@ void MouseDragCB(int xm, int ym){
     return;
   }
   if(timebar_drag==1){
-    TimebarDrag(xm,ym);
+    TimebarDrag(xm);
     return;
   }
   if(move_gslice==1){
@@ -1614,6 +1650,19 @@ int GetPlot3DTimeList(int inc){
   return return_val;
 }
 
+/* ------------------ UpdateGridClip ------------------------ */
+
+void UpdateGridClip(int flag){
+  if(clip_commandline==1){
+    if(flag==0)visx_all = clipinfo.clip_xmin;
+    if(flag==1)visx_all = clipinfo.clip_xmax;
+    if(flag==2)visy_all = clipinfo.clip_ymin;
+    if(flag==3)visy_all = clipinfo.clip_ymax;
+    if(flag==4)visz_all = clipinfo.clip_ymin;
+    if(flag==5)visz_all = clipinfo.clip_ymax;
+  }
+}
+
 /* ------------------ Keyboard ------------------------ */
 
 void Keyboard(unsigned char key, int flag){
@@ -1659,16 +1708,16 @@ void Keyboard(unsigned char key, int flag){
 #define DEVYES_HRRNO  2
 #define DEVNO_HRRYES  3
     case 'A':
-      if(hrrinfo==NULL&&ndeviceinfo==0)break;
-      if(hrrinfo!=NULL&&ndeviceinfo>0){
+      if(hrrptr==NULL&&ndeviceinfo==0)break;
+      if(hrrptr!=NULL&&ndeviceinfo>0){
         plot_option++;
         if(plot_option>3)plot_option = 0;
       }
       else{
         int plot_option_temp = DEVNO_HRRNO;
 
-        if(ndeviceinfo==0&&hrrinfo!=NULL&&plot_option==DEVNO_HRRNO)plot_option_temp = DEVNO_HRRYES;
-        if(ndeviceinfo>0&&hrrinfo==NULL&&plot_option==DEVNO_HRRNO)plot_option_temp = DEVYES_HRRNO;
+        if(ndeviceinfo==0&&hrrptr!=NULL&&plot_option==DEVNO_HRRNO)plot_option_temp = DEVNO_HRRYES;
+        if(ndeviceinfo>0&&hrrptr==NULL&&plot_option==DEVNO_HRRNO)plot_option_temp = DEVYES_HRRNO;
         plot_option = plot_option_temp;
       }
       // 0 - device no, hrr no
@@ -1679,27 +1728,33 @@ void Keyboard(unsigned char key, int flag){
       switch (plot_option){
         case DEVNO_HRRNO: // device plots off
         case DEVNO_HRRYES:
-          showdevice_plot = DEVICE_PLOT_SHOW_ALL;
+          vis_device_plot = DEVICE_PLOT_SHOW_ALL;
           ShowObjectsMenu(OBJECT_PLOT_SHOW_ALL);
           break;
         case DEVYES_HRRYES: // device plots on
         case DEVYES_HRRNO:
-          showdevice_plot = 0;
+          vis_device_plot = 0;
           ShowObjectsMenu(OBJECT_PLOT_SHOW_ALL);
           break;
+	default:
+	  ASSERT(FFALSE);
+	  break;
       }
 // hrr plot
       switch(plot_option){
         case DEVNO_HRRNO: // hrr plots off
         case DEVYES_HRRNO:
-          show_hrrpuv_plot = 1;
+          vis_hrr_plot = 1;
           ShowObjectsMenu(PLOT_HRRPUV);
           break;
         case DEVYES_HRRYES: // hrr plots on
         case DEVNO_HRRYES:
-          show_hrrpuv_plot = 0;
+          vis_hrr_plot = 0;
           ShowObjectsMenu(PLOT_HRRPUV);
           break;
+	default:
+	  ASSERT(FFALSE);
+	  break;
       }
       break;
     case 'a':
@@ -1887,23 +1942,26 @@ void Keyboard(unsigned char key, int flag){
       default:
         if(ntotal_blockages>0||isZoneFireModel==0||(isZoneFireModel==1&&ntrnx>0)){
           switch(visGrid){
-            case noGridnoProbe:
-              visGrid=GridnoProbe;
+            case NOGRID_NOPROBE:
+              visGrid=GRID_NOPROBE;
               break;
-            case GridnoProbe:
-              visGrid=GridProbe;
+            case GRID_NOPROBE:
+              visGrid=GRID_PROBE;
               break;
-            case GridProbe:
-              visGrid=noGridProbe;
+            case GRID_PROBE:
+              visGrid= NOGRID_PROBE;
               break;
-            case noGridProbe:
-              visGrid=noGridnoProbe;
+            case NOGRID_PROBE:
+              visGrid= NOGRID_PROBE2;
+              break;
+            case NOGRID_PROBE2:
+              visGrid = NOGRID_NOPROBE;
               break;
             default:
-              visGrid=noGridnoProbe;
+              visGrid= NOGRID_NOPROBE;
               break;
           }
-          if(visGrid==GridProbe||visGrid==noGridProbe)visgridloc=1;
+          if(visGrid==GRID_PROBE||visGrid==NOGRID_PROBE)visgridloc=1;
         }
         break;
       }
@@ -2010,7 +2068,7 @@ void Keyboard(unsigned char key, int flag){
     case 'I':
       show_slice_in_obst++;
       if(show_slice_in_obst>2)show_slice_in_obst = 0;
-      UpdateShowSliceInObst();
+      UpdateShowSliceInObst(show_slice_in_obst);
       updatemenu = 1;
       break;
     case 'j':
@@ -2084,7 +2142,6 @@ void Keyboard(unsigned char key, int flag){
       UnloadSliceMenu(UNLOAD_LAST);
       break;
     case 'm':
-    case 'M':
       switch(keystate){
       case GLUT_ACTIVE_ALT:
 #ifdef pp_DIALOG_SHORTCUTS
@@ -2100,29 +2157,82 @@ void Keyboard(unsigned char key, int flag){
         }
       }
       break;
-#ifdef pp_HAVE_CFACE_NORMALS
+    case 'M':
+      clip_commandline = 1-clip_commandline;
+      if(clip_commandline==1){
+        visGrid = 0;
+        Keyboard('g', FROM_SMOKEVIEW);
+        clip_mode = 0;
+        Keyboard('W', FROM_SMOKEVIEW);
+        visgridloc = 1;
+        updatemenu = 1;
+        UpdateGridClip(0);
+        UpdateGridClip(1);
+        UpdateGridClip(2);
+        UpdateGluiClip();
+      }
+      if(clip_commandline==0){
+        visGrid = NOGRID_PROBE2;
+        Keyboard('g', FROM_SMOKEVIEW);
+        visgridloc = 0;
+        updatemenu = 1;
+      }
+      if(clip_commandline==1){
+        printf("\n");
+        printf("command line clipping on\n");
+        printf("  use the W key to toggle clipping mode: disabled, clip blockages and data, clip blockages, clip data\n");
+        printf("  use x/y/z keys to activate/deactivate lower x/y/z clipping planes\n");
+        printf("  use X/Y/Z keys to activate/deactivate upper x/y/z clipping planes\n");
+        printf("  use cursor and page down/up keys to move lower clipping planes\n");
+        printf("  use SHIFT cursor and page down/up keys to move upper clipping planes\n");
+      }
+      else{
+        printf("command line clipping off\n");
+      }
+      break;
     case 'n':
     case 'N':
       show_cface_normals = 1-show_cface_normals;
+      if(show_cface_normals==1){
+        printf("show cface normals\n");
+      }
+      else{
+        printf("hide cface normals\n");
+      }
       UpdateGluiCfaces();
       break;
-#endif
     case 'O':
-    if(show_faces_outline==0&&show_faces_shaded==1){
-      show_faces_outline = 1;
-      show_faces_shaded  = 1;
-    }
-    else if(show_faces_outline==1&&show_faces_shaded==1){
-      show_faces_outline = 1;
-      show_faces_shaded  = 0;
-    }
-    else if(show_faces_outline==1&&show_faces_shaded==0){
-      show_faces_outline = 0;
-      show_faces_shaded  = 0;
-    }
-    else if(show_faces_outline==0&&show_faces_shaded==0){
-      show_faces_outline = 0;
-      show_faces_shaded  = 1;
+    if(ncgeominfo>0){
+      if(show_faces_outline==0&&show_faces_shaded==1){
+        show_faces_outline = 1;
+        show_faces_shaded = 1;
+        terrain_show_geometry_outline = 1;
+      }
+      else if(show_faces_outline==1&&show_faces_shaded==1){
+        show_faces_outline = 1;
+        show_faces_shaded = 0;
+        terrain_show_geometry_outline = 1;
+      }
+      else if(show_faces_outline==1&&show_faces_shaded==0){
+        show_faces_outline = 0;
+        show_faces_shaded = 0;
+        terrain_show_geometry_outline = 0;
+      }
+      else if(show_faces_outline==0&&show_faces_shaded==0){
+        show_faces_outline = 0;
+        show_faces_shaded = 1;
+        terrain_show_geometry_outline = 0;
+      }
+      if(use_cfaces==1){
+        printf("cfaces: ");
+      }
+      else{
+        printf("geometry: ");
+      }
+      if(show_faces_shaded==1) printf("shaded triangles ");
+      if(show_faces_outline==1)printf("outlines");
+      if(show_faces_shaded==0&&show_faces_outline==0)printf("hidden");
+      printf("\n");
     }
     UpdateGeometryControls();
       switch(visBlocks){
@@ -2220,8 +2330,20 @@ void Keyboard(unsigned char key, int flag){
       update_chop_colors = 1;
       break;
     case 'q':
-      use_cfaces = 1 - use_cfaces;
-      UpdateGluiCfaces();
+      if(ncgeominfo>0){
+        use_cfaces = 1-use_cfaces;
+        if(use_cfaces==1){
+          printf("cfaces: ");
+        }
+        else{
+          printf("geometry: ");
+        }
+        if(show_faces_shaded==1) printf("shaded triangles ");
+        if(show_faces_outline==1)printf("outlines");
+        if(show_faces_shaded==0&&show_faces_outline==0)printf("hidden");
+        printf("\n");
+        UpdateGluiCfaces();
+      }
       blocklocation++;
       if((ncadgeom==0&&blocklocation>BLOCKlocation_exact)||
                        blocklocation>BLOCKlocation_cad){
@@ -2239,6 +2361,7 @@ void Keyboard(unsigned char key, int flag){
         }
         ObjectCB(BLOCKAGE_AS_INPUT2);
       }
+      updatefacelists = 1;
       break;
     case 'Q':
       showhide_textures = 1-showhide_textures;
@@ -2481,7 +2604,6 @@ void Keyboard(unsigned char key, int flag){
         default:
           visVector=1-visVector;
           if(vectorspresent==0)visVector=0;
-          UpdateGlui();
           break;
       }
       break;
@@ -2498,12 +2620,6 @@ void Keyboard(unsigned char key, int flag){
     case 'w':
       switch(keystate){
         case GLUT_ACTIVE_ALT:
-#ifdef pp_DIALOG_SHORTCUTS
-          if(nterraininfo>0){
-            DialogMenu(DIALOG_WUI); // WUI dialog
-          }
-          break;
-#endif
         case GLUT_ACTIVE_CTRL:
         default:
           if(rotation_type==EYE_CENTERED){
@@ -2519,10 +2635,48 @@ void Keyboard(unsigned char key, int flag){
     case 'W':
       clip_mode++;
       if(clip_mode>CLIP_MAX)clip_mode=0;
+      switch(clip_mode){
+        case 0:
+          printf("Clipping disabled\n");
+          break;
+        case 1:
+          printf("Clip blockages and data\n");
+          break;
+        case 2:
+          printf("Clip blockages\n");
+          break;
+        case 3:
+          printf("Clip data\n");
+          break;
+	default:
+	  ASSERT(FFALSE);
+	  break;
+      }
       UpdateClipAll();
       break;
     case 'x':
     case 'X':
+      if(clip_commandline==1){
+        if(key2=='x'){
+          clipinfo.clip_xmin = 1-clipinfo.clip_xmin;
+          printf("lower x clipping plane ");
+          if(clipinfo.clip_xmin==1){
+            iplotx_all = GetGridIndex(clipinfo.xmin, XDIR, plotx_all, nplotx_all);
+            printf("on\n");
+          }
+          if(clipinfo.clip_xmin==0)printf("off\n");
+        }
+        if(key2=='X'){
+          clipinfo.clip_xmax = 1-clipinfo.clip_xmax;
+          printf("upper x clipping plane ");
+          if(clipinfo.clip_xmax==1){
+            printf("on\n");
+            iplotx_all = GetGridIndex(clipinfo.xmax, XDIR, plotx_all, nplotx_all);
+          }
+          if(clipinfo.clip_xmax==0)printf("off\n");
+        }
+        UpdateGluiClip();
+      }
 #ifdef pp_DIALOG_SHORTCUTS
       if(keystate==GLUT_ACTIVE_ALT){
         if(key2=='x')DialogMenu(DIALOG_HIDEALL);
@@ -2538,15 +2692,72 @@ void Keyboard(unsigned char key, int flag){
       plotstate = GetPlotState(STATIC_PLOTS);
       updatemenu = 1;
 #endif
+      if(visx_all==1||visy_all==1||visz_all==1)update_slice2device = 1;
       break;
     case 'y':
     case 'Y':
+      if(clip_commandline==1){
+        if(key2=='y'){
+          clipinfo.clip_ymin = 1-clipinfo.clip_ymin;
+          printf("lower y clipping plane ");
+          if(clipinfo.clip_ymin==1){
+            iploty_all = GetGridIndex(clipinfo.ymin, YDIR, ploty_all, nploty_all);
+            printf("on\n");
+          }
+          if(clipinfo.clip_ymin==0)printf("off\n");
+        }
+        if(key2=='Y'){
+          clipinfo.clip_ymax = 1-clipinfo.clip_ymax;
+          printf("upper y clipping plane ");
+          if(clipinfo.clip_ymax==1){
+            iploty_all = GetGridIndex(clipinfo.ymax, YDIR, ploty_all, nploty_all);
+            printf("on\n");
+          }
+          if(clipinfo.clip_ymax==0)printf("off\n");
+        }
+        UpdateGluiClip();
+      }
       visy_all = 1-visy_all;
+      if(visx_all==1||visy_all==1||visz_all==1)update_slice2device = 1;
       plotstate = GetPlotState(STATIC_PLOTS);
       updatemenu = 1;
       break;
-    case 'z':
     case 'Z':
+      if(clip_commandline==1){
+        if(key2=='Z'){
+          clipinfo.clip_zmax = 1-clipinfo.clip_zmax;
+          printf("upper z clipping plane ");
+          if(clipinfo.clip_zmax==1){
+            iplotz_all = GetGridIndex(clipinfo.zmax, ZDIR, plotz_all, nplotz_all);
+            printf("on\n");
+          }
+          if(clipinfo.clip_zmax==0)printf("off\n");
+        }
+        UpdateGluiClip();
+      }
+      rotate_center = 1-rotate_center;
+      if(rotate_center==1&&have_geom_bb==1){
+        printf("rotate about FDS+GEOM center\n");
+        UpdateGluiRotateAbout(ROTATE_ABOUT_WORLD_CENTER);
+      }
+      else{
+        printf("rotate about FDS domain center\n");
+        UpdateGluiRotateAbout(ROTATE_ABOUT_FDS_CENTER);
+      }
+      break;
+    case 'z':
+      if(clip_commandline==1){
+        if(key2=='z'){
+          clipinfo.clip_zmin = 1-clipinfo.clip_zmin;
+          printf("lower z clipping plane ");
+          if(clipinfo.clip_zmin==1){
+            iplotz_all = GetGridIndex(clipinfo.zmin, ZDIR, plotz_all, nplotz_all);
+            printf("on\n");
+          }
+          if(clipinfo.clip_zmin==0)printf("off\n");
+        }
+        UpdateGluiClip();
+      }
 #ifdef pp_DIALOG_SHORTCUTS
       if(keystate==GLUT_ACTIVE_ALT){
         DialogMenu(DIALOG_SMOKEZIP); // compress dialog
@@ -2561,6 +2772,7 @@ void Keyboard(unsigned char key, int flag){
       plotstate = GetPlotState(STATIC_PLOTS);
       updatemenu = 1;
 #endif
+      if(visx_all==1||visy_all==1||visz_all==1)update_slice2device = 1;
       break;
     case '0':
       if(plotstate==DYNAMIC_PLOTS){
@@ -2588,8 +2800,23 @@ void Keyboard(unsigned char key, int flag){
     case '!':
       SnapScene();
       break;
+    case '"':
+      ShowPlot2D();
+      break;
     case '@':
-      cell_center_text = 1 - cell_center_text;
+      show_slice_values_all_regions = 1 - show_slice_values_all_regions;
+      if(show_slice_values_all_regions==1){
+        show_slice_values[0]=1;
+        show_slice_values[1]=1;
+        show_slice_values[2]=1;
+      }
+      else{
+        show_slice_values[0]=0;
+        show_slice_values[1]=0;
+        show_slice_values[2]=0;
+      }
+#define IMMERSED_SWITCH_CELLTYPE 0
+      ImmersedBoundCB(IMMERSED_SWITCH_CELLTYPE);
       break;
     case '.':
       lock_mouse_aperture = 1 - lock_mouse_aperture;
@@ -2611,6 +2838,9 @@ void Keyboard(unsigned char key, int flag){
         break;
       case 2:
         printf("only if time/colorbar hidden\n");
+        break;
+      default:
+        ASSERT(FFALSE);
         break;
       }
       break;
@@ -2658,12 +2888,8 @@ void Keyboard(unsigned char key, int flag){
     case '/':
       updatemenu=1;
       partfast = 1 - partfast;
-      if(nevac>0){
-        partfast = 0;
-        part_multithread = 0;
-      }
       if(current_script_command==NULL){
-        if(npartinfo>1&&nevac==0){
+        if(npartinfo>1){
           part_multithread = partfast;
         }
         else{
@@ -2734,6 +2960,13 @@ void Keyboard(unsigned char key, int flag){
       if(key2=='}')iplot3dtimelist = GetPlot3DTimeList(1);
       Plot3DListMenu(iplot3dtimelist);
       updatemenu = 1;
+      break;
+    case '-':
+      break;
+    case ' ':
+      break;
+    default:
+      ASSERT(FFALSE);
       break;
   }
 
@@ -2861,7 +3094,6 @@ void HandleRotationType(int flag){
   }
   ShowHideTranslate(rotation_type);
   rotation_type_old = rotation_type;
-  return;
 }
 
 /* ------------------ UpdateClipPlanes ------------------------ */
@@ -2869,10 +3101,15 @@ void HandleRotationType(int flag){
 void UpdateClipPlanes(void){
   if(trainer_mode==0){
     if(clip_mode!=clip_mode_last){
-      if(clip_mode==CLIP_OFF)PRINTF("clipping off\n");
-      if(clip_mode==CLIP_BLOCKAGES_DATA)PRINTF("clipping blockages + data\n");
-      if(clip_mode==CLIP_BLOCKAGES)PRINTF("clipping blockages\n");
-      if(clip_mode==CLIP_DATA)PRINTF("clipping data\n");
+      if(startup==1){
+        if(clip_mode==CLIP_OFF)PRINTF("clipping off\n");
+        if(clip_mode==CLIP_BLOCKAGES_DATA)PRINTF("clipping blockages + data\n");
+        if(clip_mode==CLIP_BLOCKAGES)PRINTF("clipping blockages\n");
+        if(clip_mode==CLIP_DATA)PRINTF("clipping data\n");
+      }
+      else{
+        startup = 0;
+      }
       clip_mode_last=clip_mode;
     }
   }
@@ -2884,15 +3121,13 @@ void UpdateClipPlanes(void){
 /* ------------------ HandleIso ------------------------ */
 
 void HandleIso(void){
-    if(nplot3dloaded>0){
-      UpdateShowStep(1-visiso,ISO);
-      if(visiso==1){
-        UpdateSurface();
-        plotstate=STATIC_PLOTS;
-      }
+  if(nplot3dloaded>0){
+    UpdateShowStep(1-visiso,ISO);
+    if(visiso==1){
+      UpdateSurface();
+      plotstate=STATIC_PLOTS;
     }
-    UpdateGlui();
-    return;
+  }
 }
 
 /* ------------------ SpecialKeyboardUpCB ------------------------ */
@@ -2908,6 +3143,8 @@ void SpecialKeyboardCB(int key, int x, int y){
 #define EYE_MODE 0
 #define P3_MODE 1
   int keymode=EYE_MODE;
+
+  special_modifier = glutGetModifiers() & GLUT_ACTIVE_SHIFT;
 
   glutPostRedisplay();
 
@@ -2932,39 +3169,162 @@ void SpecialKeyboardCB(int key, int x, int y){
   }
 }
 
+/* ------------------ SetClipVals ------------------------ */
+
+float SetClipVal(int flag){
+  int i;
+
+  for(i = 0; i<nmeshes; i++){
+    meshdata *meshi;
+    float *xplt, *yplt, *zplt;
+    int plotx, ploty, plotz;
+
+    meshi = meshinfo+i;
+
+    switch(flag){
+      case 0:
+        xplt = meshi->xplt_orig;
+        plotx = meshi->iplotx_all[iplotx_all];
+        if(plotx>=0)return xplt[plotx];
+        break;
+      case 1:
+        yplt = meshi->yplt_orig;
+        ploty = meshi->iploty_all[iploty_all];
+        if(ploty>=0)return yplt[ploty];
+        break;
+      case 2:
+        zplt = meshi->zplt_orig;
+        plotz = meshi->iplotz_all[iplotz_all];
+        if(plotz>=0)return zplt[plotz];
+        break;
+      default:
+	ASSERT(FFALSE);
+	break;
+    }
+  }
+  return 0.0;
+}
+
 /* ------------------ HandlePLOT3DKeys ------------------------ */
 
 void HandlePLOT3DKeys(int  key){
+  if(clip_commandline==1){
+    switch(key){
+      case GLUT_KEY_LEFT:
+      case GLUT_KEY_RIGHT:
+        if(special_modifier==GLUT_ACTIVE_SHIFT){
+          clipinfo.clip_xmax = 1;
+        }
+        else{
+          clipinfo.clip_xmin = 1;
+        }
+        break;
+      case GLUT_KEY_DOWN:
+      case GLUT_KEY_UP:
+        if(special_modifier==GLUT_ACTIVE_SHIFT){
+          clipinfo.clip_ymax = 1;
+        }
+        else{
+          clipinfo.clip_ymin = 1;
+        }
+        break;
+      case GLUT_KEY_PAGE_DOWN:
+      case GLUT_KEY_PAGE_UP:
+        if(special_modifier==GLUT_ACTIVE_SHIFT){
+          clipinfo.clip_zmax = 1;
+        }
+        else{
+          clipinfo.clip_zmin = 1;
+        }
+        break;
+      default:
+        break;
+    }
+  }
   switch(key){
   case GLUT_KEY_LEFT:
     visx_all=1;
     NextXIndex(-1,0);
     iplot_state=XDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.xmax = SetClipVal(0);
+      }
+      else{
+        clipinfo.xmin = SetClipVal(0);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_RIGHT:
     visx_all=1;
     NextXIndex(1,0);
     iplot_state=XDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.xmax = SetClipVal(0);
+      }
+      else{
+        clipinfo.xmin = SetClipVal(0);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_DOWN:
     visy_all=1;
     NextYIndex(-1,0);
     iplot_state=YDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.ymax = SetClipVal(1);
+      }
+      else{
+        clipinfo.ymin = SetClipVal(1);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_UP:
     visy_all=1;
     NextYIndex(1,0);
     iplot_state=YDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.ymax = SetClipVal(1);
+      }
+      else{
+        clipinfo.ymin = SetClipVal(1);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_PAGE_DOWN:
     visz_all=1;
     NextZIndex(-1,0);
     iplot_state=ZDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.zmax = SetClipVal(2);
+      }
+      else{
+        clipinfo.zmin = SetClipVal(2);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_PAGE_UP:
     visz_all=1;
     NextZIndex(1,0);
     iplot_state=ZDIR;
+    if(clip_commandline==1){
+      if(special_modifier==GLUT_ACTIVE_SHIFT){
+        clipinfo.zmax = SetClipVal(2);
+      }
+      else{
+        clipinfo.zmin = SetClipVal(2);
+      }
+      UpdateGluiClip();
+    }
     break;
   case GLUT_KEY_HOME:
     switch(iplot_state){
@@ -3004,10 +3364,7 @@ void HandlePLOT3DKeys(int  key){
     break;
   }
   if(iplot_state!=0)UpdatePlotSlice(iplot_state);
-  return;
-
-//  plotstate=GetPlotState(STATIC_PLOTS);
-
+  if(visx_all==1||visy_all==1||visz_all==1)update_slice2device = 1;
 }
 
 /* ------------------ HandleMoveKeys ------------------------ */
@@ -3629,6 +3986,7 @@ void DoScriptLua(void){
 #ifdef pp_LUA_SSF
 void DoScript(void){
   int script_return_code;
+
   if(runscript == 1){
       runscript = 0;
       PRINTF("running ssf script instruction\n");
@@ -3641,6 +3999,7 @@ void DoScript(void){
 }
 #else
 void DoScript(void){
+  SNIFF_ERRORS("DoScript: start");
   if(runscript==1&&default_script!=NULL){
     ScriptMenu(default_script->id);
     runscript=2;
@@ -3677,6 +4036,13 @@ void DoScript(void){
       }
       else if(current_script_command->command==SCRIPT_LOADSLICERENDER){
         if(current_script_command->exit==0){
+          if(render_resolution==RENDER_RESOLUTION_360){
+            if(viewpoint_script_ptr!=NULL)SetCurrentViewPoint(viewpoint_script);
+            render_size_index=RenderWindow;
+            resolution_multiplier = 1;
+            RenderCB(RENDER_RESOLUTION);
+            RenderCB(RENDER_START_360);
+          }
           RenderState(RENDER_ON);
           ScriptLoadSliceRender(current_script_command);
         }
@@ -3688,8 +4054,7 @@ void DoScript(void){
       }
     }
     int advance_script = 0;
-
-    if(current_script_command->command==SCRIPT_SETVIEWPOINT&&update_viewpoint_script>0){
+    if(current_script_command>=scriptinfo&&current_script_command->command==SCRIPT_SETVIEWPOINT&&update_viewpoint_script>0){
       advance_script=0;
     }
     else{
@@ -3791,11 +4156,7 @@ void DoNonStereo(void){
     IdleDisplay();
 
     stop_rendering = 1;
-#ifdef pp_SCRIPT_RENDER_FIX
-    if(current_script_command==NULL&&plotstate==DYNAMIC_PLOTS && nglobal_times>0){
-#else
     if(plotstate==DYNAMIC_PLOTS && nglobal_times>0){
-#endif
       if(itimes>=0&&itimes<nglobal_times&&
         ((render_frame[itimes]==0&&stereotype==STEREO_NONE)||(render_frame[itimes]<2&&stereotype!=STEREO_NONE))
         ){
@@ -3862,6 +4223,7 @@ void DoNonStereo(void){
 /* ------------------ DisplayCB ------------------------ */
 
 void DisplayCB(void){
+  SNIFF_ERRORS("DisplayDB: start");
   DoScript();
 #ifdef pp_LUA
   DoScriptLua();

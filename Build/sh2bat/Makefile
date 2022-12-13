@@ -6,6 +6,9 @@ INC_DIR = -I $(SOURCE_DIR)/zlib128 -I $(SOURCE_DIR)/shared -I $(SOURCE_DIR)/sh2b
 FILTERC =
 FILTERF =
 
+# Intel compiler definitions
+include ../../scripts/intel_compiler.mak
+
 VPATH = $(SOURCE_DIR)/sh2bat:$(SOURCE_DIR)/shared
 bin = .
 
@@ -39,7 +42,7 @@ no_target:
 	@echo \******** You did not specify a make target \********
 	@echo Use one of targets found in the Makefile
 
-.SUFFIXES: .F90 .c .obj .o .f90 .cpp
+.SUFFIXES: .c .obj .o .cpp
 
 .c.obj:
 	$(CC) -c $(CFLAGS) $(FILTERC) $(INC_DIR) $<
@@ -51,8 +54,8 @@ no_target:
 # ------------- intel win 64 ----------------
 
 intel_win_64 : CFLAGS    = -D WIN32 -O2 /nologo $(GITINFO) $(INTEL_COMPINFO)
-intel_win_64 : CC        = icl
-intel_win_64 : CPP       = icl
+intel_win_64 : CC        = $(I_CC)
+intel_win_64 : CPP       = $(I_CC)
 intel_win_64 : exe       = sh2bat_win_64.exe
 
 intel_win_64 : $(objwin)
@@ -81,4 +84,3 @@ string_util.o:  .FORCE
 string_util.obj:        .FORCE
 
 .FORCE:
-

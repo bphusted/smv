@@ -10,6 +10,10 @@
 #include "string_util.h"
 #include "smokeviewvars.h"
 
+#ifdef WIN32
+#include <direct.h>
+#endif
+
 #ifdef pp_LUA
 #include "c_api.h"
 #include "lua_api.h"
@@ -18,12 +22,10 @@
 /* ------------------ Usage ------------------------ */
 
 void Usage(char *prog,int option){
-  char buffer[1000];
-
   PRINTF("%s\n", release_title);
   PRINTF("%s\n\n", _("Visualize fire/smoke flow simulations."));
-  PRINTF("Usage: %s [options] casename", GetBaseFileName(buffer, prog));
-  PRINTF("%s\n\n");
+  PRINTF("Usage: %s [options] casename", prog);
+  PRINTF("\n\n");
   PRINTF("%s\n", _(" casename       - project id (file names without the extension)"));
   PRINTF("%s\n", _(" -bindir dir    - specify location of smokeview bin directory"));
   PRINTF("%s\n", _(" -ini           - output smokeview parameter values to smokeview.ini"));
@@ -32,7 +34,8 @@ void Usage(char *prog,int option){
   if(option==HELP_ALL){
     PRINTF("\n%s\n", _("Other options:"));
 #ifdef pp_OSX_HIGHRES
-    PRINTF("%s\n", _(" -1x            - turn off 2x scene scaling."));
+    PRINTF("%s\n", _(" -1x            - turn off 2x scene scaling (do not scale scene)."));
+    PRINTF("%s\n", _(" -2x            - turn on 2x scene scaling."));
 #endif
     PRINTF("%s\n", _(" -big           - hide scene and data when moving scene or selecting menus"));
     PRINTF("%s\n", _(" -build         - show pre-processing directives used in this build of Smokeview"));
@@ -83,17 +86,11 @@ void Usage(char *prog,int option){
 #ifdef _DEBUG
     strcat(label, ", _DEBUG");
 #endif
-#ifdef pp_append
-    strcat(label, ", pp_append");
-#endif
 #ifdef pp_BETA
     strcat(label, ", pp_BETA");
 #endif
 #ifdef pp_COMPRESS
     strcat(label, ", pp_COMPRESS");
-#endif
-#ifdef pp_DEG
-    strcat(label, ", pp_DEG");
 #endif
 #ifdef pp_DRAWISO
     strcat(label, ", pp_DRAWISO");
@@ -259,7 +256,7 @@ char *ParseCommandline(int argc, char **argv){
 
     openfile=0;
     filelength = 1024;
-    NewMemory((void **)&filename_local, (unsigned int)len_memory+4);
+    NewMemory((void **)&filename_local, (unsigned int)filelength);
     OpenSMVFile(filename_local,filelength,&openfile);
     if(openfile==1&&ResizeMemory((void **)&filename_local,strlen(filename_local)+1)!=0){
     }
@@ -323,6 +320,26 @@ char *ParseCommandline(int argc, char **argv){
   STRCPY(html_filename, fdsprefix);
   STRCAT(html_filename, ".html");
 
+  FREEMEMORY(smv_orig_filename);
+  NewMemory((void **)&smv_orig_filename, len_casename+strlen(".smo")+1);
+  STRCPY(smv_orig_filename, fdsprefix);
+  STRCAT(smv_orig_filename, ".smo");
+
+  FREEMEMORY(slice_bounds_fdsfilename);
+  NewMemory((void **)&slice_bounds_fdsfilename, len_casename+strlen("_slcf.bounds")+1);
+  STRCPY(slice_bounds_fdsfilename, fdsprefix);
+  STRCAT(slice_bounds_fdsfilename, "_slcf.bounds");
+
+  FREEMEMORY(patch_bounds_fdsfilename);
+  NewMemory((void **)&patch_bounds_fdsfilename, len_casename+strlen("_bndf.bounds")+1);
+  STRCPY(patch_bounds_fdsfilename, fdsprefix);
+  STRCAT(patch_bounds_fdsfilename, "_bndf.bounds");
+
+  FREEMEMORY(hrr_filename);
+  NewMemory((void **)&hrr_filename, len_casename+strlen("_hrr.csv")+1);
+  STRCPY(hrr_filename, fdsprefix);
+  STRCAT(hrr_filename, "_hrr.csv");
+
   FREEMEMORY(htmlvr_filename);
   NewMemory((void **)&htmlvr_filename, len_casename+strlen("_vr.html")+1);
   STRCPY(htmlvr_filename, fdsprefix);
@@ -343,15 +360,38 @@ char *ParseCommandline(int argc, char **argv){
   STRCPY(htmlslicecell_filename, fdsprefix);
   STRCAT(htmlslicecell_filename, "_slicecell.json");
 
+#ifdef pp_CACHE_FILEBOUNDS
+  char frontdir[256];
+
+  if(Writable(".")==0){
+    strcpy(frontdir, GetHomeDir());
+    strcat(frontdir, dirseparator);
+  }
+  else{
+    strcpy(frontdir, "");
+  }
+  FREEMEMORY(bnds_slice_filename);
+  NewMemory((void **)&bnds_slice_filename, strlen(frontdir) + len_casename+strlen("_sf.bnds")+1);
+  STRCPY(bnds_slice_filename, frontdir);
+  STRCAT(bnds_slice_filename, fdsprefix);
+  STRCAT(bnds_slice_filename, "_sf.bnds");
+
+  FREEMEMORY(bnds_patch_filename);
+  NewMemory((void **)&bnds_patch_filename, strlen(frontdir) + len_casename+strlen("_bf.bnds")+1);
+  STRCPY(bnds_patch_filename, frontdir);
+  STRCAT(bnds_patch_filename, fdsprefix);
+  STRCAT(bnds_patch_filename, "_bf.bnds");
+#endif
+
   FREEMEMORY(boundinfo_filename);
   NewMemory((void **)&boundinfo_filename, len_casename + strlen(".binfo") + 1);
   STRCPY(boundinfo_filename, fdsprefix);
   STRCAT(boundinfo_filename, ".binfo");
 
   FREEMEMORY(event_filename);
-  NewMemory((void **)&event_filename, len_casename+strlen(".csv")+1);
+  NewMemory((void **)&event_filename, len_casename+strlen("_events.csv")+1);
   STRCPY(event_filename, fdsprefix);
-  STRCAT(event_filename, ".csv");
+  STRCAT(event_filename, "_events.csv");
 
   if(filename_local==NULL){
     NewMemory((void **)&filename_local, (unsigned int)(len_casename+6));
@@ -451,7 +491,12 @@ char *ParseCommandline(int argc, char **argv){
     if(strncmp(argv[i], "-", 1) != 0)continue;
 #ifdef pp_OSX_HIGHRES
     if(strncmp(argv[1], "-1x", 3) == 0){
-      double_scale=0;
+      double_scale = 0;
+      force_scale  = 1;
+    }
+    else if(strncmp(argv[1], "-2x", 3)==0){
+      double_scale = 1;
+      force_scale = 1;
     }
 #endif
     else if(strncmp(argv[i], "-update_bounds", 14) == 0){
@@ -578,6 +623,9 @@ char *ParseCommandline(int argc, char **argv){
     }
     else if(strncmp(argv[i], "-fed", 4) == 0){
       compute_fed = 1;
+    }
+    else if(strncmp(argv[i], "-verbose", 8)==0){
+      verbose_output = 1;
     }
     else if(strncmp(argv[i], "-outline", 8)==0){
       show_geom_boundingbox = SHOW_BOUNDING_BOX_ALWAYS;
@@ -849,6 +897,15 @@ int main(int argc, char **argv){
   InitRandAB(1000000);
   InitVars();
   ParseCommonOptions(argc, argv);
+  if(show_help==1){
+    Usage("smokeview", HELP_SUMMARY);
+    return 1;
+  }
+  if(show_help==2){
+    printf("showing help 2\n");
+    Usage("smokeview", HELP_ALL);
+    return 1;
+  }
   smv_filename = ParseCommandline(argc, argv);
 
   progname=argv[0];
@@ -856,10 +913,6 @@ int main(int argc, char **argv){
   if(smv_filename==NULL){
     DisplayVersionInfo("Smokeview ");
     SMV_EXIT(0);
-  }
-  if(show_help==1){
-    Usage("smokeview",HELP_SUMMARY);
-    return 1;
   }
 
   prog_fullpath = progname;
@@ -894,16 +947,12 @@ int main(int argc, char **argv){
 
   return_code= SetupCase(smv_filename);
   if(return_code==0&&update_bounds==1){
-    float timer_update_bounds;
-
     INIT_PRINT_TIMER(timer_update_bounds);
     return_code=Update_Bounds();
     PRINT_TIMER(timer_update_bounds, "Update_Bounds");
   }
   if(return_code!=0)return 1;
   if(convert_ini==1){
-    float timer_read_ini;
-
     INIT_PRINT_TIMER(timer_read_ini);
     ReadIni(ini_from);
     PRINT_TIMER(timer_read_ini, "ReadIni");
@@ -919,7 +968,6 @@ int main(int argc, char **argv){
     return 0;
   }
   PRINTF("Startup time: %.1f s\n", startup_time);
-  PRINTF("\n");
 
   glutMainLoop();
   return 0;

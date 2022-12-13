@@ -13,7 +13,7 @@
 
 #define ONEORZERO(val) if(val!=0)val=1
 
-#define INIT_PRINT_TIMER(timer)  timer=-1.0
+#define INIT_PRINT_TIMER(timer)   float timer;START_TIMER(timer)
 #define PRINT_TIMER(timer, label) PrintTime(__FILE__, __LINE__, &timer, label)
 
 #define K2C(T) ((T)-273.15)
@@ -280,6 +280,12 @@
 #define IJKN(i,j,k,n) (IJKNODE(i,j,k)+(n)*nxyz)
 #endif
 
+#ifdef pp_PLOT3DVAL
+#ifndef GET_QDATA
+#define GET_QDATA(i,j,k,n) qdata[IJKN(i,j,k,n)]
+#endif
+#endif
+
 #ifndef GET_QVAL
 #define GET_QVAL(i,j,k,n) \
   if(qdata!=NULL){\
@@ -296,7 +302,7 @@
 #define IJKCELL(i,j,k) ((i)+ (j)*ibar+(k)*ibar*jbar)
 #endif
 
-#ifndef IJKCELL2
+#ifndef IJCELL2
 #define IJCELL2(i,j) (nxcell*(j) + (i))
 #endif
 

@@ -188,6 +188,7 @@ void StartScript(void){
   current_script_command=scriptinfo-1;
   iso_multithread_save = iso_multithread;
   iso_multithread = 0;
+  viewpoint_script_ptr = NULL;
 }
 
 /* ------------------ GetCharPointer ------------------------ */
@@ -250,6 +251,7 @@ void InitScriptI(scriptdata *scripti, int command,char *label){
   scripti->pbxyz_dir     = 0;
   scripti->cell_centered = 0;
   scripti->vector        = 0;
+  strcpy(scripti->quantity2, "");
 }
 
 /* ------------------ GetScriptKeywordIndex ------------------------ */
@@ -257,78 +259,79 @@ void InitScriptI(scriptdata *scripti, int command,char *label){
 int GetScriptKeywordIndex(char *keyword){
   if(keyword==NULL||strlen(keyword)==0)return SCRIPT_UNKNOWN;
 
-  if(MatchUpper(keyword,"CBARFLIP") == MATCH)return SCRIPT_CBARFLIP;                     // documented
-  if(MatchUpper(keyword,"CBARNORMAL") == MATCH)return SCRIPT_CBARNORMAL;                 // documented
-  if(MatchUpper(keyword,"EXIT") == MATCH)return SCRIPT_EXIT;                             // documented
-  if(MatchUpper(keyword,"GSLICEORIEN")==MATCH)return SCRIPT_GSLICEORIEN;
-  if(MatchUpper(keyword,"GSLICEPOS")==MATCH)return SCRIPT_GSLICEPOS;
-  if(MatchUpper(keyword,"GSLICEVIEW")==MATCH)return SCRIPT_GSLICEVIEW;
-  if(MatchUpper(keyword,"PROJECTION")==MATCH)return SCRIPT_PROJECTION;
-  if(MatchUpper(keyword,"ISORENDERALL")==MATCH)return SCRIPT_ISORENDERALL;
-  if(MatchUpper(keyword,"KEYBOARD") == MATCH)return SCRIPT_KEYBOARD;                     // documented
-  if(MatchUpper(keyword,"LABEL")==MATCH)return SCRIPT_LABEL;
-  if(MatchUpper(keyword,"LOAD3DSMOKE") == MATCH)return SCRIPT_LOAD3DSMOKE;               // documented
-  if(MatchUpper(keyword,"LOADBOUNDARY") == MATCH)return SCRIPT_LOADBOUNDARY;             // documented
-  if(MatchUpper(keyword,"LOADBOUNDARYM") == MATCH)return SCRIPT_LOADBOUNDARYM;
-  if(MatchUpper(keyword,"LOADFILE") == MATCH)return SCRIPT_LOADFILE;                     // documented
-  if(MatchUpper(keyword,"LOADINIFILE") == MATCH)return SCRIPT_LOADINIFILE;               // documented
-  if(MatchUpper(keyword,"LOADISO") == MATCH)return SCRIPT_LOADISO;                       // documented
-  if(MatchUpper(keyword,"LOADISOM") == MATCH)return SCRIPT_LOADISOM;                     // documented
-  if(MatchUpper(keyword,"LOADPARTICLES") == MATCH)return SCRIPT_LOADPARTICLES;           // documented
-  if(MatchUpper(keyword,"LOADPLOT3D") == MATCH)return SCRIPT_LOADPLOT3D;                 // documented
-  if(MatchUpper(keyword,"LOADSLICE") == MATCH)return SCRIPT_LOADSLICE;                   // documented
-  if(MatchUpper(keyword,"LOADSLCF")==MATCH)return SCRIPT_LOADSLCF;
-  if(MatchUpper(keyword,"LOADSLICERENDER")==MATCH)return SCRIPT_LOADSLICERENDER;
-  if(MatchUpper(keyword,"LOADSLICEM") == MATCH)return SCRIPT_LOADSLICEM;
-  if(MatchUpper(keyword,"LOADTOUR") == MATCH)return SCRIPT_LOADTOUR;                     // documented
-  if(MatchUpper(keyword,"LOADVOLSMOKE") == MATCH)return SCRIPT_LOADVOLSMOKE;             // documented
-  if(MatchUpper(keyword,"LOADVOLSMOKEFRAME") == MATCH)return SCRIPT_LOADVOLSMOKEFRAME;   // documented
-  if(MatchUpper(keyword,"LOADVFILE") == MATCH)return SCRIPT_LOADVFILE;                   // documented
-  if(MatchUpper(keyword,"LOADVSLICE") == MATCH)return SCRIPT_LOADVSLICE;                 // documented
-  if(MatchUpper(keyword,"LOADVSLICEM") == MATCH)return SCRIPT_LOADVSLICEM;
-  if(MatchUpper(keyword,"MAKEMOVIE") == MATCH)return SCRIPT_MAKEMOVIE;
-  if(MatchUpper(keyword,"MOVIETYPE")==MATCH)return SCRIPT_MOVIETYPE;
-  if(MatchUpper(keyword,"PARTCLASSCOLOR") == MATCH)return SCRIPT_PARTCLASSCOLOR;         // documented
-  if(MatchUpper(keyword,"PARTCLASSTYPE") == MATCH)return SCRIPT_PARTCLASSTYPE;           // documented
-  if(MatchUpper(keyword,"PLOT3DPROPS") == MATCH)return SCRIPT_PLOT3DPROPS;               // documented
-  if(MatchUpper(keyword,"XYZVIEW")==MATCH)return SCRIPT_XYZVIEW;                         // documented
-  if(MatchUpper(keyword,"VIEWXMIN")==MATCH)return SCRIPT_VIEWXMIN;                       // documented
-  if(MatchUpper(keyword,"VIEWXMAX")==MATCH)return SCRIPT_VIEWXMAX;                       // documented
-  if(MatchUpper(keyword,"VIEWYMIN")==MATCH)return SCRIPT_VIEWYMIN;                       // documented
-  if(MatchUpper(keyword,"VIEWYMAX")==MATCH)return SCRIPT_VIEWYMAX;                       // documented
-  if(MatchUpper(keyword,"VIEWZMIN")==MATCH)return SCRIPT_VIEWZMIN;                       // documented
-  if(MatchUpper(keyword,"VIEWZMAX")==MATCH)return SCRIPT_VIEWZMAX;                       // documented
-  if(MatchUpper(keyword,"RENDER360ALL") == MATCH)return SCRIPT_RENDER360ALL;
-  if(MatchUpper(keyword,"RENDERALL") == MATCH)return SCRIPT_RENDERALL;                   // documented
-  if(MatchUpper(keyword,"RENDERCLIP") == MATCH)return SCRIPT_RENDERCLIP;                 // documented
-  if(MatchUpper(keyword,"RENDERDIR") == MATCH)return SCRIPT_RENDERDIR;                   // documented
-  if(MatchUpper(keyword,"RENDERDOUBLEONCE") == MATCH)return SCRIPT_RENDERDOUBLEONCE;     // documented
-  if(MatchUpper(keyword,"RENDERHTMLALL")==MATCH)return SCRIPT_RENDERHTMLALL;
-  if(MatchUpper(keyword,"RENDERHTMLDIR") == MATCH)return SCRIPT_RENDERHTMLDIR;
-  if(MatchUpper(keyword,"RENDERHTMLGEOM") == MATCH)return SCRIPT_RENDERHTMLGEOM;
-  if(MatchUpper(keyword,"RENDERHTMLOBST") == MATCH)return SCRIPT_RENDERHTMLOBST;
-  if(MatchUpper(keyword,"RENDERHTMLONCE") ==MATCH)return SCRIPT_RENDERHTMLONCE;
-  if(MatchUpper(keyword,"RENDERHTMLSLICENODE")==MATCH)return SCRIPT_RENDERHTMLSLICENODE;
-  if(MatchUpper(keyword,"RENDERHTMLSLICECELL")==MATCH)return SCRIPT_RENDERHTMLSLICECELL;
-  if(MatchUpper(keyword,"RENDERONCE") == MATCH)return SCRIPT_RENDERONCE;                 // documented
-  if(MatchUpper(keyword,"RENDERSIZE") == MATCH)return SCRIPT_RENDERSIZE;
-  if(MatchUpper(keyword,"RENDERSTART") == MATCH)return SCRIPT_RENDERSTART;
-  if(MatchUpper(keyword,"RENDERTYPE") == MATCH)return SCRIPT_RENDERTYPE;
-  if(MatchUpper(keyword,"RGBTEST")==MATCH)return SCRIPT_RGBTEST;
-  if(MatchUpper(keyword,"SCENECLIP") == MATCH)return SCRIPT_SCENECLIP;
-  if(MatchUpper(keyword,"SETTOURKEYFRAME") == MATCH)return SCRIPT_SETTOURKEYFRAME;
-  if(MatchUpper(keyword,"SETTIMEVAL") == MATCH)return SCRIPT_SETTIMEVAL;                 // documented
-  if(MatchUpper(keyword,"SETTOURVIEW") == MATCH)return SCRIPT_SETTOURVIEW;
-  if(MatchUpper(keyword,"SETVIEWPOINT") == MATCH)return SCRIPT_SETVIEWPOINT;             // documented
-  if(MatchUpper(keyword,"SHOWPLOT3DDATA") == MATCH)return SCRIPT_SHOWPLOT3DDATA;         // documented
-  if(MatchUpper(keyword,"SHOWSMOKESENSORS")==MATCH)return SCRIPT_SHOWSMOKESENSORS;
-  if(MatchUpper(keyword,"SMOKEFRAMES")==MATCH)return SCRIPT_SMOKEFRAMES;
-  if(MatchUpper(keyword,"UNLOADALL") == MATCH)return SCRIPT_UNLOADALL;                   // documented
-  if(MatchUpper(keyword,"UNLOADTOUR") == MATCH)return SCRIPT_UNLOADTOUR;                 // documented
-  if(MatchUpper(keyword,"VOLSMOKERENDERALL") == MATCH)return SCRIPT_VOLSMOKERENDERALL;   // documented
-  if(MatchUpper(keyword,"XSCENECLIP")==MATCH)return SCRIPT_XSCENECLIP;                   // documented
-  if(MatchUpper(keyword,"YSCENECLIP") == MATCH)return SCRIPT_YSCENECLIP;                 // documented
-  if(MatchUpper(keyword,"ZSCENECLIP") == MATCH)return SCRIPT_ZSCENECLIP;                 // documented
+  if(MatchSSF(keyword,"CBARFLIP") == MATCH)return SCRIPT_CBARFLIP;                     // documented
+  if(MatchSSF(keyword,"CBARNORMAL") == MATCH)return SCRIPT_CBARNORMAL;                 // documented
+  if(MatchSSF(keyword,"EXIT") == MATCH)return SCRIPT_EXIT;                             // documented
+  if(MatchSSF(keyword,"GSLICEORIEN")==MATCH)return SCRIPT_GSLICEORIEN;
+  if(MatchSSF(keyword,"GSLICEPOS")==MATCH)return SCRIPT_GSLICEPOS;
+  if(MatchSSF(keyword,"GSLICEVIEW")==MATCH)return SCRIPT_GSLICEVIEW;
+  if(MatchSSF(keyword,"PROJECTION")==MATCH)return SCRIPT_PROJECTION;
+  if(MatchSSF(keyword,"ISORENDERALL")==MATCH)return SCRIPT_ISORENDERALL;
+  if(MatchSSF(keyword,"KEYBOARD") == MATCH)return SCRIPT_KEYBOARD;                     // documented
+  if(MatchSSF(keyword,"LABEL")==MATCH)return SCRIPT_LABEL;
+  if(MatchSSF(keyword,"LOAD3DSMOKE") == MATCH)return SCRIPT_LOAD3DSMOKE;               // documented
+  if(MatchSSF(keyword,"LOADBOUNDARY") == MATCH)return SCRIPT_LOADBOUNDARY;             // documented
+  if(MatchSSF(keyword,"LOADBOUNDARYM") == MATCH)return SCRIPT_LOADBOUNDARYM;
+  if(MatchSSF(keyword,"LOADFILE") == MATCH)return SCRIPT_LOADFILE;                     // documented
+  if(MatchSSF(keyword,"LOADINIFILE") == MATCH)return SCRIPT_LOADINIFILE;               // documented
+  if(MatchSSF(keyword,"LOADISO") == MATCH)return SCRIPT_LOADISO;                       // documented
+  if(MatchSSF(keyword,"LOADISOM") == MATCH)return SCRIPT_LOADISOM;                     // documented
+  if(MatchSSF(keyword,"LOADPARTICLES") == MATCH)return SCRIPT_LOADPARTICLES;           // documented
+  if(MatchSSF(keyword,"LOADPLOT3D") == MATCH)return SCRIPT_LOADPLOT3D;                 // documented
+  if(MatchSSF(keyword,"LOADSLICE") == MATCH)return SCRIPT_LOADSLICE;                   // documented
+  if(MatchSSF(keyword,"LOADSLCF")==MATCH)return SCRIPT_LOADSLCF;
+  if(MatchSSF(keyword,"LOADSLICERENDER")==MATCH)return SCRIPT_LOADSLICERENDER;
+  if(MatchSSF(keyword,"LOADSLICEM") == MATCH)return SCRIPT_LOADSLICEM;
+  if(MatchSSF(keyword,"LOADTOUR") == MATCH)return SCRIPT_LOADTOUR;                     // documented
+  if(MatchSSF(keyword,"LOADVOLSMOKE") == MATCH)return SCRIPT_LOADVOLSMOKE;             // documented
+  if(MatchSSF(keyword,"LOADVOLSMOKEFRAME") == MATCH)return SCRIPT_LOADVOLSMOKEFRAME;   // documented
+  if(MatchSSF(keyword,"LOADVFILE") == MATCH)return SCRIPT_LOADVFILE;                   // documented
+  if(MatchSSF(keyword,"LOADVSLICE") == MATCH)return SCRIPT_LOADVSLICE;                 // documented
+  if(MatchSSF(keyword,"LOADVSLICEM") == MATCH)return SCRIPT_LOADVSLICEM;
+  if(MatchSSF(keyword,"MAKEMOVIE") == MATCH)return SCRIPT_MAKEMOVIE;
+  if(MatchSSF(keyword,"MOVIETYPE")==MATCH)return SCRIPT_MOVIETYPE;
+  if(MatchSSF(keyword,"PARTCLASSCOLOR") == MATCH)return SCRIPT_PARTCLASSCOLOR;         // documented
+  if(MatchSSF(keyword,"PARTCLASSTYPE") == MATCH)return SCRIPT_PARTCLASSTYPE;           // documented
+  if(MatchSSF(keyword,"PLOT3DPROPS") == MATCH)return SCRIPT_PLOT3DPROPS;               // documented
+  if(MatchSSF(keyword,"XYZVIEW")==MATCH)return SCRIPT_XYZVIEW;                         // documented
+  if(MatchSSF(keyword,"VIEWXMIN")==MATCH)return SCRIPT_VIEWXMIN;                       // documented
+  if(MatchSSF(keyword,"VIEWXMAX")==MATCH)return SCRIPT_VIEWXMAX;                       // documented
+  if(MatchSSF(keyword,"VIEWYMIN")==MATCH)return SCRIPT_VIEWYMIN;                       // documented
+  if(MatchSSF(keyword,"VIEWYMAX")==MATCH)return SCRIPT_VIEWYMAX;                       // documented
+  if(MatchSSF(keyword,"VIEWZMIN")==MATCH)return SCRIPT_VIEWZMIN;                       // documented
+  if(MatchSSF(keyword,"VIEWZMAX")==MATCH)return SCRIPT_VIEWZMAX;                       // documented
+  if(MatchSSF(keyword,"RENDER360ALL") == MATCH)return SCRIPT_RENDER360ALL;
+  if(MatchSSF(keyword,"RENDERALL") == MATCH)return SCRIPT_RENDERALL;                   // documented
+  if(MatchSSF(keyword,"RENDERCLIP") == MATCH)return SCRIPT_RENDERCLIP;                 // documented
+  if(MatchSSF(keyword,"RENDERDIR") == MATCH)return SCRIPT_RENDERDIR;                   // documented
+  if(MatchSSF(keyword,"RENDERDOUBLEONCE") == MATCH)return SCRIPT_RENDERDOUBLEONCE;     // documented
+  if(MatchSSF(keyword,"RENDERHTMLALL")==MATCH)return SCRIPT_RENDERHTMLALL;
+  if(MatchSSF(keyword,"RENDERHTMLDIR") == MATCH)return SCRIPT_RENDERHTMLDIR;
+  if(MatchSSF(keyword,"RENDERHTMLGEOM") == MATCH)return SCRIPT_RENDERHTMLGEOM;
+  if(MatchSSF(keyword,"RENDERHTMLOBST") == MATCH)return SCRIPT_RENDERHTMLOBST;
+  if(MatchSSF(keyword,"RENDERHTMLONCE") ==MATCH)return SCRIPT_RENDERHTMLONCE;
+  if(MatchSSF(keyword,"RENDERHTMLSLICENODE")==MATCH)return SCRIPT_RENDERHTMLSLICENODE;
+  if(MatchSSF(keyword,"RENDERHTMLSLICECELL")==MATCH)return SCRIPT_RENDERHTMLSLICECELL;
+  if(MatchSSF(keyword,"RENDERONCE") == MATCH)return SCRIPT_RENDERONCE;                 // documented
+  if(MatchSSF(keyword,"RENDERSIZE") == MATCH)return SCRIPT_RENDERSIZE;
+  if(MatchSSF(keyword,"RENDERSTART") == MATCH)return SCRIPT_RENDERSTART;
+  if(MatchSSF(keyword,"RENDERTYPE") == MATCH)return SCRIPT_RENDERTYPE;
+  if(MatchSSF(keyword,"RGBTEST")==MATCH)return SCRIPT_RGBTEST;
+  if(MatchSSF(keyword,"SCENECLIP") == MATCH)return SCRIPT_SCENECLIP;
+  if(MatchSSF(keyword,"SETTOURKEYFRAME") == MATCH)return SCRIPT_SETTOURKEYFRAME;
+  if(MatchSSF(keyword,"SETTIMEVAL") == MATCH)return SCRIPT_SETTIMEVAL;                 // documented
+  if(MatchSSF(keyword,"SETSLICEBOUNDS")==MATCH)return SCRIPT_SETSLICEBOUNDS;
+  if(MatchSSF(keyword,"SETBOUNDBOUNDS")==MATCH)return SCRIPT_SETBOUNDBOUNDS;
+  if(MatchSSF(keyword,"SETTOURVIEW") == MATCH)return SCRIPT_SETTOURVIEW;
+  if(MatchSSF(keyword,"SETVIEWPOINT") == MATCH)return SCRIPT_SETVIEWPOINT;             // documented
+  if(MatchSSF(keyword,"SHOWPLOT3DDATA") == MATCH)return SCRIPT_SHOWPLOT3DDATA;         // documented
+  if(MatchSSF(keyword,"SHOWSMOKESENSORS")==MATCH)return SCRIPT_SHOWSMOKESENSORS;
+  if(MatchSSF(keyword,"UNLOADALL") == MATCH)return SCRIPT_UNLOADALL;                   // documented
+  if(MatchSSF(keyword,"UNLOADTOUR") == MATCH)return SCRIPT_UNLOADTOUR;                 // documented
+  if(MatchSSF(keyword,"VOLSMOKERENDERALL") == MATCH)return SCRIPT_VOLSMOKERENDERALL;   // documented
+  if(MatchSSF(keyword,"XSCENECLIP")==MATCH)return SCRIPT_XSCENECLIP;                   // documented
+  if(MatchSSF(keyword,"YSCENECLIP") == MATCH)return SCRIPT_YSCENECLIP;                 // documented
+  if(MatchSSF(keyword,"ZSCENECLIP") == MATCH)return SCRIPT_ZSCENECLIP;                 // documented
 
   return SCRIPT_UNKNOWN;
 }
@@ -338,7 +341,7 @@ int GetScriptKeywordIndex(char *keyword){
 void GetXYZ(char *buffer,int *ival){
   int i;
 
-  for(i=0;i<strlen(buffer);i++){
+  for(i=0;i<(int)strlen(buffer);i++){
     char *c;
 
     c = buffer+i;
@@ -405,7 +408,6 @@ sscanf(buffptr, "%i", &scripti->ival)
 SETbuffer;\
 sscanf(buffptr, "%i", &scripti->ival2)
 
-#ifndef pp_DEG
 /* ------------------ RemoveDeg ------------------------ */
 
 void RemoveDeg(char *string){
@@ -422,7 +424,6 @@ void RemoveDeg(char *string){
   }
   string[ii] = 0;
 }
-#endif
 
 #define TOKEN_UNKNOWN -1
 #define TOKEN_INT      0
@@ -496,6 +497,9 @@ int ParseTokens(char *buffer, char **keywords, int *type, int nkeywords, int *to
           return 0;
         }
         break;
+      default:
+	ASSERT(FFALSE);
+	break;
     }
   }
   return i;
@@ -540,10 +544,6 @@ int CompileScript(char *scriptfile){
     if(GetScriptKeywordIndex(buffer)!=SCRIPT_UNKNOWN)nscriptinfo++;
   }
 
-#ifdef pp_SCRIPT_SETVIEW
-  nscriptinfo++;
-#endif
-
   if(nscriptinfo==0){
     fclose(stream);
     fprintf(stderr,"*** Error: scriptfile has no usable commands\n");
@@ -552,19 +552,7 @@ int CompileScript(char *scriptfile){
 
 NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
 
-#ifdef pp_SCRIPT_SETVIEW
-  // add a SETVIEWPOINT command for the default view point at the beginning of thes script
-  {
-    char label[20];
-
-    strcpy(label, "SETVIEWPOINT");
-    InitScriptI(scriptinfo, SCRIPT_SETVIEWPOINT, label);
-    scriptinfo->cval = GetCharPointer(viewpoint_label_startup);
-  }
-  nscriptinfo=1;
-#else
   nscriptinfo=0;
-#endif
 
   /*
    ************************************************************************
@@ -801,9 +789,7 @@ NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
 //  mesh number (int)
       case SCRIPT_LOADISOM:
         SETcval;
-#ifndef pp_DEG
         RemoveDeg(scripti->cval);
-#endif
         scripti->ival = 1;
         SETival;
         scripti->need_graphics = 0;
@@ -1065,6 +1051,9 @@ NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
               case KW_CELL_CENTERED:
                 scripti->cell_centered = itokens[i];
                 break;
+	      default:
+		ASSERT(FFALSE);
+		break;
             }
           }
           if(scripti->id==NULL){
@@ -1141,6 +1130,20 @@ NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
         scripti->need_graphics = 0;
         break;
 
+// SETBOUNDBOUNDS
+//  type (char) ivalmin (int) valmin (float) ivalmax (int) valmax quantity (char)
+      case SCRIPT_SETBOUNDBOUNDS:
+        SETbuffer;
+        sscanf(buffer," %i %f %i %f, %s",&scripti->ival,&scripti->fval, &scripti->ival2,&scripti->fval2, scripti->quantity2);
+        break;
+
+// SETSLICEBOUNDS
+//  type (char) ivalmin (int) valmin (float) ivalmax (int) valmax quantity (char)
+      case SCRIPT_SETSLICEBOUNDS:
+        SETbuffer;
+        sscanf(buffer," %i %f %i %f, %s",&scripti->ival,&scripti->fval, &scripti->ival2,&scripti->fval2, scripti->quantity2);
+        break;
+
 // SETTOURVIEW
 //   viewtype  showpath showtour_locus tension
       case SCRIPT_SETTOURVIEW:
@@ -1152,13 +1155,6 @@ NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
 //  time (float)
       case SCRIPT_SETTOURKEYFRAME:
         SETfval;
-        break;
-
-// SMOKEFRAMES
-//  num (int) usesubset (int)
-      case SCRIPT_SMOKEFRAMES:
-        SETbuffer;
-        sscanf(buffer,"%i %i %i",&scripti->ival,&scripti->ival2,&scripti->ival3);
         break;
 
 // RGBTEST
@@ -1197,6 +1193,9 @@ NewMemory((void **)&scriptinfo, nscriptinfo*sizeof(scriptdata));
         SETbuffer;
         sscanf(buffer,"%f %f",&scripti->fval,&scripti->fval2);
         break;
+      default:
+	ASSERT(FFALSE);
+	break;
     }
     if(scriptEOF==1)break;
     if(keyword_index!=SCRIPT_UNKNOWN&&fatal_error==0)nscriptinfo++;
@@ -1384,7 +1383,6 @@ void LoadSmokeFrame(int meshnum, int framenum){
   framenum = CLAMP(framenum, 0, max_frames-1);
   if(framenum!=frame_old)UpdateLoadFrameVal(framenum);
 
-  update_fileload = 1;
   for(i = 0; i<nmeshes; i++){
     meshdata *meshi;
     volrenderdata *vr;
@@ -1523,7 +1521,7 @@ void ScriptVolSmokeRenderAll(scriptdata *scripti){
 
 void ScriptLoadIsoFrame(scriptdata *scripti, int flag){
   int framenum, index;
-  int i, count = 0;
+  int i;
   int fileindex;
 
   index = scripti->ival;
@@ -1540,7 +1538,6 @@ void ScriptLoadIsoFrame(scriptdata *scripti, int flag){
     isoi = isoinfo + i;
     if(isoi->isof_index + 1 == fileindex){
       ReadIso(isoi->file, i, LOAD, &framenum, &errorcode);
-      count++;
     }
   }
   if(update_readiso_geom_wrapup == UPDATE_ISO_ALL_NOW)ReadIsoGeomWrapup(FOREGROUND);
@@ -1629,7 +1626,6 @@ void ScriptLoadParticles(scriptdata *scripti){
     partdata *parti;
 
     parti = partinfo + i;
-    if(parti->evac==1)continue;
     ReadPart(parti->file,i,UNLOAD,&errorcode);
     count++;
   }
@@ -1643,7 +1639,6 @@ void ScriptLoadParticles(scriptdata *scripti){
     partdata *parti;
 
     parti = partinfo+i;
-    if(parti->evac==1)continue;
     parti->finalize = 1;
     break;
   }
@@ -1651,7 +1646,6 @@ void ScriptLoadParticles(scriptdata *scripti){
     partdata *parti;
 
     parti = partinfo + i;
-    if(parti->evac==1)continue;
     ReadPart(parti->file,i,LOAD,&errorcode);
     if(scripti->cval!=NULL&&strlen(scripti->cval)>0){
       FREEMEMORY(loaded_file);
@@ -1809,6 +1803,8 @@ int SliceMatch(scriptdata *scripti, slicedata *slicei){
   ASSERT(scripti->quantity!=NULL);
   if(scripti->quantity==NULL)return 0;  // should never happen
   if(scripti->quantity!=NULL&&strncmp(scripti->quantity, slicei->label.longlabel,strlen(scripti->quantity))!=0)return 0;
+  if(scripti->cell_centered==0&&slicei->slice_filetype==SLICE_CELL_CENTER)return 0;
+  if(scripti->cell_centered==1&&slicei->slice_filetype!=SLICE_CELL_CENTER)return 0;
   if(scripti->pbxyz_dir==0){
     int *min, *max;
     meshdata *meshi;
@@ -1877,19 +1873,20 @@ void ScriptLoadVSLCF(scriptdata *scripti){
     if(SliceMatch(scripti, slicei)==0)continue;
 
     for(j=0;j<mvslicei->nvslices;j++){
-      vslicedata *vslicei;
+      vslicedata *vslicej;
       int finalize_save;
 
-      vslicei = vsliceinfo+mvslicei->ivslices[j];
-      finalize_save = vslicei->finalize;
+      vslicej = vsliceinfo+mvslicei->ivslices[j];
+//save finalize
+      finalize_save = vslicej->finalize;
       if(j==mvslicei->nvslices-1){
-        vslicei->finalize = 1;
+        vslicej->finalize = 1;
       }
       else{
-        vslicei->finalize = 0;
+        vslicej->finalize = 0;
       }
       LoadVSliceMenu(mvslicei->ivslices[j]);
-      vslicei->finalize = finalize_save;
+      vslicej->finalize = finalize_save;
       count++;
     }
     break;
@@ -1998,18 +1995,18 @@ void ScriptLoadSlice(scriptdata *scripti){
     for(j=0;j<mslicei->nslices;j++){
       slicedata *slicej;
       int finalize_save;
-      slicedata *slicei;
 
-      slicei = sliceinfo+mslicei->islices[j];
-      finalize_save = slicei->finalize;
+      slicej = sliceinfo+mslicei->islices[j];
+//save finalize
+      finalize_save = slicej->finalize;
       if(j==mslicei->nslices-1){
-        slicei->finalize = 1;
+        slicej->finalize = 1;
       }
       else{
-        slicei->finalize = 0;
+        slicej->finalize = 0;
       }
       LoadSliceMenu(mslicei->islices[j]);
-      slicei->finalize = finalize_save;
+      slicej->finalize = finalize_save;
       FREEMEMORY(loaded_file);
       slicej = sliceinfo + mslicei->islices[j];
       if(slicej->file != NULL&&strlen(slicej->file) > 0){
@@ -2152,10 +2149,16 @@ void ScriptLoadSliceRender(scriptdata *scripti){
       SetSliceGlobalBounds(shortlabel);
     }
     frames_total = GetNSliceGeomFrames(scripti);
+    frame360 = 0;
   }
   else{
     frame_current = scripti->ival4;
-    frame_current += frame_skip;
+    if(frame_current==frame_start&&frame360==0&&render_mode==RENDER_360){ // output first frame twice - work around for a bug causing first frame to be output incorrectly
+      frame360 = 1;
+    }
+    else{
+      frame_current += frame_skip;
+    }
   }
   script_itime = frame_current;
   script_render_flag = 1;
@@ -2195,17 +2198,17 @@ void ScriptLoadSliceRender(scriptdata *scripti){
     for(j = 0; j<mslicei->nslices; j++){
       slicedata *slicej;
       int finalize_save;
-      slicedata *slicei;
       float time_value;
       FILE_SIZE slicefile_size;
 
-      slicei = sliceinfo+mslicei->islices[j];
-      finalize_save = slicei->finalize;
+      slicej = sliceinfo+mslicei->islices[j];
+//save finalize
+      finalize_save = slicej->finalize;
       if(j==mslicei->nslices-1){
-        slicei->finalize = 1;
+        slicej->finalize = 1;
       }
       else{
-        slicei->finalize = 0;
+        slicej->finalize = 0;
       }
       if(frame_current>=frames_total){
         scripti->exit = 1;
@@ -2227,9 +2230,9 @@ void ScriptLoadSliceRender(scriptdata *scripti){
       scripti->fval4 = time_value;
       CheckMemory;
 
-      slicei->finalize = finalize_save;
+//save finalize
+      slicej->finalize = finalize_save;
       FREEMEMORY(loaded_file);
-      slicej = sliceinfo+mslicei->islices[j];
       if(slicej->file!=NULL&&strlen(slicej->file)>0){
         NewMemory((void **)&loaded_file, strlen(slicej->file)+1);
         strcpy(loaded_file, slicej->file);
@@ -2324,19 +2327,20 @@ void ScriptLoadVSlice(scriptdata *scripti){
       if(ABS(slicei->position_orig - scripti->fval) > slicei->delta_orig)continue;
     }
     for(j=0;j<mvslicei->nvslices;j++){
-      vslicedata *vslicei;
+      vslicedata *vslicej;
       int finalize_save;
 
-      vslicei = vsliceinfo+mvslicei->ivslices[j];
-      finalize_save = vslicei->finalize;
+      vslicej = vsliceinfo+mvslicei->ivslices[j];
+//save finalize
+      finalize_save = vslicej->finalize;
       if(j==mvslicei->nvslices-1){
-        vslicei->finalize = 1;
+        vslicej->finalize = 1;
       }
       else{
-        vslicei->finalize = 0;
+        vslicej->finalize = 0;
       }
       LoadVSliceMenu(mvslicei->ivslices[j]);
-      vslicei->finalize = finalize_save;
+      vslicej->finalize = finalize_save;
       count++;
     }
     break;
@@ -2528,7 +2532,7 @@ void ScriptPlot3dProps(scriptdata *scripti){
 
 /* ------------------ ScriptShowSmokeSensors ------------------------ */
 
-void ScriptShowSmokeSensors(scriptdata *scripti){
+void ScriptShowSmokeSensors(void){
   int i,j;
   FILE *stream_smokesensors;
   int nsmokesensors;
@@ -2568,10 +2572,10 @@ void ScriptShowSmokeSensors(scriptdata *scripti){
       if(STRCMP(devicei->object->label, "smokesensor") == 0){
         j++;
         if(j == nsmokesensors){
-          fprintf(stream_smokesensors, "%s\n",devicei->label);
+          fprintf(stream_smokesensors, "%s\n",devicei->deviceID);
         }
         else{
-          fprintf(stream_smokesensors, "%s,", devicei->label);
+          fprintf(stream_smokesensors, "%s,", devicei->deviceID);
         }
       }
     }
@@ -2891,10 +2895,10 @@ void ScriptSetTourKeyFrame(scriptdata *scripti){
 
     if(keyj==(touri->first_frame).next){
       minkey=keyj;
-      minkeytime=ABS(keyframe_time-keyj->nodeval.time);
+      minkeytime = ABS(keyframe_time-keyj->time);
       continue;
     }
-    diff_time=ABS(keyframe_time-keyj->nodeval.time);
+    diff_time = ABS(keyframe_time-keyj->time);
     if(diff_time<minkeytime){
       minkey=keyj;
       minkeytime=diff_time;
@@ -2917,22 +2921,48 @@ void ScriptSetTourView(scriptdata *scripti){
   switch(scripti->ival2){
     case 0:
       viewtourfrompath=0;
-      keyframe_snap=0;
       break;
     case 1:
       viewtourfrompath=1;
-      keyframe_snap=0;
       break;
     case 2:
       viewtourfrompath=0;
-      keyframe_snap=1;
       break;
     default:
       viewtourfrompath=0;
-      keyframe_snap=0;
       break;
   }
   UpdateTourState();
+}
+
+/* ------------------ ScriptSetSliceBounds ------------------------ */
+
+void ScriptSetSliceBounds(scriptdata *scripti){
+  int set_valmin, set_valmax;
+  float valmin, valmax;
+  char *quantity;
+
+  set_valmin = scripti->ival;
+  set_valmax = scripti->ival2;
+  valmin = scripti->fval;
+  valmax = scripti->fval2;
+  quantity = scripti->quantity2;
+  SetSliceBounds(set_valmin, valmin, set_valmax, valmax, quantity);
+}
+
+/* ------------------ ScriptSetBoundBounds ------------------------ */
+
+void ScriptSetBoundBounds(scriptdata *scripti){
+  int set_valmin, set_valmax;
+  float valmin, valmax;
+  char *quantity;
+
+  set_valmin = scripti->ival;
+  set_valmax = scripti->ival2;
+  valmin = scripti->fval;
+  valmax = scripti->fval2;
+  quantity = scripti->quantity2;
+  SetBoundBounds(set_valmin, valmin, set_valmax, valmax, quantity);
 }
 
 /* ------------------ ScriptSetTimeVal ------------------------ */
@@ -3087,15 +3117,6 @@ void SetTimeVal(float timeval){
   }
 }
 
-/* ------------------ ScriptSmokeframes ------------------------ */
-
-void ScriptSmokeframes(scriptdata *scripti){
-  smoke_num = scripti->ival;
-  smoke_subset = scripti->ival2;
-  use_newsmoke = scripti->ival3;
-  Smoke3dCB(SMOKE_NEW);
-}
-
 /* ------------------ ScriptRGBtest ------------------------ */
 
 void ScriptRGBtest(scriptdata *scripti){
@@ -3109,6 +3130,7 @@ void ScriptRGBtest(scriptdata *scripti){
   rgb_test_rgb[2] = scripti->ival3;
   rgb_test_delta  = scripti->ival4;
   use_lighting = 0;
+  update_use_lighting = 1;
 }
 
 /* ------------------ ScriptSetViewpoint ------------------------ */
@@ -3119,10 +3141,14 @@ void ScriptSetViewpoint(scriptdata *scripti){
   viewpoint = scripti->cval;
   update_viewpoint_script = 3;
   strcpy(viewpoint_script, viewpoint);
+  viewpoint_script_ptr = NULL;
   PRINTF("script: set viewpoint to %s\n\n",viewpoint);
   if(GetCamera(viewpoint) == NULL){
     fprintf(stderr, "*** Error: The viewpoint %s was not found\n", viewpoint);
     if(stderr2!=NULL)fprintf(stderr2, "*** Error: The viewpoint %s was not found\n", viewpoint);
+  }
+  else{
+    viewpoint_script_ptr = viewpoint_script;
   }
 }
 
@@ -3168,6 +3194,9 @@ void ScriptViewXYZMINMAXOrtho(int command){
     zaxis_angles[1] =  0.0;
     zaxis_angles[2] =  0.0;
     break;
+  default:
+    ASSERT(FFALSE);
+    break;
   }
   ResetGluiView(EXTERNAL_VIEW);
   use_customview=0;
@@ -3196,6 +3225,9 @@ void ScriptViewXYZMINMAXPersp(int command){
     break;
   case SCRIPT_VIEWZMAX:
     ResetDefaultMenu(VIEW_ZMAX);
+    break;
+  default:
+    ASSERT(FFALSE);
     break;
   }
 }
@@ -3462,7 +3494,7 @@ int RunScriptCommand(scriptdata *script_command){
       ScriptPartClassColor(scripti);
       break;
     case SCRIPT_SHOWSMOKESENSORS:
-      ScriptShowSmokeSensors(scripti);
+      ScriptShowSmokeSensors();
       break;
     case SCRIPT_SHOWPLOT3DDATA:
       ScriptShowPlot3dData(scripti);
@@ -3545,6 +3577,12 @@ int RunScriptCommand(scriptdata *script_command){
       returnval=1;
       ScriptSetTimeVal(scripti);
       break;
+    case SCRIPT_SETSLICEBOUNDS:
+      ScriptSetSliceBounds(scripti);
+      break;
+    case SCRIPT_SETBOUNDBOUNDS:
+      ScriptSetBoundBounds(scripti);
+      break;
     case SCRIPT_SETTOURVIEW:
       ScriptSetTourView(scripti);
       break;
@@ -3553,9 +3591,6 @@ int RunScriptCommand(scriptdata *script_command){
       break;
     case SCRIPT_SETVIEWPOINT:
       ScriptSetViewpoint(scripti);
-      break;
-    case SCRIPT_SMOKEFRAMES:
-      ScriptSmokeframes(scripti);
       break;
     case SCRIPT_RGBTEST:
       ScriptRGBtest(scripti);

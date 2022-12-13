@@ -6,6 +6,7 @@
 #include <string.h>
 #include "MALLOCC.h"
 #include "translate.h"
+#include "string_util.h"
 
 /* ------------------ Usage ------------------------ */
 
@@ -28,7 +29,7 @@ void Usage(char *prog, int option){
   }
 }
 
-     
+
 /* ------------------ main ------------------------ */
 
 int main(int argc, char **argv){

@@ -636,6 +636,71 @@ void UpdateIndexColors(void){
   updatefaces=1;
 }
 
+/* ------------------ DrawOrigObstOutlines ------------------------ */
+
+void DrawOrigObstOutlines(void){
+  int i;
+  float *color, *oldcolor=NULL;
+
+  glPushMatrix();
+  glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
+  glTranslatef(-xbar0,-ybar0,-zbar0);
+  AntiAliasLine(ON);
+  glLineWidth(linewidth);
+  glBegin(GL_LINES);
+  for(i=0; i<nobstinfo; i++){
+    xbdata *obi;
+    float *xyz;
+    float xmin, xmax, ymin, ymax, zmin, zmax;
+
+    obi = obstinfo + i;
+    color = foregroundcolor;
+    if(obi->bc!=NULL&&obi->bc->showtimelist!=NULL&&obi->bc->showtimelist[itimes]==0)continue;
+    if(obi->color!=NULL)color = obi->color;
+    if(obi->color==NULL&&obi->surfs[0]->color!=NULL)color = obi->surfs[0]->color;
+    if(color!=oldcolor){
+      glColor3fv(color);
+      oldcolor = color;
+    }
+    xyz = obi->xyz;
+    xmin = xyz[0];
+    xmax = xyz[1];
+    ymin = xyz[2];
+    ymax = xyz[3];
+    zmin = xyz[4];
+    zmax = xyz[5];
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmin, ymin, zmax);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmin, ymax, zmin);
+    glVertex3f(xmin, ymax, zmax);
+    glVertex3f(xmax, ymax, zmin);
+    glVertex3f(xmax, ymax, zmax);
+
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmin, ymax, zmin);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmax, ymax, zmin);
+    glVertex3f(xmin, ymin, zmax);
+    glVertex3f(xmin, ymax, zmax);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmax, ymax, zmax);
+
+    glVertex3f(xmin, ymin, zmin);
+    glVertex3f(xmax, ymin, zmin);
+    glVertex3f(xmin, ymax, zmin);
+    glVertex3f(xmax, ymax, zmin);
+    glVertex3f(xmin, ymin, zmax);
+    glVertex3f(xmax, ymin, zmax);
+    glVertex3f(xmin, ymax, zmax);
+    glVertex3f(xmax, ymax, zmax);
+  }
+  glEnd();
+  AntiAliasLine(OFF);
+  glPopMatrix();
+}
+
 /* ------------------ DrawOutlines ------------------------ */
 
 void DrawOutlines(void){
@@ -667,6 +732,7 @@ void DrawOutlines(void){
   glEnd();
   AntiAliasLine(OFF);
 }
+
 /* ------------------ DrawCBox ------------------------ */
 
 void DrawCBox(float x, float y, float z, float size){
@@ -1103,6 +1169,26 @@ void SetCVentDirs(void){
   UNLOCK_IBLANK
 }
 
+/* ------------------ CheckVentDup ------------------------ */
+
+int CheckVentDup(ventdata* vi, meshdata* meshi){
+  int i;
+  int nreal_vents;
+
+  nreal_vents = meshi->nvents - meshi->ndummyvents;
+  if (nreal_vents == 0)return 0;
+
+  for(i = 0; i < nreal_vents; i++){
+    ventdata *vi2;
+
+    vi2 = meshi->ventinfo + i;
+    if(vi2->imin != vi->imin || vi2->imax != vi->imax)return 0;
+    if(vi2->jmin != vi->jmin || vi2->jmax != vi->jmax)return 0;
+    if(vi2->kmin != vi->kmin || vi2->kmax != vi->kmax)return 0;
+  }
+  return 1;
+}
+
 /* ------------------ SetVentDirs ------------------------ */
 
 void SetVentDirs(void){
@@ -1194,6 +1280,9 @@ void SetVentDirs(void){
           voffset=-offset;
         }
         if(iv<meshi->nvents)vi->dir=ventdir;
+        if(vi->dummy != 0){
+          if(CheckVentDup(vi, meshi)==1)vi->dummy = 0;
+        }
         if(vi->dummy==0){
           vi->xvent1 = vi->xvent1_orig+voffset;
           vi->xvent2 = vi->xvent2_orig+voffset;
@@ -1244,6 +1333,9 @@ void SetVentDirs(void){
           voffset=-offset;
         }
         if(iv<meshi->nvents)vi->dir=ventdir;
+        if(vi->dummy != 0){
+          if(CheckVentDup(vi, meshi)==1)vi->dummy = 0;
+        }
         if(vi->dummy==0){
           vi->yvent1 = vi->yvent1_orig+voffset;
           vi->yvent2 = vi->yvent2_orig+voffset;
@@ -1294,6 +1386,9 @@ void SetVentDirs(void){
           voffset=-offset;
         }
         if(iv<meshi->nvents)vi->dir=ventdir;
+        if(vi->dummy != 0){
+          if(CheckVentDup(vi, meshi)==1)vi->dummy = 0;
+        }
         if(vi->dummy==0){
           vi->zvent1 = vi->zvent1_orig+voffset;
           vi->zvent2 = vi->zvent2_orig+voffset;
@@ -1325,9 +1420,95 @@ int InBlockage(const meshdata *meshi,float x, float y, float z){
     xmin = xplt[bc->ijk[IMIN]]; xmax = xplt[bc->ijk[IMAX]];
     ymin = yplt[bc->ijk[JMIN]]; ymax = yplt[bc->ijk[JMAX]];
     zmin = zplt[bc->ijk[KMIN]]; zmax = zplt[bc->ijk[KMAX]];
-    if(xmin<x && x<xmax && ymin<y && y<ymax && zmin<z && z<zmax){return(1);}
+    if(xmin<x && x<xmax && ymin<y && y<ymax && zmin<z && z<zmax){
+      return 1;
+    }
   }
-  return(0);
+  return 0;
+}
+
+/* ------------------ InAnyBlockage ------------------------ */
+
+int InAnyBlockage(float *xyz){
+  int i;
+
+  for(i = 0; i<nmeshes; i++){
+    meshdata *meshi;
+
+    meshi = meshinfo+i;
+    if(InBlockage(meshi, xyz[0], xyz[1], xyz[2])==1)return 1;
+  }
+  return 0;
+}
+
+/* ------------------ SetInteriorBlockages ------------------------ */
+
+void SetInteriorBlockages(int flag){
+  int i;
+
+  for(i=0; i<nmeshes; i++){
+    int j;
+    meshdata *meshi;
+
+    meshi = meshinfo + i;
+    for(j=0; j<meshi->nbptrs; j++){
+      blockagedata *bc;
+      int k;
+      float *xyzDELTA;
+
+      bc = meshi->blockageinfoptrs[j];
+      for(k=0; k<6; k++){
+        bc->interior[k] = 0;
+      }
+      xyzDELTA = bc->xyzDELTA;
+
+      xyzDELTA[0] = bc->xmin-meshi->boxeps[0];
+      xyzDELTA[1] = (bc->ymin+bc->ymax)/2.0;
+      xyzDELTA[2] = (bc->zmin+bc->zmax)/2.0;
+
+      xyzDELTA += 3;
+      xyzDELTA[0] = bc->xmax+meshi->boxeps[0];
+      xyzDELTA[1] = (bc->ymin+bc->ymax)/2.0;
+      xyzDELTA[2] = (bc->zmin+bc->zmax)/2.0;
+
+      xyzDELTA += 3;
+      xyzDELTA[0] = (bc->xmin+bc->xmax)/2.0;
+      xyzDELTA[1] = bc->ymin-meshi->boxeps[1];
+      xyzDELTA[2] = (bc->zmin+bc->zmax)/2.0;
+
+      xyzDELTA += 3;
+      xyzDELTA[0] = (bc->xmin+bc->xmax)/2.0;
+      xyzDELTA[1] = bc->ymax+meshi->boxeps[1];
+      xyzDELTA[2] = (bc->zmin+bc->zmax)/2.0;
+
+      xyzDELTA += 3;
+      xyzDELTA[0] = (bc->xmin+bc->xmax)/2.0;
+      xyzDELTA[1] = (bc->ymin+bc->ymax)/2.0;
+      xyzDELTA[2] = bc->zmin-meshi->boxeps[2];
+
+      xyzDELTA += 3;
+      xyzDELTA[0] = (bc->xmin+bc->xmax)/2.0;
+      xyzDELTA[1] = (bc->ymin+bc->ymax)/2.0;
+      xyzDELTA[2] = bc->zmax+meshi->boxeps[2];
+    }
+  }
+  if(flag==0)return;
+  for(i = 0; i<nmeshes; i++){
+    int j;
+    meshdata *meshi;
+
+    meshi = meshinfo+i;
+    for(j = 0; j<meshi->nbptrs; j++){
+      blockagedata *bc;
+      int k;
+
+      bc = meshi->blockageinfoptrs[j];
+      if(bc->transparent==0)continue;
+      for(k=0;k<6;k++){
+        bc->interior[k] = InAnyBlockage(bc->xyzDELTA+3*k);
+      }
+    }
+  }
 }
 
 /* ------------------ FreeCADInfo ------------------------ */
@@ -1419,10 +1600,8 @@ void ReadCADGeom(cadgeomdata *cd){
     ReadCAD2Geom(cd);
     return;
   }
-  else{
-    cd->version=1;
-    rewind(stream);
-  }
+  cd->version=1;
+  rewind(stream);
   while(!feof(stream)){
     if(fgets(buffer,255,stream)==NULL)break;
     if(fgets(buffer,255,stream)==NULL)break;
@@ -1584,7 +1763,7 @@ void ReadCAD2Geom(cadgeomdata *cd){
     *shininess=block_shininess;
     *onesided=0;
     lenbuffer=strlen(buffer);
-    for(ii=0;ii<lenbuffer;ii++){
+    for(ii=0;ii<(int)lenbuffer;ii++){
       if(buffer[ii]==',')buffer[ii]=' ';
     }
 
@@ -2098,10 +2277,13 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
   for(j=0;j<jend;j++){
     faceptr->meshindex=meshi-meshinfo;
     faceptr->type2=facetype;
+#ifdef pp_THINFACE
     faceptr->thinface=0;
+#endif
     faceptr->is_interior=0;
     faceptr->show_bothsides=0;
     faceptr->bc=NULL;
+    faceptr->interior = 0;
 
     if(bc!=NULL){
       faceptr->bc=bc;
@@ -2116,7 +2298,6 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
       }
       faceptr->showtimelist_handle=&bc->showtimelist;
       faceptr->del=bc->del;
-      faceptr->invisible=bc->invisible;
       faceptr->surfinfo=bc->surf[j];
       faceptr->texture_origin=bc->texture_origin;
       faceptr->transparent=bc->transparent;
@@ -2126,7 +2307,6 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
       faceptr->hidden=0;
       faceptr->patchpresent=0;
       faceptr->del=0;
-      faceptr->invisible=0;
       faceptr->texture_origin=vi->texture_origin;
       faceptr->transparent=vi->transparent;
       if(faceptr->type2==OUTLINE_FRAME_face){
@@ -2180,12 +2360,10 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
         if(bc->surf[j]==surfacedefault){
          // faceptr->color=block_ambient2;
           faceptr->color=surfacedefault->color;  /* fix ?? */
-          faceptr->invisible=surfacedefault->invisible;
           faceptr->transparent=surfacedefault->transparent;
         }
         else{
           faceptr->color=bc->surf[j]->color;
-          faceptr->invisible=bc->surf[j]->invisible;
           faceptr->transparent=bc->surf[j]->transparent;
         }
         break;
@@ -2282,37 +2460,46 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
        faceptr->normal[1]=(float)-1.0;
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[YYY] = -meshi->vent_offset[YYY];
        faceptr->jmax=faceptr->jmin;
+#ifdef pp_THINFACE
        if(faceptr->imin==faceptr->imax||faceptr->kmin==faceptr->kmax)faceptr->thinface=1;
+#endif
        xtex = xx;
        ytex = zz;
        xtex2 = xx2;
        ytex2 = zz2;
        xstart = &xbar0;
        ystart = &zbar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[2];
        break;
      case UP_X:
        faceptr->normal[0]=(float)1.0;
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[XXX] = meshi->vent_offset[XXX];
        faceptr->imin=faceptr->imax;
+#ifdef pp_THINFACE
        if(faceptr->jmin==faceptr->jmax||faceptr->kmin==faceptr->kmax)faceptr->thinface=1;
+#endif
        xtex = yy;
        ytex = zz;
        xtex2 = yy2;
        ytex2 = zz2;
        xstart = &ybar0;
        ystart = &zbar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[1];
        break;
      case UP_Y:
        faceptr->normal[1]=(float)1.0;
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[YYY] = meshi->vent_offset[YYY];
        faceptr->jmin=faceptr->jmax;
+#ifdef pp_THINFACE
        if(faceptr->imin==faceptr->imax||faceptr->kmin==faceptr->kmax)faceptr->thinface=1;
+#endif
        xtex = xx;
        ytex = zz;
        xtex2 = xx2;
        ytex2 = zz2;
        xstart = &xbar0;
        ystart = &zbar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[3];
        break;
      case DOWN_X:
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[XXX] = -meshi->vent_offset[XXX];
@@ -2322,9 +2509,12 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
        ytex2 = zz2;
        faceptr->normal[0]=(float)-1.0;
        faceptr->imax=faceptr->imin;
+#ifdef pp_THINFACE
        if(faceptr->jmin==faceptr->jmax||faceptr->kmin==faceptr->kmax)faceptr->thinface=1;
+#endif
        xstart = &ybar0;
        ystart = &zbar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[0];
        break;
      case DOWN_Z:
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[ZZZ] = -meshi->vent_offset[ZZZ];
@@ -2334,9 +2524,12 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
        ytex2 = yy2;
        faceptr->normal[2]=(float)-1.0;
        faceptr->kmax=faceptr->kmin;
+#ifdef pp_THINFACE
        if(faceptr->imin==faceptr->imax||faceptr->jmin==faceptr->jmax)faceptr->thinface=1;
+#endif
        xstart = &xbar0;
        ystart = &ybar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[4];
        break;
      case UP_Z:
        if(facetype==VENT_face&&vi!=NULL&&vi->dummy==0)offset[ZZZ] = meshi->vent_offset[ZZZ];
@@ -2346,9 +2539,12 @@ void ObstOrVent2Faces(const meshdata *meshi,blockagedata *bc,
        ytex2 = yy2;
        faceptr->normal[2]=(float)1.0;
        faceptr->kmin=faceptr->kmax;
+#ifdef pp_THINFACE
        if(faceptr->imin==faceptr->imax||faceptr->jmin==faceptr->jmax)faceptr->thinface=1;
+#endif
        xstart = &xbar0;
        ystart = &ybar0;
+       if(bc!=NULL)faceptr->interior = bc->interior[5];
        break;
      default:
        ASSERT(FFALSE);
@@ -2707,6 +2903,7 @@ void UpdateFaceLists(void){
   int n_normals_single, n_normals_double, n_transparent_double;
   int i;
   int drawing_transparent, drawing_blockage_transparent, drawing_vent_transparent;
+  int check_blockhide=1;
 
   GetDrawingParms(&drawing_transparent, &drawing_blockage_transparent, &drawing_vent_transparent);
 
@@ -2721,6 +2918,9 @@ void UpdateFaceLists(void){
   if(opengldefined==1){
     glutPostRedisplay();
   }
+  // if we are not showing boundary files then don't try to hide blockages
+  if(use_tload_begin == 1 && global_times!=NULL && global_times[itimes] < tload_begin)check_blockhide = 0;
+  if(use_tload_end   == 1 && global_times!=NULL && global_times[itimes] > tload_end)check_blockhide = 0;
   for(i=0;i<nmeshes;i++){
     meshdata *meshi;
     int patchfilenum;
@@ -2754,7 +2954,7 @@ void UpdateFaceLists(void){
       loadpatch=0;
     }
 
-    if(local_showpatch==1&&loadpatch==1){
+    if(local_showpatch==1&&loadpatch==1&&check_blockhide==1){
       int jj;
 
       for(jj=0;jj<meshi->nbptrs;jj++){
@@ -2794,7 +2994,9 @@ void UpdateFaceLists(void){
 
       if(showonly_hiddenfaces==0&&facej->hidden==1)continue;
       if(showonly_hiddenfaces==1&&facej->hidden==0)continue;
+#ifdef pp_THINFACE
       if(facej->thinface==1)continue;
+#endif
       if(facej->bc!=NULL&&facej->bc->prop!=NULL&&facej->bc->prop->blockvis==0)continue;
       if(ClipFace(&clipinfo,facej)==1)continue;
 
@@ -2859,7 +3061,7 @@ void UpdateFaceLists(void){
          (facej->type==BLOCK_outline&&visBlocks==visBLOCKAsInput)||
          ((j>=vent_offset&&j<vent_offset+meshi->nvents)&&vi->isOpenvent==1&&visOpenVentsAsOutline==1)
         ){
-        meshi->face_outlines[n_outlines++]=facej;
+        if(nobstinfo==0||(nobstinfo>0&&blocklocation==BLOCKlocation_grid))meshi->face_outlines[n_outlines++]=facej;
         if(visBlocks!=visBLOCKSolidOutline&&visBlocks!=visBLOCKAsInputOutline)continue;
       }
       if(j<vent_offset){
@@ -2881,41 +3083,44 @@ void UpdateFaceLists(void){
           }
         }
         if(facej->transparent==1&&drawing_blockage_transparent==1){
+          if(blocklocation!=BLOCKlocation_grid&&facej->interior==1)continue;
           face_transparent[nface_transparent++]=facej;
           continue;
         }
       }
 
-      switch(facej->type){
-       case BLOCK_regular:
-        if(facej->show_bothsides==0)meshi->face_normals_single[n_normals_single++]=facej;
-        if(facej->show_bothsides==1)meshi->face_normals_double[n_normals_double++]=facej;
-        break;
-       case BLOCK_texture:
-        if(facej->textureinfo!=NULL){
-          if(facej->textureinfo->display==1){
-            meshi->face_textures[n_textures++]=facej;
+      if(facej->hidden == 0){
+        switch(facej->type){
+            case BLOCK_regular:
+              if(facej->show_bothsides == 0)meshi->face_normals_single[n_normals_single++] = facej;
+              if(facej->show_bothsides == 1)meshi->face_normals_double[n_normals_double++] = facej;
+              break;
+            case BLOCK_texture:
+              if(facej->textureinfo != NULL){
+                if(facej->textureinfo->display == 1){
+                  meshi->face_textures[n_textures++] = facej;
+                  }
+                else{
+                  if(facej->type2 == BLOCK_face){
+                    if(facej->show_bothsides == 0)meshi->face_normals_single[n_normals_single++] = facej;
+                    if(facej->show_bothsides == 1)meshi->face_normals_double[n_normals_double++] = facej;
+                    }
+                  if(facej->type2 == VENT_face)meshi->face_outlines[n_outlines++] = facej;
+                  }
+                continue;
+                }
+              break;
+            case BLOCK_outline:
+              meshi->face_outlines[n_outlines++] = facej;
+              break;
+            case BLOCK_hidden:
+              break;
+            default:
+              PRINTF("facej->type=%i\n", facej->type);
+              ASSERT(FFALSE);
+              break;
           }
-          else{
-            if(facej->type2==BLOCK_face){
-              if(facej->show_bothsides==0)meshi->face_normals_single[n_normals_single++]=facej;
-              if(facej->show_bothsides==1)meshi->face_normals_double[n_normals_double++]=facej;
-            }
-            if(facej->type2==VENT_face)meshi->face_outlines[n_outlines++]=facej;
-          }
-          continue;
         }
-        break;
-       case BLOCK_outline:
-        meshi->face_outlines[n_outlines++]=facej;
-         break;
-       case BLOCK_hidden:
-         break;
-       default:
-         PRINTF("facej->type=%i\n",facej->type);
-         ASSERT(FFALSE);
-         break;
-      }
     }
 
     meshi->nface_textures = n_textures;
@@ -2958,7 +3163,11 @@ void UpdateFaceLists(void){
           facei->imax-facei->imin<=1&&facei->jmax-facei->jmin<=1&&facei->kmax-facei->kmin<=1&& // only hide duplicate one cell faces
           faceim1->imin==facei->imin&&faceim1->imax==facei->imax&&
           faceim1->jmin==facei->jmin&&faceim1->jmax==facei->jmax&&
-          faceim1->kmin==facei->kmin&&faceim1->kmax==facei->kmax&&faceim1->dir!=facei->dir&&facei->thinface==0){
+          faceim1->kmin==facei->kmin&&faceim1->kmax==facei->kmax&&faceim1->dir!=facei->dir
+#ifdef pp_THINFACE
+          &&facei->thinface==0
+#endif
+          ){
           if(*(faceim1->showtimelist_handle)==NULL)faceim1->dup=1;
           if(*(facei->showtimelist_handle)==NULL){
             facei->dup=1;
@@ -3084,7 +3293,6 @@ void DrawSelectFaces(){
     }
   }
   glEnd();
-  return;
 }
 
 #define DRAWFACE(DEFfacetest,DEFeditcolor)    \
@@ -3587,6 +3795,94 @@ void DrawTransparentFaces(){
   if(drawing_transparent==1)TransparentOff();
 }
 
+/* ------------------ GetFaceNabor ------------------------ */
+
+facedata *GetFaceNabor(meshdata *meshi, facedata *facei, int dir){
+  meshdata *meshj;
+  int j;
+
+  meshj = meshi->nabors[dir];
+  if(meshj == NULL)return NULL;
+  switch(dir){
+  case MDOWN:
+    if(facei->kmin != 0 || facei->kmin != facei->kmax)return NULL;
+    for(j = 5; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->kmin != meshj->kbar || facej->kmax != facej->kmin)continue;
+      if(facei->imin != facej->imin || facei->jmin != facej->jmin)continue;
+      if(facei->imax != facej->imax || facei->jmax != facej->jmax)continue;
+      return facej;
+    }
+    break;
+  case MUP:
+    if(facei->kmin != meshi->kbar || facei->kmax != facei->kmin)return NULL;
+    for(j = 4; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->kmin != meshj->kbar || facej->kmax != facej->kmin)continue;
+      if(facei->imin != facej->imin || facei->jmin != facej->jmin)continue;
+      if(facei->imax != facej->imax || facei->jmax != facej->jmax)continue;
+      return facej;
+    }
+    break;
+  case MFRONT:
+    if(facei->jmin != 0 || facei->jmin != facei->jmax)return NULL;
+    for(j = 2; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->jmin != meshj->jbar || facej->jmax != facej->jmin)continue;
+      if(facei->imin != facej->imin || facei->kmin != facej->kmin)continue;
+      if(facei->imax != facej->imax || facei->kmax != facej->kmax)continue;
+      return facej;
+    }
+    break;
+  case MBACK:
+    if(facei->jmin != meshi->jbar || facei->jmax != facei->jmin)return NULL;
+    for(j = 0; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->jmin != meshj->jbar || facej->jmax != facej->jmin)continue;
+      if(facei->imin != facej->imin || facei->kmin != facej->kmin)continue;
+      if(facei->imax != facej->imax || facei->kmax != facej->kmax)continue;
+      return facej;
+    }
+    break;
+  case MLEFT:
+    if(facei->imin != 0 || facei->imin != facei->imax)return NULL;
+    for(j = 1; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->imin != meshj->ibar || facej->imax != facej->imin)continue;
+      if(facei->kmin != facej->kmin || facei->jmin != facej->jmin)continue;
+      if(facei->kmax != facej->kmax || facei->jmax != facej->jmax)continue;
+      return facej;
+    }
+    break;
+  case MRIGHT:
+    if(facei->imin != meshi->ibar || facei->imax != facei->imin)return NULL;
+    for(j = 3; j < 6 * meshj->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshj->faceinfo + j;
+      if(facej->imin != meshj->ibar || facej->imax != facej->imin)continue;
+      if(facei->kmin != facej->kmin || facei->jmin != facej->kmin)continue;
+      if(facei->kmax != facej->kmax || facei->jmax != facej->kmax)continue;
+      return facej;
+    }
+    break;
+  default:
+    ASSERT(FFALSE);
+    break;
+  }
+  return NULL;
+}
+
 /* ------------------ UpdateHiddenFaces ------------------------ */
 
 void UpdateHiddenFaces(){
@@ -3625,6 +3921,87 @@ void UpdateHiddenFaces(){
         if(facej->zmin<facek->zmin||facej->zmax>facek->zmax)continue;
         facej->hidden=1;
         break;
+      }
+    }
+  }
+  for(i = 0; i < nmeshes; i++){
+    int j;
+    meshdata *meshi;
+
+    meshi = meshinfo + i;
+    // x plane faces
+    for(j = 3; j < 6 * meshi->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshi->faceinfo + j;
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MLEFT);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
+      }
+
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MRIGHT);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
+      }
+    }
+    // y plane faces
+    for(j = 0; j < 6 * meshi->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshi->faceinfo + j;
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MFRONT);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
+      }
+
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MBACK);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
+      }
+    }
+    // z plane faces
+    for(j = 4; j < 6 * meshi->nbptrs; j += 6){
+      facedata *facej;
+
+      facej = meshi->faceinfo + j;
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MDOWN);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
+      }
+
+      if(facej->hidden == 0){
+        facedata *facej2;
+
+        facej2 = GetFaceNabor(meshi, facej, MUP);
+        if(facej2 != NULL){
+          facej->hidden = 1;
+          facej2->hidden = 1;
+        }
       }
     }
   }
@@ -3912,7 +4289,7 @@ void CalcNormal4(const float *v1,
 
 /* ------------------ DrawDemo2 ------------------------ */
 
-void DrawDemo2(int option){
+void DrawDemo2(void){
       demo_mode++;
       glBegin(GL_QUADS);
       if(demo_mode%2==0){
@@ -4876,6 +5253,7 @@ void DrawFacesOLD(){
         float *vertices;
 
         facei = meshi->face_normals_single[i];
+        if(facei->hidden == 1)continue;
         if(blocklocation==BLOCKlocation_grid){
           vertices = facei->approx_vertex_coords;
         }
@@ -4955,6 +5333,7 @@ void DrawFacesOLD(){
         float *vertices;
 
         facei = meshi->face_normals_double[i];
+        if(facei->hidden == 1)continue;
         if(blocklocation==BLOCKlocation_grid){
           vertices = facei->approx_vertex_coords;
         }
@@ -5023,14 +5402,12 @@ void DrawFacesOLD(){
 
       meshi = meshinfo + j;
       if(meshi->blockvis==0)continue;
-#ifdef pp_GPUSMOKE
-      if(show3dsmoke==1&&plane_all_mesh_outlines==0&&IsSmokeInMesh(meshi)==0)continue;
-#endif
       for(i=0;i<meshi->nface_outlines;i++){
         facedata *facei;
         float *vertices;
 
         facei = meshi->face_outlines[i];
+        if(facei->hidden == 1)continue;
         showtimelist_handle = facei->showtimelist_handle;
         showtimelist = *showtimelist_handle;
         if(showtimelist!=NULL&&showtimelist[itimes]==0&&facei->type2==BLOCK_face)continue;
@@ -5103,6 +5480,7 @@ void DrawFacesOLD(){
         texturedata *texti;
 
         facei=meshi->face_textures[i];
+        if(facei->hidden == 1)continue;
         showtimelist_handle = facei->showtimelist_handle;
         showtimelist = *showtimelist_handle;
         if(showtimelist!=NULL&&showtimelist[itimes]==0)continue;

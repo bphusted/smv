@@ -11,31 +11,29 @@
 #include <math.h>
 
 #include "smokeviewvars.h"
+#include "glutbitmap.h"
+
 
 #define DENORMAL(x,i, n, min,max) ((min) + (i)*((max)-(min))/(n))
 #define NORMALH(x,min,max) (((x)-(min))/((max)-(min))   )
 
 /* ------------------ PrintTime ------------------------ */
 
-void PrintTime(char *filepath, int line, float *timer, char *label){
+void PrintTime(const char *filepath, int line, float *timer, const char *label){
   char *file;
 
   if(show_timings==0)return;
   file = strrchr(filepath, '\\');
   if(file==NULL)file = strrchr(filepath, '/');
   if(file==NULL){
-    file = filepath;
+    file = (char *)filepath;
   }
   else{
     file++;
   }
-  if(*timer>0.0){
-    if(strcmp(label, "null") != 0){
-      STOP_TIMER(*timer);
-      if(*timer>0.1){
-        printf("%s/%i/%s %.1f s\n", file, line, label, *timer);
-      }
-    }
+  if(label!=NULL){
+    STOP_TIMER(*timer);
+    if(*timer>0.1)printf("%s/%i/%s %.1f s\n", file, line, label, *timer);
   }
   START_TIMER(*timer);
 }
@@ -302,14 +300,9 @@ void OutputSText2r(float x, float y, float z, char *string){
 
 void OutputSText2(float x, float y, float z, char *string){
   char *c;
-  int total_width=0;
   float scale_x, scale_y;
 
   if(string==NULL)return;
-  total_width=0;
-  for(c=string; *c != '\0'; c++){
-    total_width+=glutStrokeWidth(GLUT_STROKE_ROMAN,*c);
-  }
   glPushMatrix();
   scale_x = (25.0/36.0)*port_unit_width*(scaled_font2d_height2width*(float)scaled_font2d_height/(float)104.76)/(float)port_pixel_width;
   scale_y = (12.0/18.0)*(25.0/18.0)*port_unit_height*((float)scaled_font2d_height/(float)152.38)/(float)port_pixel_height;
@@ -331,7 +324,12 @@ void OutputSText2(float x, float y, float z, char *string){
 void Output3Val(float x, float y, float z, float val){
   char string[256];
 
-  sprintf(string,"%f",val);
+  if(sliceval_ndigits>0){
+    Float2String(string, val, sliceval_ndigits, 0);
+  }
+  else{
+    sprintf(string, "%f", val);
+  }
   TrimZeros(string);
   Output3Text(foregroundcolor,x,y,z,string);
 }
@@ -356,6 +354,130 @@ void Output3Text(float *color, float x, float y, float z, char *string){
   }
 }
 
+/* ------------------ GetCharAdvance ------------------------ */
+
+float GetCharAdvance(GLUTbitmapFont font, int c){
+  const BitmapCharRec *ch;
+  BitmapFontPtr fontinfo;
+
+#if defined(_WIN32)
+  extern void *__glutFont(void *font);
+  fontinfo = (BitmapFontPtr)__glutFont(font);
+#else
+  fontinfo = (BitmapFontPtr)font;
+#endif
+
+  if(c < fontinfo->first ||
+     c >= fontinfo->first + fontinfo->num_chars)
+    return 0.0;
+  ch = fontinfo->ch[c - fontinfo->first];
+  if(ch){
+    return ch->advance;
+  }
+  return 0.0;
+}
+
+/* ------------------ GetStringLength ------------------------ */
+
+float GetStringLength(char *string){
+  float length = 0.0;
+  int i;
+
+  if(string == NULL || strlen(string) == 0)return length;
+
+  for(i = 0; i < strlen(string); i++){
+    char *c;
+
+    c = string + i;
+    length += GetCharAdvance(font_ptr, *c);
+  }
+  return length;
+}
+
+/* ------------------ glutBitmapCharacterShiftLeft ------------------------ */
+
+void glutBitmapCharacterShiftLeft(GLUTbitmapFont font, int c, float advance){
+  const BitmapCharRec *ch;
+  BitmapFontPtr fontinfo;
+  GLint swapbytes, lsbfirst, rowlength;
+  GLint skiprows, skippixels, alignment;
+
+#if defined(_WIN32)
+  extern void *__glutFont(void *font);
+  fontinfo = (BitmapFontPtr)__glutFont(font);
+#else
+  fontinfo = (BitmapFontPtr)font;
+#endif
+
+  if(c < fontinfo->first ||
+     c >= fontinfo->first + fontinfo->num_chars)
+    return;
+  ch = fontinfo->ch[c - fontinfo->first];
+  if(ch){
+    /* Save current modes. */
+    glGetIntegerv(GL_UNPACK_SWAP_BYTES, &swapbytes);
+    glGetIntegerv(GL_UNPACK_LSB_FIRST, &lsbfirst);
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &rowlength);
+    glGetIntegerv(GL_UNPACK_SKIP_ROWS, &skiprows);
+    glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &skippixels);
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+    /* Little endian machines (DEC Alpha for example) could
+       benefit from setting GL_UNPACK_LSB_FIRST to GL_TRUE
+       instead of GL_FALSE, but this would require changing the
+       generated bitmaps too. */
+    glPixelStorei(GL_UNPACK_SWAP_BYTES, GL_FALSE);
+    glPixelStorei(GL_UNPACK_LSB_FIRST, GL_FALSE);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glBitmap(ch->width, ch->height, ch->xorig, ch->yorig,
+             advance, 0, ch->bitmap);
+    /* Restore saved modes. */
+    glPixelStorei(GL_UNPACK_SWAP_BYTES, swapbytes);
+    glPixelStorei(GL_UNPACK_LSB_FIRST, lsbfirst);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, rowlength);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, skiprows);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, skippixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+    }
+  }
+
+/* ------------------ Output3TextRight ------------------------ */
+
+void Output3TextRight(float *color, float x, float y, float z, char *string, float pad_length){
+  char *c;
+
+  if(string == NULL)return;
+  glColor3fv(color);
+
+  if(fontindex == SCALED_FONT){
+    ScaleFont3D();
+    OutputSText3(x, y, z, string);
+  }
+  else{
+    unsigned char blank;
+    float blank_advance;
+    int i;
+
+    blank = ' ';
+    glRasterPos3f(x, y, z);
+    blank_advance = GetCharAdvance(font_ptr, blank);
+    int count;
+
+    count = pad_length / blank_advance + 1;
+    if(pad_length > 0.0){
+      for(i = 0; i < count; i++){
+        glutBitmapCharacterShiftLeft(font_ptr, blank, -blank_advance);
+      }
+    }
+    for(i = 0; i<strlen(string); i++){
+      c = string + i;
+      glutBitmapCharacter(font_ptr, (unsigned char)*c);
+    }
+  }
+}
+
 /* ------------------ OutputLargeText ------------------------ */
 
 void OutputLargeText(float x, float y, char *string){
@@ -375,26 +497,22 @@ void OutputTextColor(float *fontcolor, float x, float y, char *string){
   char *c;
   float *fcolor;
 
-  fcolor = foregroundcolor;
+  if(string==NULL)return;
   if(fontcolor==NULL){
     fcolor = foregroundcolor;
   }
   else{
     fcolor = fontcolor;
   }
-
-  if(string==NULL)return;
   glColor3fv(fcolor);
   if(fontindex==SCALED_FONT){
     ScaleFont2D();
     OutputSText2(x, y, 0.0, string);
     return;
   }
-  else{
-    glRasterPos2f(x, y);
-    for(c = string; *c!='\0'; c++){
-      glutBitmapCharacter(font_ptr, (unsigned char)*c);
-    }
+  glRasterPos2f(x, y);
+  for(c = string; *c!='\0'; c++){
+    glutBitmapCharacter(font_ptr, (unsigned char)*c);
   }
 }
 
@@ -410,11 +528,9 @@ void OutputText(float x, float y, char *string){
     OutputSText2(x,y,0.0,string);
     return;
   }
-  else{
-    glRasterPos2f(x, y);
-    for(c=string; *c!='\0'; c++){
-      glutBitmapCharacter(font_ptr,(unsigned char)*c);
-    }
+  glRasterPos2f(x, y);
+  for(c=string; *c!='\0'; c++){
+    glutBitmapCharacter(font_ptr,(unsigned char)*c);
   }
 }
 

@@ -233,11 +233,141 @@ int GetFileBounds(char *file, float *valmin, float *valmax){
   return 1;
 }
 
+#define GETSLICEBOUNDS(file, valmin, valmax) GetBounds(file, valmin, valmax, &sliceboundsinfo, &nsliceboundsinfo, slice_bounds_fdsfilename)
+#define GETPATCHBOUNDS(file, valmin, valmax) GetBounds(file, valmin, valmax, &patchboundsinfo, &npatchboundsinfo, patch_bounds_fdsfilename)
+
+/* ------------------ GetSliceBounds ------------------------ */
+
+int GetBounds(char *file, float *valmin, float *valmax,
+                   fileboundsdata **boundsinfoptr, int *nboundsinfoptr, char *bounds_fdsfilename){
+  FILE *stream=NULL;
+  int return_val, nbounds;
+
+  *valmin = 1.0;
+  *valmax = 0.0;
+  return_val = 0;
+
+  if(*boundsinfoptr==NULL){
+    if(bounds_fdsfilename!=NULL)stream = fopen(bounds_fdsfilename, "r");
+    if(stream!=NULL){
+      int i;
+
+      nbounds = 0;
+      for(;;){
+        char buffer[255];
+
+        if(fgets(buffer, 255, stream)==NULL)break;
+        nbounds++;
+      }
+      *nboundsinfoptr = nbounds;
+      rewind(stream);
+      if(nbounds==0)return return_val;
+      NewMemory((void **)&*boundsinfoptr, *nboundsinfoptr*sizeof(fileboundsdata));
+      for(i=0; i<*nboundsinfoptr; i++){
+        char buffer[255], *tok;
+        fileboundsdata *bi;
+        float vmin, vmax;
+
+        bi = *boundsinfoptr + i;
+
+        if(fgets(buffer, 255, stream)==NULL)break;
+        tok = strtok(buffer, ",");
+        tok = TrimFrontBack(tok);
+        strcpy(bi->file, tok);
+
+        tok = strtok(NULL, ",");
+        sscanf(tok, "%f", &vmin);
+        bi->valmin = vmin;
+
+        tok = strtok(NULL, ",");
+        sscanf(tok, "%f", &vmax);
+        bi->valmax = vmax;
+      }
+      fclose(stream);
+    }
+  }
+  if(*boundsinfoptr!=NULL){
+    int i;
+
+    for(i=0; i<*nboundsinfoptr; i++){
+      fileboundsdata *bi;
+
+      bi = *boundsinfoptr + i;
+      if(strcmp(bi->file, file)==0){
+        *valmin = bi->valmin;
+        *valmax = bi->valmax;
+        return_val = 1;
+        break;
+      }
+    }
+  }
+  else{
+    return_val = GetFileBounds(file, valmin, valmax);
+  }
+  return return_val;
+}
+
+#ifdef pp_CACHE_FILEBOUNDS
+/* ------------------ GetFileBoundMinMax ------------------------ */
+
+void GetSliceFileBoundMinMax(char *file, float *valmin, float *valmax){
+  int i;
+
+  for(i=0;i<nsliceboundfileinfo;i++){
+    boundfiledata *bi;
+
+    bi = sliceboundfileinfo + i;
+    if(bi->file!=NULL&&file!=NULL&&strcmp(bi->file, file)==0){
+      *valmin = bi->valmin;
+      *valmax = bi->valmax;
+      return;
+    }
+  }
+  *valmin = 1.0;
+  *valmax = 0.0;
+}
+
+
+/* ------------------ GetFileBoundMinMax ------------------------ */
+
+void GetPatchFileBoundMinMax(char *file, float *valmin, float *valmax){
+  int i;
+
+  for(i=0;i<npatchboundfileinfo;i++){
+    boundfiledata *bi;
+
+    bi = patchboundfileinfo + i;
+    if(bi->file!=NULL&&file!=NULL&&strcmp(bi->file, file)==0){
+      *valmin = bi->valmin;
+      *valmax = bi->valmax;
+      return;
+    }
+  }
+  *valmin = 1.0;
+  *valmax = 0.0;
+}
+#endif
+
 /* ------------------ GetGlobalPatchBounds ------------------------ */
 
 void GetGlobalPatchBounds(void){
   int i;
+#ifdef pp_CACHE_FILEBOUNDS
+  int build_bnds_file = 0;
+  FILE *stream=NULL;
+#endif
 
+  if(npatchinfo==0)return;
+#ifdef pp_CACHE_FILEBOUNDS
+  stream = fopen(bnds_patch_filename, "r");
+  if(stream==NULL){
+    build_bnds_file = 1;
+    stream = fopen(bnds_patch_filename, "w");
+  }
+  else{
+    fclose(stream);
+  }
+#endif
   for(i = 0; i < npatchbounds; i++){
     boundsdata *boundi;
 
@@ -254,9 +384,20 @@ void GetGlobalPatchBounds(void){
 
     if(patchi->valmin_fds>patchi->valmax_fds||
        current_script_command==NULL||current_script_command->command!=SCRIPT_LOADSLICERENDER){
-      if(GetFileBounds(patchi->bound_file, &valmin, &valmax)==1){
-        patchi->have_bound_file = YES;
+#ifdef pp_CACHE_FILEBOUNDS
+      if(build_bnds_file==1){
+        if(GetFileBounds(patchi->bound_file, &valmin, &valmax)==1)patchi->have_bound_file = YES;
+        if(stream!=NULL){
+          fprintf(stream, "%s\n", patchi->file);
+          fprintf(stream, "%f %f\n", valmin, valmax);
+        }
       }
+      else{
+        GetPatchFileBoundMinMax(patchi->file, &valmin, &valmax);
+      }
+#else
+      if(GETPATCHBOUNDS(patchi->bound_file, &valmin, &valmax)==1)patchi->have_bound_file = YES;
+#endif
       if(valmin > valmax)continue;
       patchi->valmin_fds = valmin;
       patchi->valmax_fds = valmax;
@@ -276,6 +417,9 @@ void GetGlobalPatchBounds(void){
       boundi->dlg_global_valmax = MAX(boundi->dlg_global_valmax, valmax);
     }
   }
+#ifdef pp_CACHE_FILEBOUNDS
+  if(build_bnds_file==1&&stream!=NULL)fclose(stream);
+#endif
   for(i = 0; i < npatchbounds; i++){
     boundsdata *boundi;
     int j;
@@ -401,9 +545,7 @@ void GetGlobalPlot3DBounds(void){
 
   nplot3dbounds_cpp = 0;
   if(nplot3dinfo>0&&plot3dbounds_cpp==NULL){ // only initialize once
-    int i;
-
-    nplot3dbounds_cpp = MAXPLOT3DVARS;
+    nplot3dbounds_cpp = plot3dinfo[0].nvars;
     NewMemory((void **)&plot3dbounds_cpp, nplot3dbounds_cpp*sizeof(cpp_boundsdata));
     for(i = 0; i<nplot3dbounds_cpp; i++){
       cpp_boundsdata *boundscppi;
@@ -489,7 +631,22 @@ void GetLoadedPlot3dBounds(int *compute_loaded, float *loaded_min, float *loaded
 
 void GetGlobalSliceBounds(void){
   int i;
+#ifdef pp_CACHE_FILEBOUNDS
+  int build_bnds_file = 0;
+  FILE *stream=NULL;
+#endif
 
+  if(nsliceinfo==0)return;
+#ifdef pp_CACHE_FILEBOUNDS
+  stream = fopen(bnds_slice_filename, "r");
+  if(stream==NULL){
+    build_bnds_file = 1;
+    stream = fopen(bnds_slice_filename, "w");
+  }
+  else{
+    fclose(stream);
+  }
+#endif
   for(i = 0;i<nslicebounds;i++){
     boundsdata *boundi;
 
@@ -506,10 +663,24 @@ void GetGlobalSliceBounds(void){
     if(slicei->is_fed==1)continue;
     if(slicei->valmin_fds>slicei->valmax_fds ||
        current_script_command==NULL||current_script_command->command!=SCRIPT_LOADSLICERENDER){
-
-      if(GetFileBounds(slicei->bound_file, &valmin, &valmax)==1){
+#ifdef pp_CACHE_FILEBOUNDS
+      if(build_bnds_file==1){
+        if(GetFileBounds(slicei->bound_file, &valmin, &valmax)==1){
+          slicei->have_bound_file = YES;
+        }
+        if(stream!=NULL){
+          fprintf(stream, "%s\n", slicei->file);
+          fprintf(stream, "%f %f\n", valmin, valmax);
+        }
+      }
+      else{
+        GetSliceFileBoundMinMax(slicei->file, &valmin, &valmax);
+      }
+#else
+      if(GETSLICEBOUNDS(slicei->bound_file, &valmin, &valmax)==1){
         slicei->have_bound_file = YES;
       }
+#endif
       if(valmin>valmax)continue;
       slicei->valmin_fds = valmin;
       slicei->valmax_fds = valmax;
@@ -530,6 +701,9 @@ void GetGlobalSliceBounds(void){
       boundi->dlg_global_valmax = MAX(boundi->dlg_global_valmax, valmax);
     }
   }
+#ifdef pp_CACHE_FILEBOUNDS
+  if(build_bnds_file==1&&stream!=NULL)fclose(stream);
+#endif
   for(i = 0; i<nslicebounds; i++){
     boundsdata *boundi;
 
@@ -589,7 +763,7 @@ void UpdateGlobalFEDSliceBounds(void){
     if(slicei->valmin_fds>slicei->valmax_fds||
        current_script_command==NULL||current_script_command->command!=SCRIPT_LOADSLICERENDER){
 
-      GetFileBounds(slicei->bound_file, &valmin, &valmax);
+      GETSLICEBOUNDS(slicei->bound_file, &valmin, &valmax);
 
       if(valmin>valmax)continue;
       slicei->valmin_fds = valmin;
@@ -723,11 +897,11 @@ int ReadPartBounds(partdata *parti,int read_bounds_arg){
 
   stream = fopen(parti->size_file, "r");
   if(stream==NULL){
-    CreatePartSizeFile(parti, parti->evac==1);
+    CreatePartSizeFile(parti);
     stream = fopen(parti->size_file, "r");
     if(stream==NULL)return 0;
-    fclose(stream);
   }
+  fclose(stream);
 
   // make sure a bound file exists
 

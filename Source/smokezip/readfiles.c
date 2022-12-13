@@ -7,6 +7,7 @@
 #include "svzip.h"
 #include "MALLOCC.h"
 #include "stdio_buffer.h"
+#include "../smokeview/getdata.h"
 
 int ReadSMV(char *smvfile){
   FILE *stream = NULL;
@@ -46,13 +47,7 @@ int ReadSMV(char *smvfile){
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   */
 #ifdef pp_SMOKE3D_FORT
-    if(Match(buffer,"SMOKE3D") == 1||
-       Match(buffer, "SMOKF3D") == 1||
-       Match(buffer, "VSMOKE3D")==1||
-       Match(buffer, "VSMOKF3D")==1
-       ||Match(buffer, "SMOKG3D") == 1 ||
-       Match(buffer, "VSMOKG3D") == 1
-       ){
+    if(Match(buffer,"SMOKE3D") == 1||Match(buffer, "SMOKF3D") == 1||Match(buffer, "SMOKG3D") == 1){
 #else
     if(Match(buffer,"SMOKE3D") == 1){
 #endif
@@ -339,13 +334,7 @@ int ReadSMV(char *smvfile){
     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   */
 #ifdef pp_SMOKE3D_FORT
-    if(Match(buffer,"SMOKE3D") == 1||
-       Match(buffer, "SMOKF3D") == 1||
-       Match(buffer, "VSMOKE3D") == 1 ||
-       Match(buffer, "VSMOKF3D")==1
-       ||Match(buffer, "SMOKG3D") == 1 ||
-      Match(buffer, "VSMOKG3D") == 1
-      ){
+    if(Match(buffer,"SMOKE3D") == 1||Match(buffer, "SMOKF3D") == 1||Match(buffer, "SMOKG3D") == 1){
 #else
     if(Match(buffer,"SMOKE3D") == 1){
 #endif
@@ -364,10 +353,7 @@ int ReadSMV(char *smvfile){
       smoke3di->smokemesh=meshinfo + ioffset - 1;
 #ifdef pp_SMOKE3D_FORT
       smoke3di->file_type = C_FILE;
-      if(
-        Match(buffer, "SMOKF3D") == 1 || Match(buffer, "VSMOKF3D") == 1
-        ||Match(buffer, "SMOKG3D") == 1 || Match(buffer, "VSMOKG3D") == 1
-        ){
+      if(Match(buffer, "SMOKF3D") == 1||Match(buffer, "SMOKG3D") == 1){
         smoke3di->file_type = FORTRAN_FILE;
       }
 #endif
@@ -587,15 +573,15 @@ int ReadSMV(char *smvfile){
         }
         patchi->filesize=filesize;
         if(GLOBget_boundary_bounds==1){
-          int npatches, error, boundaryunitnumber;
-          FILE_SIZE lenfile;
+          int npatches, error;
+          FILE *boundaryunitnumber;
 
           NewMemory((void **)&patchi->histogram,sizeof(histogramdata));
           patchi->histogram->buckets = NULL;
           patchi->histogram->buckets_polar = NULL;
-          lenfile = strlen(patchi->file);
-          boundaryunitnumber=15;
-          FORTgetboundaryheader1(patchi->file,&boundaryunitnumber, &npatches, &error, lenfile);
+          // TODO: why was this unit set to 15?
+          // boundaryunitnumber=15;
+          getboundaryheader1(patchi->file,&boundaryunitnumber, &npatches, &error);
           if(npatches>0){
             int *pi1, *pi2, *pj1, *pj2, *pk1, *pk2, *patchdir, *patchsize;
             int i;
@@ -617,7 +603,7 @@ int ReadSMV(char *smvfile){
             patchi->patchdir=patchdir;
             patchi->npatches=npatches;
             patchi->patchsize=patchsize;
-            FORTgetboundaryheader2(&boundaryunitnumber, &version_local, &npatches, pi1, pi2, pj1, pj2, pk1, pk2, patchdir);
+            getboundaryheader2(boundaryunitnumber, version_local, npatches, pi1, pi2, pj1, pj2, pk1, pk2, patchdir);
             for(i=0;i<npatches;i++){
               patchi->patchsize[i] = (pi2[i]+1-pi1[i])*(pj2[i]+1-pj1[i])*(pk2[i]+1-pk1[i]);
             }
