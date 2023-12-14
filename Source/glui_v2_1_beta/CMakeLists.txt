@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.17)
 
 project(glui)
 set(PROJECT_VERSION 2.37)
@@ -44,6 +44,7 @@ endif()
 
 if (WIN32)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-self-assign -Wno-misleading-indentation -Wno-sometimes-uninitialized -Wno-unused-variable -Wno-writable-strings -Wno-unused-variable")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 endif ()
+
+# Warnings for everything except MSVC
+target_compile_options(glui_static PRIVATE $<$<NOT:$<C_COMPILER_ID:MSVC>>: -Wno-write-strings>)

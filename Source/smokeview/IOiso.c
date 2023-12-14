@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,20 +145,9 @@ void GetIsoSizes(const char *isofile, int dataflag, FILE **isostreamptr, int *nv
 /* ------------------ ReadIsoGeomWrapup ------------------------ */
 
 void ReadIsoGeomWrapup(int flag){
-#ifdef pp_ISOTIME
-  float wrapup_time;
-#endif
-
-  update_readiso_geom_wrapup=UPDATE_ISO_OFF;
-#ifdef pp_ISOTIME
-  START_TIMER(wrapup_time);
-#endif
+  update_readiso_geom_wrapup = UPDATE_ISO_OFF;
   UpdateTrianglesMT();
-  if(flag==FOREGROUND)FinishUpdateTriangles();
-#ifdef pp_ISOTIME
-  STOP_TIMER(wrapup_time);
-  printf("iso wrapup time=%f\n", wrapup_time);
-#endif
+  if(flag == FOREGROUND)FinishUpdateTriangles();
   UpdateTimes();
   GetFaceInfo();
   ForceIdle();
@@ -253,6 +243,73 @@ void GetIsoDataBounds(isodata *isod, float *pmin, float *pmax){
   }
 }
 
+/* ------------------ OutputIsoBounds ------------------------ */
+
+void OutputIsoBounds(isodata *isoi){
+  FILE *stream;
+  char file[256];
+  int i;
+  geomdata *geomi;
+
+  geomi = isoi->geominfo;
+  strcpy(file, geomi->file);
+  strcat(file, ".csv");
+  stream = fopen(file, "w");
+  if(stream == NULL)return;
+  if(geomi->ntimes <= 0){
+    fclose(stream);
+    return;
+  }
+  fprintf(stream,"%s\n", isoi->surface_label.longlabel);
+  fprintf(stream, "t,xmin,xmax,ymin,ymax,zmin,zmaz\n");
+  for(i = 0;i < geomi->ntimes;i++){
+    int j;
+    float xmin, xmax, ymin, ymax, zmin, zmax;
+    geomlistdata *geomlisti;
+    float *xyz;
+
+    geomlisti = geomi->geomlistinfo + i;
+    if(geomlisti->nverts>0){
+      xyz = geomlisti->verts->xyz;
+
+      xmin = xyz[0];
+      xmax = xmin;
+      ymin = xyz[1];
+      ymax = ymin;
+      zmin = xyz[2];
+      zmax = zmin;
+      for(j = 1;j < geomlisti->nverts;j++){
+        vertdata *vertj;
+
+        vertj = geomlisti->verts+j;
+        xyz = vertj->xyz;
+        xmin = MIN(xyz[0], xmin);
+        xmax = MAX(xyz[0], xmax);
+        ymin = MIN(xyz[1], ymin);
+        ymax = MAX(xyz[1], ymax);
+        zmin = MIN(xyz[2], zmin);
+        zmax = MAX(xyz[2], zmax);
+      }
+      fprintf(stream, "%f,%f,%f,%f,%f,%f,%f\n", geomi->times[i], xmin, xmax, ymin, ymax, zmin, zmax);
+    }
+  }
+  fclose(stream);
+}
+
+/* ------------------ OutputAllIsoBounds ------------------------ */
+
+void OutputAllIsoBounds(void){
+  int i;
+
+  for(i = 0;i < nisoinfo;i++){
+    isodata *isoi;
+
+    isoi = isoinfo + i;
+    if(isoi->loaded == 0||isoi->geominfo==NULL)continue;
+    OutputIsoBounds(isoi);
+  }
+}
+
 /* ------------------ ReadIsoGeom ------------------------ */
 
 FILE_SIZE ReadIsoGeom(int ifile, int load_flag, int *geom_frame_index, int *errorcode){
@@ -264,6 +321,10 @@ FILE_SIZE ReadIsoGeom(int ifile, int load_flag, int *geom_frame_index, int *erro
   surfdata *surfi;
   FILE_SIZE return_filesize=0;
 
+  if(load_flag==LOAD&&setup_isosurfaces == 0){
+    SetupAllIsosurfaces();
+    setup_isosurfaces = 1;
+  }
   if(load_flag==UNLOAD){
     CancelUpdateTriangles();
   }
@@ -288,8 +349,7 @@ FILE_SIZE ReadIsoGeom(int ifile, int load_flag, int *geom_frame_index, int *erro
     int ntimes_local;
     float *valptr;
 
-    getgeomdatasize(isoi->tfile, &ntimes_local, &isoi->geom_nvals, &error);
-
+    ntimes_local = GetGeomDataSize(isoi->tfile, &isoi->geom_nvals, ALL_FRAMES, NULL, NULL, NULL, NULL, NULL, &error);
     if(isoi->geom_nvals>0&&ntimes_local>0){
       NewMemoryMemID((void **)&isoi->geom_nstatics,  ntimes_local*sizeof(int),       isoi->memory_id);
       NewMemoryMemID((void **)&isoi->geom_ndynamics, ntimes_local*sizeof(int),       isoi->memory_id);
@@ -297,8 +357,9 @@ FILE_SIZE ReadIsoGeom(int ifile, int load_flag, int *geom_frame_index, int *erro
       NewMemoryMemID((void **)&isoi->geom_vals,      isoi->geom_nvals*sizeof(float), isoi->memory_id);
     }
 
-    getgeomdata(isoi->tfile, ntimes_local, isoi->geom_nvals, isoi->geom_times,
-      isoi->geom_nstatics, isoi->geom_ndynamics, isoi->geom_vals, &filesize, &error);
+    filesize = GetGeomData(isoi->tfile, ntimes_local, isoi->geom_nvals, isoi->geom_times,
+                           isoi->geom_nstatics, isoi->geom_ndynamics, isoi->geom_vals,
+                           ALL_FRAMES, NULL, NULL, &error);
     return_filesize += filesize;
     FREEMEMORY(isoi->geom_nstatics);
     FREEMEMORY(isoi->geom_times);
@@ -359,15 +420,17 @@ FILE_SIZE ReadIsoGeom(int ifile, int load_flag, int *geom_frame_index, int *erro
     GetIsoDataBounds(isoi, &iso_valmin, &iso_valmax);
     isoi->geom_globalmin = iso_valmin;
     isoi->geom_globalmax = iso_valmax;
-    isoi->geom_percentilemin = iso_valmin;
-    isoi->geom_percentilemax = iso_valmax;
     if(setisomin == GLOBAL_MIN)iso_valmin = isoi->geom_globalmin;
     if(setisomax == GLOBAL_MAX)iso_valmax = isoi->geom_globalmax;
+#ifdef pp_HIST
+    isoi->geom_percentilemin = iso_valmin;
+    isoi->geom_percentilemax = iso_valmax;
     iso_percentile_min = isoi->geom_percentilemin;
     iso_percentile_max = isoi->geom_percentilemax;
+#endif
     iso_global_min = isoi->geom_globalmin;
     iso_global_max = isoi->geom_globalmax;
-    UpdateGluiIsoBounds();
+    GLUIUpdateIsoBounds();
   }
   PrintMemoryInfo;
   show_isofiles = 1;
@@ -514,8 +577,11 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
   isodata *ib;
 
   START_TIMER(total_time);
-
-  ASSERT(ifile>=0&&ifile<nisoinfo);
+  if(flag==LOAD&&setup_isosurfaces == 0){
+    SetupAllIsosurfaces();
+    setup_isosurfaces = 1;
+  }
+  assert(ifile>=0&&ifile<nisoinfo);
   ib = isoinfo+ifile;
   if(ib->loaded==0&&flag==UNLOAD)return;
   blocknumber=ib->blocknumber;
@@ -546,7 +612,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
   highlight_mesh = blocknumber;
 
   factor = (SCALE2SMV(meshi->xyzmaxdiff))/65535.0;
-  NORMALIZE_XYZ(offset,meshi->xyz_bar0);
+  FDS2SMV_XYZ(offset,meshi->xyz_bar0);
 
   GetIsoSizes(file, ib->dataflag, &isostream, &nisopoints, &nisotriangles,
     &meshi->isolevels, &meshi->nisolevels, &meshi->niso_times,
@@ -587,7 +653,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
       meshi->isomax_index=ilevel;
     }
   }
-  //ASSERT(meshi->animatedsurfaces==NULL);
+  //assert(meshi->animatedsurfaces==NULL);
   if(NewMemoryMemID((void **)&meshi->animatedsurfaces,meshi->nisolevels*meshi->niso_times*sizeof(isosurface),ib->memory_id)==0){
     *errorcode=1;
     ReadIso("",ifile,UNLOAD,NULL,&error);
@@ -721,7 +787,7 @@ void ReadIsoOrig(const char *file, int ifile, int flag, int *errorcode){
           fread(&asurface->tmin,4,1,isostream);
           fread(&asurface->tmax,4,1,isostream);
           read_size+=2*(4+4+4);
-          //printf("amin=%f amax=%f imin=%f imax=%f\n",asurface->tmin,asurface->tmax,ib->tmin,ib->tmax);;
+          //printf("amin=%f amax=%f imin=%f imax=%f\n",asurface->tmin,asurface->tmax,ib->tmin,ib->tmax);
           if(NewMemoryMemID((void **)&tvertices_i,nvertices_i*sizeof(unsigned short),ib->memory_id)==0){
             break_frame=1;
             break;
@@ -1574,7 +1640,7 @@ void SetIsoLabels(float smin, float smax,
 
   *errorcode=0;
   PRINTF("setting up iso labels \n");
-  GetIsoLabels(smin,smax,nrgb,sb->colorlabels,sb->levels256);
+  GetColorbarLabels(smin,smax,nrgb,sb->colorlabels,sb->levels256);
 }
 
 /* ------------------ CompareIsoTriangles ------------------------ */
@@ -1898,4 +1964,3 @@ void UpdateIsoColors(void){
   }
   CheckMemory;
 }
-

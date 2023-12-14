@@ -6,7 +6,7 @@ RUNSCRIPT=
 ssffile=
 dummy=
 
-while getopts 'Ad:fl:mt' OPTION
+while getopts 'Ad:fl:mn:p:t' OPTION
 do
 case $OPTION in
   A) # passthrough option
@@ -22,6 +22,12 @@ case $OPTION in
    ;;
   m)
    MOVIE="y"
+   ;;
+  n)
+   dummy="$OPTARG"
+   ;;
+  p)
+   dummy="$OPTARG"
    ;;
   t)
    dummy=1
@@ -48,8 +54,6 @@ fulldir=$BASEDIR/$dir
 echo ""
 echo "--- generating images for: $in.smv, `date`"
 
-scriptfile=$scratchdir/script.$$
-
 notfound=`$SMV -help 2>&1 | tail -1 | grep "not found" | wc -l`
 if [ "$notfound" == "1" ];  then
   echo "*** Error: The program $SMV is not available. Run aborted."
@@ -68,7 +72,9 @@ if ! [ -e $fulldir/$ssffile ]; then
   exit
 fi
 
-#source ~/.bashrc_fds default
 cd $fulldir
-echo $SMV $FED $SMVBINDIR $RUNSCRIPT $in
-$SMV $FED $SMVBINDIR -redirect $RUNSCRIPT $in
+if [ "$SMVBINDIR" != "" ]; then
+  SMVBINDIR="-bindir $SMVBINDIR"
+fi
+echo "$SMV $FED $SMVBINDIR -redirect $RUNSCRIPT $in"
+      $SMV $FED $SMVBINDIR -redirect $RUNSCRIPT $in

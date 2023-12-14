@@ -1,5 +1,6 @@
 #include "options.h"
 #include "glew.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -108,9 +109,6 @@ void WriteBoundIni(void){
   char *fullfilename = NULL;
   int i;
 
-  if(boundinfo_filename == NULL)return;
-  fullfilename = GetFileName(smokeview_scratchdir, boundinfo_filename, NOT_FORCE_IN_DIR);
-
   if(fullfilename == NULL)return;
 
   for(i = 0; i < npatchinfo; i++){
@@ -141,15 +139,21 @@ void WriteBoundIni(void){
         return;
       }
     }
+#ifdef pp_HIST
     fprintf(stream, "B_BOUNDARY\n");
     fprintf(stream, " %f %f %f %f %i %s\n", boundi->global_min, boundi->percentile_min, boundi->percentile_max, boundi->global_max, patchi->patch_filetype, patchi->label.shortlabel);
+#else
+    float dummy = 0.0;
+    fprintf(stream, "B_BOUNDARY\n");
+    fprintf(stream, " %f %f %f %f %i %s\n", boundi->global_min, dummy, dummy, boundi->global_max, patchi->patch_filetype, patchi->label.shortlabel);
+#endif
   }
   if(stream != NULL)fclose(stream);
   FREEMEMORY(fullfilename);
 }
 
 /* ------------------ UpdateBoundaryBounds ------------------------ */
-
+#ifdef pp_HIST
 void UpdateBoundaryBounds(patchdata *patchi){
   histogramdata full_histogram;
   bounddata *boundi;
@@ -163,6 +167,7 @@ void UpdateBoundaryBounds(patchdata *patchi){
     patchdata *patchj;
 
     patchj=patchinfo+j;
+    if(patchj->loaded == 0)continue;
     if(patchi->boundary != patchj->boundary)continue;
     if(patchi->patch_filetype == PATCH_GEOMETRY_SLICE || patchj->patch_filetype == PATCH_GEOMETRY_SLICE)continue;
     if(patchj->shortlabel_index != patchi->shortlabel_index)continue; // dont consider file type for now (node/cell centered, structdured/unstructured etc)
@@ -192,6 +197,7 @@ void UpdateBoundaryBounds(patchdata *patchi){
   WriteBoundIni();
   FreeHistogram(&full_histogram);
 }
+#endif
 
 /* ------------------ GetBoundaryColors3 ------------------------ */
 
@@ -210,7 +216,7 @@ void GetBoundaryColors3(patchdata *patchi, float *t, int start, int nt, unsigned
   char *label;
 
   label = patchi->label.shortlabel;
-  GetMinMax(BOUND_PATCH, label, &set_valmin, ttmin, &set_valmax, ttmax);
+  GLUIGetMinMax(BOUND_PATCH, label, &set_valmin, ttmin, &set_valmax, ttmax);
   new_tmin = *ttmin;
   new_tmax = *ttmax;
 
@@ -288,7 +294,7 @@ void UpdateAllBoundaryColors(int flag){
       case PATCH_GEOMETRY_SLICE:
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
   }
@@ -304,7 +310,7 @@ void UpdateAllBoundaryColors(int flag){
         char *label;
 
         label = patchi->label.shortlabel;
-        GetMinMax(BOUND_PATCH, label, &set_valmin, &valmin, &set_valmax, &valmax);
+        GLUIGetMinMax(BOUND_PATCH, label, &set_valmin, &valmin, &set_valmax, &valmax);
         switch(patchi->patch_filetype){
           case PATCH_STRUCTURED_NODE_CENTER:
           case PATCH_STRUCTURED_CELL_CENTER:
@@ -328,7 +334,7 @@ void UpdateAllBoundaryColors(int flag){
                                &patchi->extreme_min, &patchi->extreme_max, flag);
             break;
           default:
-            ASSERT(FFALSE);
+            assert(FFALSE);
             break;
         }
       }
@@ -397,12 +403,12 @@ void GetPartColors(partdata *parti, int nlevel, int flag){
   int *part_set_valmin, *part_set_valmax;
   float *part_valmin, *part_valmax;
 
-  num = GetNValtypes(BOUND_PART);
+  num = GLUIGetNValtypes(BOUND_PART);
   NewMemory((void **)&part_set_valmin, num*sizeof(int));
   NewMemory((void **)&part_valmin,     num*sizeof(float));
   NewMemory((void **)&part_set_valmax, num*sizeof(int));
   NewMemory((void **)&part_valmax,     num*sizeof(float));
-  GetMinMaxAll(BOUND_PART, part_set_valmin, part_valmin, part_set_valmax, part_valmax, &num2);
+  GLUIGetMinMaxAll(BOUND_PART, part_set_valmin, part_valmin, part_set_valmax, part_valmax, &num2);
 
   int start=0;
   if(flag==0)start = parti->ntimes+1;// skip particle conversion if flag is 0
@@ -828,7 +834,7 @@ void UpdateSliceColors(int last_slice){
     }
   }
 }
-#ifdef pp_SLICEVAL
+
 /* ------------------ UpdateSliceBounds2 ------------------------ */
 
 void UpdateSliceBounds2(void){
@@ -843,7 +849,7 @@ void UpdateSliceBounds2(void){
     i = slice_loaded_list[ii];
     sd = sliceinfo+i;
     if(sd->display==0)continue;
-    GetMinMax(BOUND_SLICE, sd->label.shortlabel, &set_valmin, &qmin, &set_valmax, &qmax);
+    GLUIGetMinMax(BOUND_SLICE, sd->label.shortlabel, &set_valmin, &qmin, &set_valmax, &qmax);
     sd->valmin      = qmin;
     sd->valmax      = qmax;
     sd->globalmin   = qmin;
@@ -861,7 +867,7 @@ void UpdateSliceBounds2(void){
     vd = vsliceinfo+ii;
     if(vd->loaded==0||vd->display==0||vd->ival==-1)continue;
     sd = sliceinfo+vd->ival;
-    GetMinMax(BOUND_SLICE, sd->label.shortlabel, &set_valmin, &qmin, &set_valmax, &qmax);
+    GLUIGetMinMax(BOUND_SLICE, sd->label.shortlabel, &set_valmin, &qmin, &set_valmax, &qmax);
     sd->valmin = qmin;
     sd->valmax = qmax;
     sd->globalmin = qmin;
@@ -871,7 +877,6 @@ void UpdateSliceBounds2(void){
     SetSliceColors(qmin, qmax, sd, 0, &error);
   }
 }
-#endif
 
 /* ------------------ GetSliceColors ------------------------ */
 
@@ -927,38 +932,13 @@ void GetSliceColors(const float *t, int nt, unsigned char *it,
   Float2String(&colorlabels[nlevel-1][0], tval, ncolorlabel_digits, force_fixedpoint);
 }
 
-/* ------------------ getSliceLabelels ------------------------ */
+/* ------------------ GetColorbarLabels ------------------------ */
 
-void GetSliceLabels(float local_tmin, float local_tmax, int nlevel,
-              char labels[12][11],float *tlevels256){
+void GetColorbarLabels(float local_tmin, float local_tmax, int nlevel,
+              char labels[12][11], float *tlevels256){
   int n;
   float dt, tval;
   float range;
-
-  range = local_tmax-local_tmin;
-
-  range = local_tmax-local_tmin;
-  dt = range/(float)(nlevel-2);
-  for(n=1;n<nlevel-1;n++){
-    tval = local_tmin + (n-1)*dt;
-    Num2String(&labels[n][0],tval);
-  }
-  for(n=0;n<256;n++){
-    tlevels256[n] = (local_tmin*(255-n) + local_tmax*n)/255.;
-  }
-  tval = local_tmax;
-  Num2String(&labels[nlevel-1][0],tval);
-}
-
-
-/* ------------------ GetIsoLabels ------------------------ */
-
-void GetIsoLabels(float local_tmin, float local_tmax, int nlevel,char labels[12][11],float *tlevels256){
-  int n;
-  float dt, tval;
-  float range;
-
-  range = local_tmax-local_tmin;
 
   range = local_tmax-local_tmin;
   dt = range/(float)(nlevel-2);
@@ -1010,7 +990,7 @@ void InitCadColors(void){
     }
     break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -1079,7 +1059,7 @@ void InitRGB(void){
 
   if(setbw==0){
     ConvertColor(TO_COLOR);
-    if(nrgb_ini !=0){
+    if(nrgb_ini > 0){
       nrgb = nrgb_ini;
       for(n=0;n<nrgb_ini;n++){
         rgb[n][0] = rgb_ini[n*3];
@@ -1118,7 +1098,7 @@ void UpdateCO2Colormap(void){
 
   if(use_transparency_data==1)transparent_level_local=transparent_level;
 
-  co2_cb = colorbarinfo[co2_colorbar_index].colorbar;
+  co2_cb = colorbarinfo[co2_colorbar_index].colorbar_rgb;
   rgb_colormap = rgb_sliceco2colormap_01;
 
   switch(co2_colormap_type){
@@ -1139,7 +1119,7 @@ void UpdateCO2Colormap(void){
       }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -1149,7 +1129,7 @@ void UpdateCO2Colormap(void){
 void UpdateSmokeColormap(int option){
   int n;
   float transparent_level_local=1.0;
-  unsigned char *alpha;
+  unsigned char *alpha_rgb;
   float *fire_cb;
   float val, valmin, valmax, valcut;
   int icut;
@@ -1173,8 +1153,8 @@ void UpdateSmokeColormap(int option){
 
   if(use_transparency_data==1)transparent_level_local=transparent_level;
 
-  alpha = colorbarinfo[colorbartype].alpha;
-  fire_cb = colorbarinfo[fire_colorbar_index].colorbar;
+  alpha_rgb = colorbarinfo[colorbartype].colorbar_alpha;
+  fire_cb = colorbarinfo[fire_colorbar_index].colorbar_rgb;
 
   switch(fire_colormap_type){
     case FIRECOLORMAP_DIRECT:
@@ -1189,7 +1169,7 @@ void UpdateSmokeColormap(int option){
           rgb_colormap[4*n+1]=(float)fire_color_int255[1] /255.0;
           rgb_colormap[4*n+2]=(float)fire_color_int255[2] /255.0;
         }
-        if(alpha[n]==0){
+        if(alpha_rgb[n]==0){
           rgb_colormap[4*n+3]=0.0;
         }
         else{
@@ -1246,7 +1226,7 @@ void UpdateSmokeColormap(int option){
         rgb_colormap[4*n]  =(1.0-factor)*fire1[0]+factor*fire2[0];
         rgb_colormap[4*n+1]=(1.0-factor)*fire1[1]+factor*fire2[1];
         rgb_colormap[4*n+2]=(1.0-factor)*fire1[2]+factor*fire2[2];
-        if(alpha[n]==0){
+        if(alpha_rgb[n]==0){
           rgb_colormap[4*n+3]=0.0;
         }
         else{
@@ -1255,7 +1235,7 @@ void UpdateSmokeColormap(int option){
       }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   UpdateTexturebar();
@@ -1286,17 +1266,17 @@ void UpdateRGBColors(int colorbar_index){
     rgb_trans[4*n+3]=(float)n/(float)(nrgb_full-1);
   }
   if(colorbarinfo!=NULL){
-    unsigned char *alpha;
+    unsigned char *alpha_rgb;
     colorbardata *cbi;
 
     cbi = colorbarinfo + colorbartype;
 
-    alpha = colorbarinfo[colorbartype].alpha;
+    alpha_rgb = colorbarinfo[colorbartype].colorbar_alpha;
     for(n=0;n<nrgb_full;n++){
-      rgb_full[n][0]=cbi->colorbar[3*n];
-      rgb_full[n][1]=cbi->colorbar[3*n+1];
-      rgb_full[n][2]=cbi->colorbar[3*n+2];
-      if(alpha[n]==0){
+      rgb_full[n][0]=cbi->colorbar_rgb[3*n];
+      rgb_full[n][1]=cbi->colorbar_rgb[3*n+1];
+      rgb_full[n][2]=cbi->colorbar_rgb[3*n+2];
+      if(alpha_rgb[n]==0){
         rgb_full[n][3]=0.0;
       }
       else{
@@ -1414,8 +1394,8 @@ void UpdateRGBColors(int colorbar_index){
   }
   if(show_extreme_mindata==1){
     rgb_full[0][0]=rgb_below_min[0]/255.0;
-    rgb_full[0][1]=rgb_below_min[1]/255.0;;
-    rgb_full[0][2]=rgb_below_min[2]/255.0;;
+    rgb_full[0][1]=rgb_below_min[1]/255.0;
+    rgb_full[0][2]=rgb_below_min[2]/255.0;
   }
   if(show_extreme_maxdata==1){
     rgb_full[255][0]=rgb_above_max[0]/255.0;
@@ -1512,7 +1492,7 @@ void UpdateChopColors(void){
   cpp_boundsdata *bounds;
 
   SNIFF_ERRORS("UpdateChopColors: start");
-  bounds                = GetBoundsData(BOUND_PATCH);
+  bounds                = GLUIGetBoundsData(BOUND_PATCH);
   if(bounds!=NULL){
     setpatchchopmin_local = bounds->set_chopmin;
     setpatchchopmax_local = bounds->set_chopmax;
@@ -1520,7 +1500,7 @@ void UpdateChopColors(void){
     patchchopmax_local = bounds->chopmax;
   }
 
-  bounds                     = GetBoundsData(BOUND_SLICE);
+  bounds                     = GLUIGetBoundsData(BOUND_SLICE);
   if(bounds!=NULL){
     glui_setslicechopmin_local = bounds->set_chopmin;
     glui_setslicechopmax_local = bounds->set_chopmax;
@@ -1528,7 +1508,7 @@ void UpdateChopColors(void){
     glui_slicechopmax_local = bounds->chopmax;
   }
 
-  bounds               = GetBoundsData(BOUND_PART);
+  bounds               = GLUIGetBoundsData(BOUND_PART);
   if(bounds!=NULL){
     setpartchopmin_local = bounds->set_chopmin;
     setpartchopmax_local = bounds->set_chopmax;
@@ -1538,7 +1518,7 @@ void UpdateChopColors(void){
     glui_partmax_local = bounds->valmax[bounds->set_valmax];
   }
 
-  bounds                  = GetBoundsData(BOUND_PLOT3D);
+  bounds                  = GLUIGetBoundsData(BOUND_PLOT3D);
   if(bounds!=NULL){
     setp3chopmin_temp_local = bounds->set_chopmin;
     setp3chopmax_temp_local = bounds->set_chopmax;
@@ -1625,6 +1605,27 @@ void UpdateChopColors(void){
     }
     else{
       rgb_patch[4*i+3]=0.0;
+    }
+  }
+  if(showall_3dslices==1){
+    int slice3d_loaded = 0;
+
+    for(i=0;i<nsliceinfo;i++){
+      slicedata *slicei;
+
+      slicei = sliceinfo + i;
+      if(slicei->volslice==1&&slicei->loaded==1&&slicei->display==1){
+        slice3d_loaded = 1;
+        break;
+      }
+    }
+    if(slice3d_loaded==1){
+      for(i = 0; i < nrgb_full; i++){
+        float factor;
+
+        factor = (float)i/255.0;
+        rgb_slice[4 * i + 3] = transparent_level_local*factor*factor;
+      }
     }
   }
   {
@@ -1905,7 +1906,7 @@ void ConvertColor(int flag){
     }
     break;
    default:
-     ASSERT(FFALSE);
+     assert(FFALSE);
      break;
   }
 }

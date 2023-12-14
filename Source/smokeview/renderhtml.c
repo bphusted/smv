@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -342,7 +343,7 @@ void GetSliceCellVerts(int option, int option2, int *offset, float *verts, unsig
         nrows = slicei->nslicej;
         break;
       default:
-	ASSERT(FFALSE);
+	assert(FFALSE);
 	break;
       }
       if(nrows>1&&ncols>1){
@@ -499,7 +500,7 @@ void GetSliceCellVerts(int option, int option2, int *offset, float *verts, unsig
             }
             break;
           default:
-	    ASSERT(FFALSE);
+	    assert(FFALSE);
             break;
           }
         }
@@ -568,7 +569,7 @@ void GetSliceGeomVerts(int option, int option2, int *offset, float *verts, unsig
       // preliminary code for obtaining geometry vertices and triangles
 
       patchi = slicei->patchgeom;
-      ivals = patchi->geom_ivals_dynamic[itime];
+      ivals = patchi->geom_ivals + patchi->geom_ivals_dynamic_offset[itime];
       geomi = slicei->patchgeom->geominfo;
       geomlisti = geomi->geomlistinfo-1;
       if(itime==ibeg){
@@ -598,15 +599,15 @@ void GetSliceGeomVerts(int option, int option2, int *offset, float *verts, unsig
             v1 = trii->verts[0];
             v2 = trii->verts[1];
             v3 = trii->verts[2];
-            *verts++ = NORMALIZE_X(v1->xyz[0]);
-            *verts++ = NORMALIZE_Y(v1->xyz[1]);
-            *verts++ = NORMALIZE_Z(v1->xyz[2]);
-            *verts++ = NORMALIZE_X(v2->xyz[0]);
-            *verts++ = NORMALIZE_Y(v2->xyz[1]);
-            *verts++ = NORMALIZE_Z(v2->xyz[2]);
-            *verts++ = NORMALIZE_X(v3->xyz[0]);
-            *verts++ = NORMALIZE_Y(v3->xyz[1]);
-            *verts++ = NORMALIZE_Z(v3->xyz[2]);
+            *verts++ = FDS2SMV_X(v1->xyz[0]);
+            *verts++ = FDS2SMV_Y(v1->xyz[1]);
+            *verts++ = FDS2SMV_Z(v1->xyz[2]);
+            *verts++ = FDS2SMV_X(v2->xyz[0]);
+            *verts++ = FDS2SMV_Y(v2->xyz[1]);
+            *verts++ = FDS2SMV_Z(v2->xyz[2]);
+            *verts++ = FDS2SMV_X(v3->xyz[0]);
+            *verts++ = FDS2SMV_Y(v3->xyz[1]);
+            *verts++ = FDS2SMV_Z(v3->xyz[2]);
           }
           *offset += 3*geomlisti->ntriangles;
         }
@@ -693,7 +694,7 @@ void GetSliceNodeVerts(int option, int option2,
         nrows = slicei->nslicej;
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
       if(nrows>1&&ncols>1){
@@ -853,7 +854,7 @@ void GetSliceNodeVerts(int option, int option2,
                   *verts++ = xplt[i];
                   *verts++ = yplt[j];
                   if(slicei->slice_filetype==SLICE_TERRAIN){
-                    *verts++ = NORMALIZE_Z(zplt[i*ny+j] + agl);
+                    *verts++ = FDS2SMV_Z(zplt[i*ny+j] + agl);
                   }
                   else{
                     *verts++ = constval;
@@ -906,7 +907,7 @@ void GetSliceNodeVerts(int option, int option2,
             }
             break;
 	  default:
-	    ASSERT(FFALSE);
+	    assert(FFALSE);
 	    break;
           }
         }
@@ -953,7 +954,7 @@ void GetGeometryNodes(int option, int *offset, float *verts, float *norms, float
         }
         xyz_in = geomlisti->verts[j].xyz;
         norm_in = geomlisti->verts[j].vert_norm;
-        NORMALIZE_XYZ(xyz_out, xyz_in);
+        FDS2SMV_XYZ(xyz_out, xyz_in);
         *verts++ = xyz_out[0];
         *verts++ = xyz_out[1];
         *verts++ = xyz_out[2];
@@ -1627,7 +1628,7 @@ void GeomLitTriangles2Geom(float **vertsptr, float **normalsptr, float **colorsp
 
 /* ------------------ GetHtmlFileName ------------------------ */
 
-int GetHtmlFileName(char *htmlfile_full, int option, int vr_flag){
+int GetHtmlFileName(char *htmlfile_full, int option){
   char htmlfile_dir[1024], htmlfile_suffix[1024];
   int image_num;
 
@@ -1673,12 +1674,7 @@ int GetHtmlFileName(char *htmlfile_full, int option, int vr_flag){
 
   strcpy(htmlfile_full, html_file_base);
   strcat(htmlfile_full, htmlfile_suffix);
-  if(vr_flag==VR_NO){
-    strcat(htmlfile_full, ".html");
-  }
-  else{
-    strcat(htmlfile_full, "_vr.html");
-  }
+  strcat(htmlfile_full, ".html");
   return 0;
 }
 
@@ -2176,7 +2172,7 @@ int Smv2Geom(char *html_file){
 
 /* ------------------ Smv2Html ------------------------ */
 
-int Smv2Html(char *html_file, int option, int from_where, int vr_flag){
+int Smv2Html(char *html_file, int option, int from_where){
   FILE *stream_in = NULL, *stream_out = NULL;
   float *vertsObstLit, *normalsObstLit, *colorsObstLit, *colors4ObstLit;
   int nvertsObstLit, nverts4ObstLit, *facesObstLit, nfacesObstLit;
@@ -2192,12 +2188,7 @@ int Smv2Html(char *html_file, int option, int from_where, int vr_flag){
   int copy_html, i;
   webgeomdata slice_node_web, slice_cell_web, slice_geom_web, bndf_node_web, part_node_web;
 
-  if(vr_flag==VR_NO){
-    template_file = smokeview_html;
-  }
-  else{
-    template_file = smokeviewvr_html;
-  }
+  template_file = smokeview_html;
   stream_in = fopen(template_file, "r");
   if(stream_in==NULL){
     printf("***error: smokeview html template file %s failed to open\n", template_file);
@@ -2210,7 +2201,7 @@ int Smv2Html(char *html_file, int option, int from_where, int vr_flag){
   else{
     int return_val;
 
-    return_val = GetHtmlFileName(html_fullfile, option, vr_flag);
+    return_val = GetHtmlFileName(html_fullfile, option);
     if(return_val==1){
       fclose(stream_in);
       return 1;

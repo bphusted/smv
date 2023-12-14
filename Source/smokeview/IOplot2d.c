@@ -11,10 +11,10 @@
 
 csvdata *GetCsvData(int file_index, int col_index, csvfiledata **csvf_ptr){
   csvfiledata *csvfi;
-  csvdata *csvi;
+  csvdata *csvi=NULL;
 
   csvfi = csvfileinfo    + file_index;
-  csvi  = csvfi->csvinfo + col_index;
+  if(csvfi->csvinfo!=NULL)csvi  = csvfi->csvinfo + col_index;
   if(csvf_ptr != NULL)*csvf_ptr = csvfi;
   return csvi;
 }
@@ -25,69 +25,7 @@ csvdata *GetCsvCurve(int col_index, csvfiledata **csvf_ptr){
   return GetCsvData(glui_csv_file_index, col_index, csvf_ptr);
 }
 
-/* ------------------ HaveGenDevShow ------------------------ */
-
-int GenDevShow(void){
-  int i;
-
-  for(i = 0; i < nplot2dinfo; i++){
-    plot2ddata *plot2di;
-
-    plot2di = plot2dinfo + i;
-    if(plot2di->show == 1){
-      int j;
-
-      for(j = 0; j < plot2di->ncurves; j++){
-        if(plot2di->curve[j].csv_col_index<ndeviceinfo)return 1;
-      }
-    }
-  }
-  return 0;
-}
-
-/* ------------------ HaveGenHrrShow ------------------------ */
-
-int GenHrrShow(void){
-  int i;
-
-  for(i = 0; i < nplot2dinfo; i++){
-    plot2ddata *plot2di;
-
-    plot2di = plot2dinfo + i;
-    if(plot2di->show == 1){
-      int j;
-
-      for(j = 0; j < plot2di->ncurves; j++){
-        if(plot2di->curve[j].csv_col_index>=ndeviceinfo)return 1;
-      }
-    }
-  }
-  return 0;
-}
-
-/* ------------------ HaveGenDev ------------------------ */
-
-int HaveGenDev(void){
-  int i;
-
-  for(i = 0; i<glui_plot2dinfo->ncurves; i++){
-    if(glui_plot2dinfo->curve[i].csv_col_index<ndeviceinfo)return 1;
-  }
-  return 0;
-}
-
-/* ------------------ HaveGenHrr ------------------------ */
-
-int HaveGenHrr(void){
-  int i;
-
-  for(i = 0; i<glui_plot2dinfo->ncurves; i++){
-    if(glui_plot2dinfo->curve[i].csv_col_index>=ndeviceinfo)return 1;
-  }
-  return 0;
-}
-
-/* ------------------ DrawPlot ------------------------ */
+/* ------------------ DrawGenCurve ------------------------ */
 #define AXIS_LEFT  0
 #define AXIS_RIGHT 1
 #define AXIS_NONE  2
@@ -97,9 +35,13 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
   float xmin, xmax, dx, dz;
   float xscale = 1.0, zscale = 1.0;
   int i, ndigits = 3;
+  int itbeg, itend;
+
+  itbeg = 0;
+  itend = n - 1;
 
   float *xyz0, linewidth_arg;
-  int *plot_color, show_plot_title, show_curve_labels, show_curve_values, show_xaxis_labels, show_yaxis_labels;
+  int *plot_color, show_plot_title, show_curve_labels, show_curve_values, show_xaxis_bounds, show_yaxis_bounds, show_yaxis_units;
   char *title;
   float fplot_color[3];
   float curve_factor;
@@ -136,8 +78,9 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
   }
   title              = plot2di->plot_label;
   show_plot_title    = plot2d_show_plot_title;
-  show_yaxis_labels  = plot2d_show_yaxis_labels;
-  show_xaxis_labels  = plot2d_show_xaxis_labels;
+  show_yaxis_bounds  = plot2d_show_yaxis_bounds;
+  show_xaxis_bounds  = plot2d_show_xaxis_bounds;
+  show_yaxis_units   = plot2d_show_yaxis_units;
   show_curve_labels  = plot2d_show_curve_labels;
   show_curve_values  = plot2d_show_curve_values;
 
@@ -147,10 +90,26 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
   }
   else{
     xmin = x[0];
-    xmax = xmin;
-    for(i = 1; i<n; i++){
-      xmin = MIN(xmin, x[i]);
-      xmax = MAX(xmax, x[i]);
+    xmax = x[n-1];
+    if(use_tload_begin==1||use_tload_end==1){
+      if(use_tload_begin==1){
+        for(i=0;i<n;i++){
+          if(tload_begin<x[i]){
+            itbeg = i;
+            break;
+          }
+        }
+        xmin = tload_begin;
+      }
+      if(use_tload_end==1){
+        for(i=n-1;i>=0;i--){
+          if(x[i]<tload_end){
+            itend = i;
+            break;
+          }
+        }
+        xmax = tload_end;
+      }
     }
     if(xmax==xmin)xmax = xmin+1.0;
     if(xmax>xmin)xscale = 1.0/(xmax-xmin);
@@ -187,14 +146,14 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
   if(option!=PLOT_ONLY_FRAME){
     glBegin(GL_LINES);
     if(apply_curve_factor==1){
-      for(i = 0; i<n-1; i++){
-        glVertex3f(x[i], 0.0, CLAMP(z[i], zmin/curve_factor, zmax/curve_factor));
+      for(i = itbeg; i<itend; i++){
+        glVertex3f(x[i],   0.0, CLAMP(z[i],   zmin/curve_factor, zmax/curve_factor));
         glVertex3f(x[i+1], 0.0, CLAMP(z[i+1], zmin/curve_factor, zmax/curve_factor));
       }
     }
     else{
-      for(i = 0; i<n-1; i++){
-        glVertex3f(x[i], 0.0, CLAMP(z[i], zmin, zmax));
+      for(i = itbeg; i<itend; i++){
+        glVertex3f(x[i],   0.0, CLAMP(z[i],   zmin, zmax));
         glVertex3f(x[i+1], 0.0, CLAMP(z[i+1], zmin, zmax));
       }
     }
@@ -236,10 +195,10 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
     }
     glBegin(GL_POINTS);
     if(apply_curve_factor==1){
-      glVertex3f(x_cur, 0.0, CLAMP(z_cur, zmin/curve_factor, zmax/curve_factor));
+      glVertex3f(CLAMP(x_cur, xmin, xmax), 0.0, CLAMP(z_cur, zmin/curve_factor, zmax/curve_factor));
     }
     else{
-      glVertex3f(x_cur, 0.0, CLAMP(z_cur, zmin, zmax));
+      glVertex3f(CLAMP(x_cur, xmin, xmax), 0.0, CLAMP(z_cur, zmin, zmax));
     }
     glEnd();
     if(apply_curve_factor==1)glPopMatrix();
@@ -252,12 +211,15 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
     if(option == PLOT_ALL){
       char c_tmin[32], c_tmax[32];
 
-      Float2String(c_tmin, x[0], ndigits, force_fixedpoint);
-      if(show_xaxis_labels==1)Output3Text(foregroundcolor, xmin, 0.0, zmin - dz - dfont, c_tmin);
+      Float2String(c_tmin, xmin, ndigits, force_fixedpoint);
+      if(show_xaxis_bounds==1)Output3Text(foregroundcolor, xmin, 0.0, zmin - dz - dfont, c_tmin);
 
-      Float2String(c_tmax, x[n - 1], ndigits, force_fixedpoint);
-      if(show_xaxis_labels==1)Output3Text(foregroundcolor, xmax, 0.0, zmin - dz - dfont, c_tmax);
+      Float2String(c_tmax, xmax, ndigits, force_fixedpoint);
+      if(show_xaxis_bounds==1)Output3Text(foregroundcolor, xmax, 0.0, zmin - dz - dfont, c_tmax);
       SNIFF_ERRORS("after DrawGenCurve 4");
+      if(plot2d_show_xaxis_labels == 1){
+        Output3Text(foregroundcolor, plot2d_xaxis_position, 0.0, zmin - dz - dfont, plot2d_xaxis_label);
+      }
     }
     if(option==PLOT_ONLY_FRAME&&show_plot_title==1){
       Output3Text(foregroundcolor, xmin, 0.0, zmax+1.5*dz, title);
@@ -282,7 +244,7 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
           Output3Text(fplot_color, xmax+2.0*dx,
                       0.0, zmax-(0.5+plot2d_font_spacing*(float)position)*dfont, label2);
         }
-        if(show_yaxis_labels==1){
+        if(show_yaxis_bounds==1){
           Output3Text(foregroundcolor, xmax+2.0*dx, 0.0, zmin, c_zmin);
           Output3Text(foregroundcolor, xmax+2.0*dx, 0.0, zmax, c_zmax);
         }
@@ -292,14 +254,14 @@ void DrawGenCurve(int option, plot2ddata *plot2di, curvedata *curve, float size_
             Output3TextRight(fplot_color,      xmin - dx,
                              0.0, zmax - (0.5 + plot2d_font_spacing * (float)position) * dfont, label2, GetStringLength(label2));
         }
-        if(show_yaxis_labels==1){
+        if(show_yaxis_bounds==1){
           Output3TextRight(foregroundcolor, xmin - dx, 0.0, zmin,  c_zmin, GetStringLength(c_zmin));
           Output3TextRight(foregroundcolor, xmin - dx, 0.0, zmax , c_zmax, GetStringLength(c_zmax));
         }
       }
       SNIFF_ERRORS("after DrawGenCurve 5");
     }
-    if(option!=PLOT_ONLY_FRAME&&unit!=NULL&&show_yaxis_labels==1){
+    if(option!=PLOT_ONLY_FRAME&&unit!=NULL&&show_yaxis_units==1){
       if(axis_side == AXIS_LEFT){
         Output3Text(foregroundcolor, xmax + 2.0 * dx, 0.0, zmax - (0.5 + plot2d_font_spacing*(float)(position + 1))*dfont, unit);
       }
@@ -413,6 +375,7 @@ void UpdateCurveBounds(plot2ddata *plot2di, int option){
     csvfiledata *csvfi;
 
     csvfi = csvfileinfo+i;
+    if(csvfi->defined != CSV_DEFINED)continue;
     for(j = 0; j<csvfi->ncsvinfo; j++){
       csvdata *csvi;
       float valmin, valmax;
@@ -429,7 +392,6 @@ void UpdateCurveBounds(plot2ddata *plot2di, int option){
       csvi->valmax = valmax;
     }
   }
-
   if(plot2di->ncurves==0){
     plot2di->bounds_defined = 0;
   }
@@ -452,6 +414,34 @@ void UpdateCurveBounds(plot2ddata *plot2di, int option){
     curve->vmin = 0.0;
     curve->vmax = 1.0;
   }
+}
+
+/* ------------------ HavePlot2D ------------------------ */
+
+int HavePlot2D(float **times, int *ntimes){
+  int i;
+
+  if(plot2d_show_plots==0)return 0;
+  for(i = 0; i < nplot2dinfo;i++){
+    plot2ddata *plot2di;
+    int j;
+
+    plot2di = plot2dinfo + i;
+    if(plot2di->show == 0)continue;
+    for(j = 0; j < plot2di->ncurves; j++){
+      curvedata *curve;
+      csvfiledata *csvfi;
+      csvdata *csvi;
+
+      curve = plot2di->curve+j;
+      if(curve==NULL)continue;
+      csvi = GetCsvData(curve->csv_file_index, curve->csv_col_index, &csvfi);
+      if(times!=NULL)*times = csvfi->time->vals;
+      if(ntimes!=NULL)*ntimes = csvi->nvals;
+      return 1;
+    }
+  }
+  return 0;
 }
 
 /* ------------------ DrawGenPlot ------------------------ */
@@ -483,6 +473,7 @@ void DrawGenPlot(plot2ddata *plot2di){
     char *unit;
 
     unit  = GetPlotUnit(plot2di, i);
+    if(unit == NULL)continue;
     if(axis_right_unit != NULL && strcmp(axis_right_unit, unit) == 0){
       unit_right_index = i;
       continue;
@@ -505,6 +496,7 @@ void DrawGenPlot(plot2ddata *plot2di){
       valmax *= curve->curve_factor;
     }
     unit = GetPlotUnit(plot2di, i);
+    if(unit == NULL)continue;
     if(axis_right_unit!=NULL&&strcmp(unit, axis_right_unit) == 0){
       if(axis_right_min>axis_right_max){
         axis_right_min = valmin;
@@ -605,9 +597,11 @@ void DrawGenPlot(plot2ddata *plot2di){
       memcpy(curve->vals, csvi->vals, csvi->nvals*sizeof(float));
     }
     if(global_times!=NULL){
+      float *vals;
+      vals = curve->vals;
       highlight_time = global_times[itimes];
-      highlight_val = GetCSVVal(global_times[itimes], csvfi->time->vals, curve->vals, csvi->nvals);
-      DrawGenCurve(option, plot2di, curve, plot2d_size_factor, csvfi->time->vals, curve->vals, csvi->nvals,
+      highlight_val = GetCSVVal(global_times[itimes], csvfi->time->vals, vals, csvi->nvals);
+      DrawGenCurve(option, plot2di, curve, plot2d_size_factor, csvfi->time->vals, vals, csvi->nvals,
                    highlight_time, highlight_val, valmin, valmax, side,
                    position, shortlabel, unit_display);
     }
@@ -619,6 +613,7 @@ void DrawGenPlot(plot2ddata *plot2di){
 void DrawGenPlots(void){
   int i;
 
+  if(plot2d_show_plots == 0||csv_loaded==0)return;
   for(i = 0; i < nplot2dinfo;i++){
     plot2ddata *plot2di;
 
@@ -757,7 +752,7 @@ void InitPlot2D(plot2ddata *plot2di, int plot_index){
   plot2di->ncurves = 0;
   plot2di->ncurves_ini = 0;
   plot2di->show = 1;
-  plot2di->xyz[0] = xbar0FDS;
+  plot2di->xyz[0] = xbar0FDS-SCALE2FDS(plot2d_size_factor+0.05);
   plot2di->xyz[1] = ybar0FDS;
   plot2di->xyz[2] = zbar0FDS;
   plot2di->use_valmin[0] = 0;
@@ -1023,7 +1018,7 @@ void DrawTreePlot(int first, int n){
     float highlight_time = 0.0, highlight_val = 0.0;
 
     devicei = deviceinfo_sortedz[first+j];
-    if(devicei->object->visible==0)continue;
+    if(devicei->object->visible == 0 || devicei->show == 0)continue;
     if(devicei->times==NULL||devicei->vals==NULL)continue;
     if(devicei->nvals<=1||devicei->type2!=devicetypes_index)continue;
     drawplot++;
@@ -1048,6 +1043,172 @@ void DrawTreePlot(int first, int n){
              devicei->quantity, devicei->unit
     );
   }
+}
+
+
+/* ------------------ DrawPlot2D ------------------------ */
+
+void DrawPlot2D(int option, float *x, float *z, float *z2, int n,
+  float highlight_x, float highlight_y, float highlight_y2, int valid, int position,
+  float global_valmin, float global_valmax, char *quantity, char *quantity2, char *unit,
+  float left, float right, float down, float top){
+  float xmin, xmax, zmin, zmax, dx;
+  float zmax_display;
+  int i;
+  char cvalmin[20], cvalmax[20], cval[20];
+  char tvalmin[20], tvalmax[20];
+  int ndigits = 3;
+
+  float dfont = ( float )GetFontHeight();
+
+  xmin = x[0];
+  xmax = xmin;
+  zmin = z[0];
+  zmax = zmin;
+  for(i = 1; i < n; i++){
+    xmin = MIN(xmin, x[i]);
+    xmax = MAX(xmax, x[i]);
+    zmin = MIN(zmin, z[i]);
+    zmax = MAX(zmax, z[i]);
+  }
+  if(xmax == xmin)xmax = xmin + 1.0;
+
+  if(global_valmin < global_valmax){
+    zmin = global_valmin;
+    zmax = global_valmax;
+  }
+  zmax_display = zmax;
+  if(zmax == zmin)zmax = zmin + 1.0;
+
+  if(vis_colorbar_dists_plot == 1){
+    strcpy(tvalmin, "0");
+    strcpy(tvalmax, "255");
+  }
+  else{
+    Float2String(tvalmin, global_times[0], ndigits, force_fixedpoint);
+    Float2String(tvalmax, global_times[nglobal_times - 1], ndigits, force_fixedpoint);
+  }
+  Float2String(cvalmin, zmin, ndigits, force_fixedpoint);
+  Float2String(cvalmax, zmax_display, ndigits, force_fixedpoint);
+  Float2String(cval, highlight_y, ndigits, force_fixedpoint);
+
+  dx = (xmax - xmin) / 20.0;
+
+  glPushMatrix();
+
+  int plot_width = MAX(75, plot2d_size_factor * screenWidth);
+
+#define HSCALE2D(x) (5+(left) + plot_width*((x)-(xmin))/((xmax)-(xmin)))
+#define HSCALE2DLABEL(x) (10 + HSCALE2D(x))
+#define VSCALE2D(z) (dfont +(down) + plot_width*((z)-(zmin))/((zmax)-(zmin)))
+  glLineWidth(plot2d_line_width);
+  glBegin(GL_LINES);
+  glColor3fv(foregroundcolor);
+  for(i = 0; i < n - 1; i++){
+    float val, val2;
+
+    val = CLAMP(z[i], zmin, zmax);
+    val2 = CLAMP(z[i + 1], zmin, zmax);
+    glVertex2f(HSCALE2D(x[i]), VSCALE2D(val));
+    glVertex2f(HSCALE2D(x[i + 1]), VSCALE2D(val2));
+  }
+  if(z2 != NULL){
+    glColor3f(1.0, 0.0, 0.0);
+    for(i = 0; i < n - 1; i++){
+      float val, val2;
+
+      val = CLAMP(z[i], zmin, zmax);
+      val2 = CLAMP(z[i + 1], zmin, zmax);
+      glVertex2f(HSCALE2D(x[i]), VSCALE2D(val));
+      glVertex2f(HSCALE2D(x[i + 1]), VSCALE2D(val2));
+    }
+    glColor3fv(foregroundcolor);
+  }
+  if(option == PLOT_ALL){
+    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmin));
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
+
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
+
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
+    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmax));
+
+    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmax));
+    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmin));
+
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
+    glVertex2f(HSCALE2D(xmax + dx), VSCALE2D(zmax));
+
+    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
+    glVertex2f(HSCALE2D(xmax + dx), VSCALE2D(zmin));
+  }
+  glEnd();
+
+  if(option == PLOT_ALL && show_plot2d_title == 1){
+    float dy;
+
+#define DFONTY dfont/2.0
+    if(z2 != NULL){
+      dy = VSCALE2D(zmax) + DFONTY;
+      OutputTextColor(redcolor, HSCALE2DLABEL(xmin), dy, quantity2);
+      dy += 1.1 * dfont;
+      OutputTextColor(foregroundcolor, HSCALE2DLABEL(xmin), dy, quantity);
+    }
+    else{
+      dy = VSCALE2D(zmax) + DFONTY;
+      OutputText(HSCALE2DLABEL(xmin), dy, quantity);
+    }
+  }
+
+  if(option == PLOT_ALL && show_plot2d_ylabels == 1){
+    float dy;
+
+    dy = VSCALE2D(zmax) - 1.5 * dfont + DFONTY;
+    OutputText(HSCALE2DLABEL(xmax), dy, cvalmax);
+    dy -= 1.1 * dfont;
+    OutputText(HSCALE2DLABEL(xmax), dy, unit);
+    if(z2 == NULL){
+      dy -= 1.1 * dfont * (position + 1);
+      OutputText(HSCALE2DLABEL(xmax), dy, cval);
+    }
+    else{
+      char cval2[255];
+
+      dy -= 1.1 * dfont;
+      OutputText(HSCALE2DLABEL(xmax), dy, cval);
+      Float2String(cval2, highlight_y2, ndigits, force_fixedpoint);
+      dy -= 1.1 * dfont;
+      OutputTextColor(redcolor, HSCALE2DLABEL(xmax), dy, cval2);
+    }
+    OutputText(HSCALE2DLABEL(xmax), VSCALE2D(zmin), cvalmin);
+  }
+  if(option == PLOT_ALL && show_plot2d_xlabels == 1){
+    OutputText(HSCALE2DLABEL(xmin) - GetStringWidth("X"), VSCALE2D(zmin) - dfont, tvalmin);
+    OutputText(HSCALE2DLABEL(xmax) - GetStringWidth("X"), VSCALE2D(zmin) - dfont, tvalmax);
+  }
+  if(valid == 1){
+    glPointSize(plot2d_point_size);
+
+    float val, val2;
+
+    val = CLAMP(highlight_y, zmin, zmax);
+    val2 = CLAMP(highlight_y2, zmin, zmax);
+    glBegin(GL_POINTS);
+    if(z2 == NULL){
+      glColor3f(1.0, 0.0, 0.0);
+      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val));
+    }
+    else{
+      glColor3fv(foregroundcolor);
+      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val));
+      glColor3f(1.0, 0.0, 0.0);
+      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val2));
+    }
+    glColor3fv(foregroundcolor);
+    glEnd();
+  }
+  glPopMatrix();
 }
 
 /* ----------------------- DrawTreeDevicePlots ----------------------------- */

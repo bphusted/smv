@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -258,7 +259,7 @@ void ShowScene2(int mode){
   /* ++++++++++++++++++++++++ draw blockages +++++++++++++++++++++++++ */
 
   CLIP_GEOMETRY;
-  if(geom_bounding_box_mousedown==0){
+  if(show_geom_boundingbox!=SHOW_BOUNDING_BOX_ALWAYS&&geom_bounding_box_mousedown==0){
     DrawBlockages(mode, DRAW_OPAQUE);
     SNIFF_ERRORS("DrawBlockages");
   }
@@ -267,12 +268,6 @@ void ShowScene2(int mode){
 
   if(ngeominfoptrs>0){
     CLIP_GEOMETRY;
-#ifdef pp_WUI_VAO
-    if(have_terrain_vao==0){
-      DrawGeom(DRAW_OPAQUE, GEOM_STATIC);
-      DrawGeom(DRAW_OPAQUE, GEOM_DYNAMIC);
-    }
-#else
     if(use_cfaces==1){
       int i;
 
@@ -285,7 +280,6 @@ void ShowScene2(int mode){
     }
     DrawGeom(DRAW_OPAQUE, GEOM_STATIC);
     DrawGeom(DRAW_OPAQUE, GEOM_DYNAMIC);
-#endif
     SNIFF_ERRORS("DrawGeom");
   }
 
@@ -299,51 +293,35 @@ void ShowScene2(int mode){
 
   /* ++++++++++++++++++++++++ draw terrain +++++++++++++++++++++++++ */
 
-  if(use_cfaces==0||ncgeominfo==0){
-#ifdef pp_WUI_VAO
-    if(have_terrain_vao==1&&usegpu==1){
-      CLIP_GEOMETRY;
-      DrawTerrainGeomGPU();
-    }
-    else{
-      CLIP_GEOMETRY;
-      DrawTerrainGeom(DRAW_OPAQUE);
-    }
-#else
-    CLIP_GEOMETRY;
-    DrawTerrainGeom(DRAW_OPAQUE);
-#endif
-  }
+  CLIP_GEOMETRY;
+  DrawTerrainGeom(DRAW_OPAQUE);
 
   if(visTerrainType != TERRAIN_HIDDEN&&nterraininfo>0&&ngeominfo==0 && geom_bounding_box_mousedown==0){
     int i;
 
-    //shaded 17 0
+    //shaded  17 0
     //stepped 18 1
     //line    19 2
     //texture 20 3
-    //hidden 20 4
+    //hidden  20 4
 
+    int flag;
+    if(terrain_showonly_top==1){
+      flag = TERRAIN_BOTH_SIDES;
+    }
+    else{
+      flag = TERRAIN_TOP_SIDE;
+    }
     CLIP_GEOMETRY;
     for(i = 0;i<nterraininfo;i++){
       terraindata *terri;
-      int flag;
 
       terri = terraininfo + i;
-      if(terrain_showonly_top==1){
-        flag = TERRAIN_BOTH_SIDES;
-      }
-      else{
-        flag = TERRAIN_TOP_SIDE;
-      }
       switch(visTerrainType){
-      case TERRAIN_3D:
+      case TERRAIN_SURFACE:
         DrawTerrainOBST(terri, flag);
         break;
-      case TERRAIN_2D_STEPPED:
-      case TERRAIN_2D_LINE:
-        break;
-      case TERRAIN_3D_MAP:
+      case TERRAIN_IMAGE:
         if(terrain_textures != NULL&&terrain_textures[iterrain_textures].loaded == 1){
           DrawTerrainOBSTTexture(terri);
         }
@@ -352,11 +330,11 @@ void ShowScene2(int mode){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
     }
-    if(visTerrainType==TERRAIN_3D_MAP||visTerrainType==TERRAIN_3D){
+    if(visTerrainType==TERRAIN_IMAGE||visTerrainType==TERRAIN_SURFACE){
       if(terrain_showonly_top==0){
         for(i = 0; i<nmeshes; i++){
           meshdata *meshi;
@@ -443,19 +421,8 @@ void ShowScene2(int mode){
 
   /* ++++++++++++++++++++++++ draw terrain +++++++++++++++++++++++++ */
 
-  if(use_cfaces==0||ncgeominfo==0){
-#ifdef pp_WUI_VAO
-    if(have_terrain_vao==1&&usegpu==1){
-    }
-    else{
-      CLIP_GEOMETRY;
-      DrawTerrainGeom(DRAW_TRANSPARENT);
-    }
-#else
-    CLIP_GEOMETRY;
-    DrawTerrainGeom(DRAW_TRANSPARENT);
-#endif
-  }
+  CLIP_GEOMETRY;
+  DrawTerrainGeom(DRAW_TRANSPARENT);
 
   /* ++++++++++++++++++++++++ draw transparent cfaces +++++++++++++++++++++++++ */
 
@@ -503,8 +470,6 @@ void ShowScene2(int mode){
     CLIP_VALS;
     DrawVolSmokeFrame();
   }
-
-  if(show_light_position_direction == 1)DrawLightDirections();
 
   if(active_smokesensors == 1 && show_smokesensors != SMOKESENSORS_HIDDEN && geom_bounding_box_mousedown==0){
     CLIP_VALS;
@@ -564,7 +529,7 @@ void ShowScene2(int mode){
   //  DrawDemo(20,20);
   //  DrawDemo2();
   CLIP_GEOMETRY;
-  if(geom_bounding_box_mousedown==0){
+  if(show_geom_boundingbox!=SHOW_BOUNDING_BOX_ALWAYS&&geom_bounding_box_mousedown==0){
     DrawBlockages(mode, DRAW_TRANSPARENT);
     SNIFF_ERRORS("after drawBlockages");
   }
@@ -642,11 +607,12 @@ void ShowScene(int mode, int view_mode, int quad, GLint s_left, GLint s_down, sc
       ViewportTitle(quad, s_left, s_down);
       SNIFF_ERRORS("after ViewportTitle");
     }
-
+#ifdef pp_HIST
     if(histogram_draw!=NULL){
       ViewportHistogram(quad, s_left, s_down);
       SNIFF_ERRORS("after ViewportHistogram");
     }
+#endif
 
     ViewportScene(quad, view_mode, s_left, s_down, screen);
     if(update_reshape>0){
@@ -659,17 +625,17 @@ void ShowScene(int mode, int view_mode, int quad, GLint s_left, GLint s_down, sc
   /* ++++++++++++++++++++++++ draw colorbar path using rgb as physical coordinates +++++++++++++++++++++++++ */
 
   if(viscolorbarpath == 1){
-    if(colorbar_hidescene == 1)UNCLIP;
-    if(mode==SELECTOBJECT){
-      DrawSelectColorbar();
-      SNIFF_ERRORS("after DrawSelectColorbars");
+    if(colorbar_coord_type ==0){
+      DrawColorbarPathRGB();
+      SNIFF_ERRORS("after DrawColorbarPathRGB");
     }
     else{
-      DrawColorbarPath();
-      SNIFF_ERRORS("after DrawColorbarPath");
+      void DrawColorbarPathCIELab(void);
+      DrawColorbarPathCIELab();
+      SNIFF_ERRORS("after DrawColorbarPathCIELab");
     }
   }
-  if(viscolorbarpath==0||colorbar_hidescene==0)ShowScene2(mode);
+  if(viscolorbarpath==0||colorbar_showscene==1)ShowScene2(mode);
 
 /* ++++++++++++++++++++++++ render scene +++++++++++++++++++++++++ */
 // if rendering is not working remove following comment

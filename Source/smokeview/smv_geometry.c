@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -744,25 +745,9 @@ void ExtractFrustum(void){
    }
 }
 
-/* ------------------ FDSPointInFrustum ------------------------ */
+/* ------------------ SMVPointInFrustum ------------------------ */
 
-int FDSPointInFrustum(float *xyz){
-  int i;
-  float xyz_smv[3];
-
-  xyz_smv[0] = NORMALIZE_X(xyz[0]);
-  xyz_smv[1] = NORMALIZE_Y(xyz[1]);
-  xyz_smv[2] = NORMALIZE_Z(xyz[2]);
-
-  for(i = 0; i<6; i++){
-    if(DOT3(frustum[i], xyz_smv)+frustum[i][3]<=0)return 0;
-  }
-  return 1;
-}
-
-/* ------------------ PointInFrustum ------------------------ */
-
-int PointInFrustum(float *xyz){
+int SMVPointInFrustum(float *xyz){
   int i;
 
   for(i = 0; i<6; i++){
@@ -771,37 +756,68 @@ int PointInFrustum(float *xyz){
   return 1;
 }
 
-/* ------------------ PointInTriangle ------------------------ */
+/* ------------------ FDSPointInFrustum ------------------------ */
 
-int PointInTriangle(float *v1, float *v2, float *v3){
-  if(PointInFrustum(v1)==1)return 1;
-  if(PointInFrustum(v2)==1)return 1;
-  if(PointInFrustum(v3)==1)return 1;
+int FDSPointInFrustum(float *xyz){
+  float xyz_smv[3];
+
+  xyz_smv[0] = FDS2SMV_X(xyz[0]);
+  xyz_smv[1] = FDS2SMV_Y(xyz[1]);
+  xyz_smv[2] = FDS2SMV_Z(xyz[2]);
+  return SMVPointInFrustum(xyz_smv);
+}
+
+/* ------------------ TriangleInFrustum ------------------------ */
+
+int TriangleInFrustum(float *v1, float *v2, float *v3){
+  if(SMVPointInFrustum(v1)==1)return 1;
+  if(SMVPointInFrustum(v2)==1)return 1;
+  if(SMVPointInFrustum(v3)==1)return 1;
   return 0;
 }
 
 /* ------------------ BoxInFrustum ------------------------ */
 
-int BoxInFrustum(float *xx, float *yy, float *zz){
+int BoxInFrustum(float *xx, float *yy, float *zz, int n){
   int i;
   float xyz[3];
+  float dx, dy, dz;
 
-  for(i=0;i<2;i++){
+  dx = (xx[1] - xx[0]) / ( float )(n - 1);
+  dy = (yy[1] - yy[0]) / ( float )(n - 1);
+  dz = (zz[1] - zz[0]) / ( float )(n - 1);
+
+  for(i=0;i<n;i++){
     int j;
 
-    xyz[0] = xx[i];
-    for(j=0;j<2;j++){
+    xyz[0] = xx[0]+ (float)i*dx;
+    for(j=0;j<n;j++){
       int k;
 
-      xyz[1] = yy[j];
-      for(k=0;k<2;k++){
-        xyz[2] = zz[k];
-        if(PointInFrustum(xyz)==1)return 1;
+      xyz[1] = yy[0]+ (float)j*dy;
+      for(k=0;k<n;k++){
+        xyz[2] = zz[0]+(float)k*dz;
+        if(SMVPointInFrustum(xyz)==1)return 1;
       }
     }
   }
   return 0;
 }
+
+/* ------------------ MeshInFrustum ------------------------ */
+
+int MeshInFrustum(meshdata *meshi){
+  float xx[2], yy[2], zz[2];
+
+  xx[0] = meshi->boxmin_scaled[0];
+  xx[1] = meshi->boxmax_scaled[0];
+  yy[0] = meshi->boxmin_scaled[1];
+  yy[1] = meshi->boxmax_scaled[1];
+  zz[0] = meshi->boxmin_scaled[2];
+  zz[1] = meshi->boxmax_scaled[2];
+  return BoxInFrustum(xx,yy,zz,5);
+}
+
 /* ------------------ RectangleInFrustum ------------------------ */
 
 int RectangleInFrustum( float *x11, float *x12, float *x22, float *x21){
@@ -976,6 +992,14 @@ void GetScreenMapping(float *xyz0, float *screen_perm){
 #endif
 }
 
+/* ------------------ GetTimeInterval ------------------------ */
+
+int GetTimeInterval(float val, float *array, int n){
+  if(val<array[1])return 0;
+  if(val>array[n-2])return n-2;
+  return GetInterval(val, array, n);
+}
+
 /* ------------------ GetInterval ------------------------ */
 
 int GetInterval(float val, float *array, int n){
@@ -995,7 +1019,7 @@ int GetInterval(float val, float *array, int n){
       high=mid;
     }
   }
-  ASSERT(low<n)
+  assert(low<n);
   return low;
 }
 
@@ -1170,6 +1194,7 @@ int MakeIBlankCarve(void){
           break;
         }
       }
+      k1 = 0;
       for(kk=0;kk<nz;kk++){
         if(zplt[kk]<=meshj->boxmin[2]&&meshj->boxmin[2]<zplt[kk+1]){
           k1=kk;
@@ -1212,7 +1237,6 @@ int MakeIBlank(void){
 
     meshi = meshinfo+ig;
 
-    if(meshi->nbptrs==0)continue;
     ibar = meshi->ibar;
     jbar = meshi->jbar;
     kbar = meshi->kbar;
@@ -1417,7 +1441,7 @@ int MakeIBlank(void){
 void InitClip(void){
   clipdata *ci;
 
-  clip_mode_last=-1;
+  clip_mode_last=CLIP_UNDEFINED;
 
   ci = &clipinfo;
   ci->clip_xmin=0;
@@ -1440,12 +1464,12 @@ void InitClip(void){
   ci->clip_xmax=1;
   ci->clip_ymax=1;
   ci->clip_zmax=1;
-  ci->xmin=DENORMALIZE_X(2.0);
-  ci->ymin=DENORMALIZE_X(2.0);
-  ci->zmin=DENORMALIZE_Y(2.0);
-  ci->xmax=DENORMALIZE_Y(2.0);
-  ci->ymax=DENORMALIZE_Z(2.0);
-  ci->zmax=DENORMALIZE_Z(2.0);
+  ci->xmin=SMV2FDS_X(2.0);
+  ci->ymin=SMV2FDS_X(2.0);
+  ci->zmin=SMV2FDS_Y(2.0);
+  ci->xmax=SMV2FDS_Y(2.0);
+  ci->ymax=SMV2FDS_Z(2.0);
+  ci->zmax=SMV2FDS_Z(2.0);
 
   clip_i=0;
   clip_j=0;
@@ -1626,7 +1650,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=0.0;
     clipplane[2]=0.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=-ci->xmin;
-    if(option==CLIP_ON)clipplane[3]=-NORMALIZE_X(ci->xmin);
+    if(option==CLIP_ON)clipplane[3]=-FDS2SMV_X(ci->xmin);
     glClipPlane(GL_CLIP_PLANE0,clipplane);
     glEnable(GL_CLIP_PLANE0);
   }
@@ -1641,7 +1665,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=0.0;
     clipplane[2]=0.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=ci->xmax;
-    if(option==CLIP_ON)clipplane[3]=NORMALIZE_X(ci->xmax);
+    if(option==CLIP_ON)clipplane[3]=FDS2SMV_X(ci->xmax);
     glClipPlane(GL_CLIP_PLANE3,clipplane);
     glEnable(GL_CLIP_PLANE3);
   }
@@ -1656,7 +1680,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=1.0;
     clipplane[2]=0.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=-ci->ymin;
-    if(option==CLIP_ON)clipplane[3]=-NORMALIZE_Y(ci->ymin);
+    if(option==CLIP_ON)clipplane[3]=-FDS2SMV_Y(ci->ymin);
     glClipPlane(GL_CLIP_PLANE1,clipplane);
     glEnable(GL_CLIP_PLANE1);
   }
@@ -1671,7 +1695,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=-1.0;
     clipplane[2]=0.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=ci->ymax;
-    if(option==CLIP_ON)clipplane[3]=NORMALIZE_Y(ci->ymax);
+    if(option==CLIP_ON)clipplane[3]=FDS2SMV_Y(ci->ymax);
     glClipPlane(GL_CLIP_PLANE4,clipplane);
     glEnable(GL_CLIP_PLANE4);
   }
@@ -1686,7 +1710,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=0.0;
     clipplane[2]=1.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=-ci->zmin;
-    if(option==CLIP_ON)clipplane[3]=-NORMALIZE_Z(ci->zmin);
+    if(option==CLIP_ON)clipplane[3]=-FDS2SMV_Z(ci->zmin);
     glClipPlane(GL_CLIP_PLANE2,clipplane);
     glEnable(GL_CLIP_PLANE2);
   }
@@ -1701,7 +1725,7 @@ void SetClipPlanes(clipdata *ci, int option){
     clipplane[1]=0.0;
     clipplane[2]=-1.0;
     if(option==CLIP_ON_DENORMAL)clipplane[3]=ci->zmax;
-    if(option==CLIP_ON)clipplane[3]=NORMALIZE_Z(ci->zmax);
+    if(option==CLIP_ON)clipplane[3]=FDS2SMV_Z(ci->zmax);
     glClipPlane(GL_CLIP_PLANE5,clipplane);
     glEnable(GL_CLIP_PLANE5);
   }
@@ -1709,4 +1733,3 @@ void SetClipPlanes(clipdata *ci, int option){
     glDisable(GL_CLIP_PLANE5);
   }
 }
-

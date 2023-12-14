@@ -40,7 +40,7 @@ GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
 
 # Definition of the object variables
 
-obj =    md5.o sha1.o sha256.o assert.o dmalloc.o file_util.o string_util.o stdio_buffer.o main.o
+obj =    md5.o sha1.o sha256.o dmalloc.o file_util.o string_util.o stdio_buffer.o main.o
 objwin = $(obj:.o=.obj)
 
 #*** General Purpose Rules ***
@@ -117,7 +117,7 @@ intel_osx_64 : $(obj)
 # ------------- gnu osx 64 ----------------
 
 gnu_osx_64 : CFLAGS    = -O0 -m64 -D pp_GCC -D  pp_OSX $(GITINFO)
-gnu_osx_64 : LFLAGS    = -m64 -L $(GLIBDIR) -L $(LIB_DIR)/gnu_osx_64 $(LIBS_OSX)
+gnu_osx_64 : LFLAGS    = -m64 -L $(LIB_DIR)/gnu_osx_64 $(LIBS_OSX)
 gnu_osx_64 : CC        = gcc
 gnu_osx_64 : CPP       = g++
 gnu_osx_64 : exe       = timep_osx_64
@@ -128,7 +128,7 @@ gnu_osx_64 : $(obj)
 # ------------- gnu osx 64 db ----------------
 
 gnu_osx_64_db : CFLAGS    = -O0 -m64 -Wall -D pp_GCC -D  pp_OSX $(GITINFO)
-gnu_osx_64_db : LFLAGS    = -m64 -L $(GLIBDIR) -L $(LIB_DIR)/gnu_osx_64 $(LIBS_OSX)
+gnu_osx_64_db : LFLAGS    = -m64 -L $(LIB_DIR)/gnu_osx_64 $(LIBS_OSX)
 gnu_osx_64_db : CC        = gcc
 gnu_osx_64_db : CPP       = g++
 gnu_osx_64_db : exe       = timep_osx_64_db

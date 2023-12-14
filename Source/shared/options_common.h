@@ -3,6 +3,9 @@
 
 //*** options: all platforms
 
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
 #ifndef _DEBUG
 #define pp_HASH   // md5, sha1 and sha255 hashing
 #endif
@@ -31,6 +34,13 @@
 #define INTEL_WIN_COMPILER
 #endif
 #endif
+
+#ifdef pp_BETA
+#define PROGVERSION "Test"
+#else
+#define PROGVERSION ""
+#endif
+
 
 // Microsofts MSVC has timespec defined
 #ifdef _MSC_VER
@@ -137,6 +147,18 @@
 #ifdef pp_QUARTZ
 #undef  GLUT_H
 #define GLUT_H <GL/glut.h>
+#endif
+
+#define GL_H <GL/gl.h>
+#ifdef pp_OSX
+#undef  GL_H
+#define GL_H <OpenGL/gl.h>
+#endif
+
+#define GLU_H <GL/glu.h>
+#ifdef pp_OSX
+#undef  GLU_H
+#define GLU_H <OpenGL/glu.h>
 #endif
 
 #include "lint.h"

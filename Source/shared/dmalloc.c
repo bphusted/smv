@@ -1,5 +1,6 @@
 #include "options.h"
 #define INDMALLOC
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -73,11 +74,33 @@ void initMALLOC(void){
 #ifdef pp_THREAD
   pthread_mutex_init(&mutexMEM,NULL);
 #endif
-#ifdef pp_MEMDEBUG
   MMmaxmemory=0;
   MMtotalmemory=0;
-#endif
+}
 
+/* ------------------ PrintMemoryError ------------------------ */
+
+void PrintMemoryError(size_t size, const char *varname, const char *file, int linenumber){
+  if(varname!=NULL){
+    char *varname2 = NULL;
+
+    varname2 = strrchr(varname, '&');
+    if(varname2 != NULL)varname = varname2+1;
+    fprintf(stderr, "\n***Error: Failure when allocating %llu bytes for the variable '%s'", (unsigned long long)size, varname);
+  }
+  else{
+    fprintf(stderr, "\n***Error: Failure when allocating %llu bytes", (unsigned long long)size);
+  }
+  if(file!=NULL){
+    char *file2=NULL;
+
+    file2 = strrchr(file,'\\');
+    if(file2==NULL)file2 = strrchr(file, '/');
+    if(file2 != NULL)file = file2+1;
+    fprintf(stderr," at %s(%i)\n",file,linenumber);
+  }
+  printf("\n");
+  assert(1==0); // force smokeview to abort when in debug mode
 }
 
 /* ------------------ _NewMemory ------------------------ */
@@ -88,15 +111,7 @@ mallocflag _NewMemory(void **ppv, size_t size, int memory_id, const char *varnam
   LOCK_MEM;
   returnval=_NewMemoryNOTHREAD(ppv, size, memory_id);
   if(returnval!=1){
-    fprintf(stderr,"*** Error: memory allocation request of size %llu failed\n",(unsigned long long)size);
-    if(varname!=NULL){
-      fprintf(stderr,"             variable: %s\n",varname);
-      fprintf(stderr,"                 size: %u\n",(unsigned int)size);
-    }
-    if(file!=NULL){
-      fprintf(stderr,"                 file: %s\n",file);
-      fprintf(stderr,"          line number: %i\n",linenumber);
-    }
+     PrintMemoryError(size, varname, file, linenumber);
   }
   UNLOCK_MEM;
   return returnval;
@@ -105,66 +120,61 @@ mallocflag _NewMemory(void **ppv, size_t size, int memory_id, const char *varnam
 /* ------------------ _NewMemoryNOTHREAD ------------------------ */
 
 mallocflag _NewMemoryNOTHREAD(void **ppv, size_t size, int memory_id){
-  void **ppb=(void **)ppv;
+  void **ppb = (void **)ppv;
 #ifdef pp_MEMDEBUG
   char *c;
 #endif
   int infoblocksize;
   MMdata *this_ptr, *prev_ptr, *next_ptr;
 
-  ASSERT(ppv != NULL && size != 0);
-  infoblocksize=(sizeof(MMdata)+3)/4;
-  infoblocksize*=4;
+  assert(ppv != NULL && size != 0);
+  infoblocksize = (sizeof(MMdata) + 3) / 4;
+  infoblocksize *= 4;
 
-#ifdef pp_MEMDEBUG
-  if(MMmaxmemory==0||MMtotalmemory+size<=MMmaxmemory){
-    this_ptr = (void *)malloc(infoblocksize+size+sizeofDebugByte);
+  //  float total, maxmem;
+  //  total = MMtotalmemory/1000000000.0;
+  //  maxmem = MMmaxmemory / 1000000000.0;
+  //  printf("memory allocated: %f GB out of %f GB\n",total,maxmem);
+  if(MMmaxmemory == 0 || MMtotalmemory + size <= MMmaxmemory){
+    this_ptr = (void *)malloc(infoblocksize + size + sizeofDebugByte);
   }
   else{
     this_ptr = NULL;
   }
-#else
-  this_ptr = (void *)malloc(infoblocksize+size+sizeofDebugByte);
-#endif
-  if(this_ptr!=NULL){
-    prev_ptr=MMfirstptr;
-    next_ptr=MMfirstptr->next;
+  if(this_ptr != NULL){
+    prev_ptr = MMfirstptr;
+    next_ptr = MMfirstptr->next;
 
-    prev_ptr->next=this_ptr;
-    next_ptr->prev=this_ptr;
+    prev_ptr->next = this_ptr;
+    next_ptr->prev = this_ptr;
 
-#ifdef pp_MEMPRINT
     this_ptr->size = size;
-#endif
     this_ptr->memory_id = memory_id;
-    this_ptr->prev=prev_ptr;
-    this_ptr->next=next_ptr;
-    this_ptr->marker=markerByte;
+    this_ptr->prev = prev_ptr;
+    this_ptr->next = next_ptr;
+    this_ptr->marker = MARKER_BYTE;
 
-    *ppb=(char *)this_ptr+infoblocksize;
+    *ppb = (char *)this_ptr + infoblocksize;
   }
   else{
-    *ppb=NULL;
+    *ppb = NULL;
   }
 
 #ifdef pp_MEMDEBUG
-  {
-    CheckMemoryNOTHREAD;
-    if(*ppb != NULL){
-      if(sizeofDebugByte!=0){
-       c = (char *)(*ppb) + size;
-       *c=(char)debugByte;
-      }
-      memset(*ppb, memGarbage, size);
-      if(!CreateBlockInfo(*ppb, size)){
-        free((char *)*ppb-infoblocksize);
-        *ppb=NULL;
-      }
+  CheckMemoryNOTHREAD;
+  if(*ppb != NULL){
+    if(sizeofDebugByte != 0){
+      c = (char *)(*ppb) + size;
+      *c = (char)DEBUG_BYTE;
     }
-    MMtotalmemory+=size;
-    ASSERT(*ppb !=NULL);
+    memset(*ppb, memGarbage, size);
+    if(!CreateBlockInfo(*ppb, size)){
+      free((char *)*ppb - infoblocksize);
+      *ppb = NULL;
+    }
   }
 #endif
+  MMtotalmemory += size;
   return (*ppb != NULL);
 }
 
@@ -184,7 +194,7 @@ void FreeAllMemory(int memory_id){
     // if the 'thisptr' memory block is freed then thisptr is no longer valid.
     // so, nextptr (which is thisptr->next) must be defined before it is freed
     nextptr = thisptr->next;
-    if(thisptr->next == NULL || thisptr->marker != markerByte)break;
+    if(thisptr->next == NULL || thisptr->marker != MARKER_BYTE)break;
     thisptr = nextptr;
   }
 #endif
@@ -194,7 +204,7 @@ void FreeAllMemory(int memory_id){
     // if the 'thisptr' memory block is freed then thisptr is no longer valid.
     // so, nextptr (which is thisptr->next) must be defined before it is freed
     nextptr = thisptr->next;
-    if(thisptr->next == NULL || thisptr->marker != markerByte)break;
+    if(thisptr->next == NULL || thisptr->marker != MARKER_BYTE)break;
     if(memory_id == 0 || thisptr->memory_id == memory_id){
       FreeMemoryNOTHREAD((char *)thisptr + infoblocksize);
     }
@@ -220,23 +230,20 @@ void FreeMemoryNOTHREAD(void *pv){
   int infoblocksize;
   MMdata *this_ptr, *prev_ptr, *next_ptr;
 
-  ASSERT(pv != NULL);
+  assert(pv != NULL);
   infoblocksize=(sizeof(MMdata)+3)/4;
   infoblocksize*=4;
 #ifdef pp_MEMDEBUG
   {
-    blockinfo *meminfoblock;
-
     CheckMemoryNOTHREAD;
-    meminfoblock = GetBlockInfo(pv);
-    MMtotalmemory-=meminfoblock->size;
     len_memory=sizeofBlock((char *)pv);
     memset((char *)pv, memGarbage, len_memory);
     FreeBlockInfo((char *)pv);
   }
 #endif
   this_ptr=(MMdata *)((char *)pv-infoblocksize);
-  ASSERT(this_ptr->marker==markerByte);
+  assert(this_ptr->marker==MARKER_BYTE);
+  MMtotalmemory-=this_ptr->size;
   prev_ptr=this_ptr->prev;
   next_ptr=this_ptr->next;
 
@@ -253,15 +260,7 @@ mallocflag _ResizeMemory(void **ppv, size_t sizeNew, int memory_id, const char *
   LOCK_MEM;
   returnval=_ResizeMemoryNOTHREAD(ppv, sizeNew, memory_id);
   if(returnval!=1){
-    fprintf(stderr,"*** Error: memory allocation request of size %llu failed\n",(unsigned long long)sizeNew);
-    if(varname!=NULL){
-      fprintf(stderr,"             variable: %s\n",varname);
-      fprintf(stderr,"                 size: %u\n",(unsigned int)sizeNew);
-    }
-    if(file!=NULL){
-      fprintf(stderr,"                 file: %s\n",file);
-      fprintf(stderr,"          line number: %i\n",linenumber);
-    }
+    PrintMemoryError(sizeNew, varname, file, linenumber);
   }
   UNLOCK_MEM;
   return returnval;
@@ -282,7 +281,7 @@ mallocflag _ResizeMemoryNOTHREAD(void **ppv, size_t sizeNew, int memory_id){
   infoblocksize*=4;
 
   ppold=(bbyte **)ppv;
-  ASSERT(ppold != NULL && sizeNew != 0);
+  assert(ppold != NULL && sizeNew != 0);
 #ifdef pp_MEMDEBUG
   {
     CheckMemoryNOTHREAD;
@@ -313,19 +312,17 @@ mallocflag _ResizeMemoryNOTHREAD(void **ppv, size_t sizeNew, int memory_id){
       prev_ptr->next=this_ptr;
       next_ptr->prev=this_ptr;
 
-#ifdef pp_MEMPRINT
       this_ptr->size = sizeNew;
-#endif
       this_ptr->memory_id = memory_id;
       this_ptr->next=next_ptr;
       this_ptr->prev=prev_ptr;
-      this_ptr->marker=markerByte;
+      this_ptr->marker=MARKER_BYTE;
     }
 #ifdef pp_MEMDEBUG
     {
       if(sizeofDebugByte!=0){
         c = pbNew + infoblocksize + sizeNew;
-        *c=(char)debugByte;
+        *c=(char)DEBUG_BYTE;
       }
       UpdateBlockInfo(*ppold, (char *)pbNew+infoblocksize, sizeNew);
       if(sizeNew>sizeOld){
@@ -336,6 +333,12 @@ mallocflag _ResizeMemoryNOTHREAD(void **ppv, size_t sizeNew, int memory_id){
     *ppold = pbNew+infoblocksize;
   }
   return (pbNew != NULL);
+}
+
+/* ------------------ SetMemCheck ------------------------ */
+void SetMemCheck(float memGB){
+  if(memGB < 0)memGB = 0;
+  MMmaxmemory = memGB * (MMsize)(1000*1000*1000);
 }
 
 #ifdef pp_MEMDEBUG
@@ -362,7 +365,13 @@ mallocflag __NewMemory(void **ppv, size_t size, int memory_id, const char *varna
 
   LOCK_MEM;
   return_code=_NewMemoryNOTHREAD(ppb,size,memory_id);
+  if(return_code != 1){
+    PrintMemoryError(size, varname, file, linenumber);
+  }
   pbi=GetBlockInfo((bbyte *)*ppb);
+  if(return_code == 1 && pbi == NULL){ // don't print error message twice
+    PrintMemoryError(size, varname, file, linenumber);
+  }
   pbi->linenumber=linenumber;
 
   file2=strrchr(file,dirsep);
@@ -395,15 +404,7 @@ mallocflag __NewMemory(void **ppv, size_t size, int memory_id, const char *varna
     strcat(pbi->varname,"\0");
   }
   if(return_code!=1){
-    fprintf(stderr,"*** Error: memory allocation request of size %llu failed\n",(unsigned long long)size);
-    if(varname!=NULL){
-      fprintf(stderr,"             variable: %s\n",varname);
-      fprintf(stderr,"                 size: %u\n",(unsigned int)size);
-    }
-    if(file!=NULL){
-      fprintf(stderr,"                 file: %s\n",file);
-      fprintf(stderr,"          line number: %i\n",linenumber);
-    }
+    PrintMemoryError(size, varname, file, linenumber);
   }
   UNLOCK_MEM;
   return return_code;
@@ -435,15 +436,7 @@ mallocflag __ResizeMemory(void **ppv, size_t size, int memory_id, const char *va
     strcat(pbi->varname,"\0");
   }
   if(return_code!=1){
-    fprintf(stderr,"*** Error: memory allocation request of size %llu failed\n",(unsigned long long)size);
-    if(varname!=NULL){
-      fprintf(stderr,"             variable: %s\n",varname);
-      fprintf(stderr,"                 size: %u\n",(unsigned int)size);
-    }
-    if(file!=NULL){
-      fprintf(stderr,"                 file: %s\n",file);
-      fprintf(stderr,"          line number: %i\n",linenumber);
-    }
+    PrintMemoryError(size, varname, file, linenumber);
   }
   UNLOCK_MEM;
   return return_code;
@@ -462,7 +455,6 @@ static blockinfo *GetBlockInfo(bbyte *pb){
 
     if(fPtrGrtrEq(pb, pbStart) && fPtrLessEq(pb, pbEnd))break;
   }
-  ASSERT(pbi != NULL);
   return (pbi);
 }
 
@@ -476,12 +468,6 @@ int _CountMemoryBlocks(void){
     n++;
   }
   return n;
-}
-
-/* ------------------ GetTotalMemory ------------------------ */
-
-MMsize _GetTotalMemory(void){
-  return MMtotalmemory;
 }
 
 /* ------------------ PrintAllMemoryInfo ------------------------ */
@@ -546,7 +532,7 @@ void _CheckMemoryNOTHREAD(void){
   if(checkmemoryflag==0)return;
   for(pbi = pbiHead; pbi != NULL; pbi = pbi->pbiNext){
     if(sizeofDebugByte!=0){
-      ASSERT((char)*(pbi->pb+pbi->size)==(char)debugByte);
+      assert((char)*(pbi->pb+pbi->size)==(char)DEBUG_BYTE);
     }
   }
   return;
@@ -557,7 +543,7 @@ void _CheckMemoryNOTHREAD(void){
 mallocflag CreateBlockInfo(bbyte *pbNew, size_t sizeNew){
   blockinfo *pbi;
 
-  ASSERT(pbNew != NULL && sizeNew != 0);
+  assert(pbNew != NULL && sizeNew != 0);
 
   pbi = (blockinfo *)malloc(sizeof(blockinfo));
   if( pbi != NULL){
@@ -587,9 +573,9 @@ void FreeBlockInfo(bbyte *pbToFree){
     }
     pbiPrev = pbi;
   }
-  ASSERT(pbi != NULL);
+  assert(pbi != NULL);
   if(sizeofDebugByte!=0){
-    ASSERT((char)*(pbi->pb+pbi->size)==(char)debugByte);
+    assert((char)*(pbi->pb+pbi->size)==(char)DEBUG_BYTE);
   }
   free(pbi);
 }
@@ -599,10 +585,10 @@ void FreeBlockInfo(bbyte *pbToFree){
 void UpdateBlockInfo(bbyte *pbOld, bbyte *pbNew, size_t sizeNew){
   blockinfo *pbi;
 
-  ASSERT(pbNew != NULL && sizeNew != 0);
+  assert(pbNew != NULL && sizeNew != 0);
 
   pbi = GetBlockInfo(pbOld);
-  ASSERT(pbOld == pbi->pb);
+  assert(pbOld == pbi->pb);
 
   pbi->pb = pbNew;
   pbi->size = sizeNew;
@@ -614,9 +600,9 @@ size_t sizeofBlock(bbyte *pb){
   blockinfo *pbi;
 
   pbi = GetBlockInfo(pb);
-  ASSERT(pb==pbi->pb);
+  assert(pb==pbi->pb);
   if(sizeofDebugByte!=0){
-    ASSERT((char)*(pbi->pb+pbi->size)==(char)debugByte);
+    assert((char)*(pbi->pb+pbi->size)==(char)DEBUG_BYTE);
   }
   return(pbi->size);
 }
@@ -627,15 +613,15 @@ mallocflag _ValidPointer(void *pv, size_t size){
   blockinfo *pbi;
   bbyte *pb = (bbyte *)pv;
 
-  ASSERT(pv != NULL && size != 0);
+  assert(pv != NULL && size != 0);
 
   pbi = GetBlockInfo(pb);
-  ASSERT(pb==pbi->pb);
+  assert(pb==pbi->pb);
 
-  ASSERT(fPtrLessEq(pb+size,pbi->pb + pbi->size));
+  assert(fPtrLessEq(pb+size,pbi->pb + pbi->size));
 
   if(sizeofDebugByte!=0){
-    ASSERT((char)*(pbi->pb+pbi->size)==(char)debugByte);
+    assert((char)*(pbi->pb+pbi->size)==(char)DEBUG_BYTE);
   }
   return(1);
 }
@@ -651,7 +637,7 @@ char *_strcpy(char *s1, const char *s2){
   pbi = GetBlockInfo_nofail(s1);
   if(pbi!=NULL){
     offset = s1 - pbi->pb;
-    ASSERT(pbi->size - offset >= strlen(s2)+1);
+    assert(pbi->size - offset >= strlen(s2)+1);
   }
   UNLOCK_MEM;
 
@@ -669,38 +655,17 @@ char *_strcat(char *s1, const char *s2){
   pbi = GetBlockInfo_nofail(s1);
   if(pbi!=NULL){
     offset = s1 - pbi->pb;
-    ASSERT(pbi->size - offset >= strlen(s1)+strlen(s2)+1);
+    assert(pbi->size - offset >= strlen(s1)+strlen(s2)+1);
   }
   UNLOCK_MEM;
 
   return strcat(s1,s2);
 }
-#endif
-#ifdef pp_MEMDEBUG
 
-/* ------------------ set_memcheck ------------------------ */
+/* ------------------ GetTotalMemory ------------------------ */
 
-void set_memcheck(int index){
-  switch(index){
-  case 0:
-    MMmaxmemory=0;
-    break;
-  case 1:
-    MMmaxmemory=1000000000;
-    break;
-  case 2:
-    MMmaxmemory=2000000000;
-    break;
-  case 3:
-    MMmaxmemory=4000000000;
-    break;
-  case 4:
-    MMmaxmemory=8000000000;
-    break;
-  default:
-    ASSERT(0);
-    break;
-  }
+MMsize _GetTotalMemory(void){
+  return MMtotalmemory;
 }
 
 /* ------------------ getMemusage ------------------------ */
@@ -717,7 +682,5 @@ void getMemusage(MMsize totalmemory,char *MEMlabel){
     rsize = totalmemory/1000000000.0;
     sprintf(MEMlabel,"%4.2f GB",rsize);
   }
-
 }
 #endif
-

@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -26,16 +27,16 @@ int GetGridIndex(float val, int dir, float *plotxyz, int nplotxyz){
 
   switch(dir){
     case XDIR:
-      val=NORMALIZE_X(val);
+      val=FDS2SMV_X(val);
       break;
     case YDIR:
-      val=NORMALIZE_Y(val);
+      val=FDS2SMV_Y(val);
       break;
     case ZDIR:
-      val=NORMALIZE_Z(val);
+      val=FDS2SMV_Z(val);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 
@@ -251,68 +252,9 @@ void WindowStatus(int state){
   case GLUT_PARTIALLY_RETAINED:
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
-}
-
-
-/* ------------------ MouseEditColorbar ------------------------ */
-
-void MouseEditColorbar(int x, int y){
-  int val;
-  int mouse_x, mouse_y;
-  GLubyte r, g, b;
-  colorbardata *cbi;
-
-  if(show_firecolormap==0){
-    cbi = colorbarinfo + colorbartype;
-  }
-  else{
-    cbi = colorbarinfo+fire_colorbar_index;
-  }
-
-  mouse_x = x;
-  mouse_y = screenHeight-y;
-
-  glDisable(GL_BLEND);
-  glShadeModel(GL_FLAT);
-  DISABLE_LIGHTING;
-  glDisable(GL_DITHER);
-  glDisable(GL_FOG);
-  glDisable(GL_TEXTURE_1D);
-  glDisable(GL_TEXTURE_2D);
-
-  ShowScene(SELECTOBJECT, VIEW_CENTER, 0, 0, 0, NULL);
-  glReadBuffer(GL_BACK);
-  glReadPixels(mouse_x, mouse_y, 1, 1, GL_RED,   GL_UNSIGNED_BYTE, &r);
-  glReadPixels(mouse_x, mouse_y, 1, 1, GL_GREEN, GL_UNSIGNED_BYTE, &g);
-  glReadPixels(mouse_x, mouse_y, 1, 1, GL_BLUE,  GL_UNSIGNED_BYTE, &b);
-
-  r = r>>nredshift;
-  g = g>>ngreenshift;
-  b = b>>nblueshift;
-
-  val = (r<<(nbluebits+ngreenbits))|(g<<nbluebits)|b;
-  colorbaredit_drag = 0;
-  if(val>0&&val<=cbi->nnodes){
-
-    /* need to start colors at 1 so that black (color 0,0,0) is not interpreted as a blockage */
-
-    val--;
-    colorbaredit_drag = 1;
-    colorbarpoint = val;
-    ColorbarCB(COLORBAR_SET);
-  }
-  glEnable(GL_BLEND);
-  ENABLE_LIGHTING;
-  glShadeModel(GL_SMOOTH);
-  glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, &block_shininess);
-  glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, block_specular2);
-  glEnable(GL_COLOR_MATERIAL);
-  glEnable(GL_DITHER);
-  glEnable(GL_TEXTURE_1D);
-  glEnable(GL_TEXTURE_2D);
 }
 
 /* ------------------ MouseEditTour ------------------------ */
@@ -361,8 +303,8 @@ void MouseEditTour(int x, int y){
       selected_tour=NULL;
       itourknots=-1;
     }
-    SetGluiTourKeyframe();
-    UpdateTourControls();
+    GLUISetTourKeyframe();
+    GLUIUpdateTourControls();
     tour_drag=1;
   }
   glShadeModel(GL_SMOOTH);
@@ -437,7 +379,7 @@ void MouseEditBlockage(int x, int y){
         xyz_dir=ZDIR;
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
     switch(sd->dir){
@@ -452,10 +394,10 @@ void MouseEditBlockage(int x, int y){
         which_face=1;
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
-    UpdateBlockVals(SELECT_BLOCKS);
+    GLUIUpdateBlockVals(SELECT_BLOCKS);
   }
 }
 
@@ -592,7 +534,7 @@ void MouseSelectGeom(int x, int y){
       selected_geom_triangle = val-1;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
 
@@ -616,7 +558,7 @@ void MouseSelectGeom(int x, int y){
         verti = geomlisti->verts+selected_geom_vertex2;
         xyz2 = verti->xyz;
       }
-      UpdateVertexInfo(xyz1, xyz2);
+      GLUIUpdateVertexInfo(xyz1, xyz2);
     }
       break;
     case GEOM_PROP_TRIANGLE:
@@ -627,11 +569,11 @@ void MouseSelectGeom(int x, int y){
 
         trii = geomlisti->triangles+selected_geom_triangle;
         tri_surf = trii->geomsurf;
-        UpdateTriangleInfo(tri_surf, trii->area);
+        GLUIUpdateTriangleInfo(tri_surf, trii->area);
       }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
     glShadeModel(GL_SMOOTH);
@@ -654,7 +596,7 @@ void CheckTimeBound(void){
     itimes=first_frame_index;
     if(render_status==RENDER_ON){
       RenderMenu(RenderCancel);
-      if(current_script_command!=NULL&&current_script_command->command!=SCRIPT_LOADSLICERENDER){
+      if(current_script_command!=NULL&&NOT_LOADRENDER){
         current_script_command->exit=1;
       }
     }
@@ -760,7 +702,7 @@ int GlutGetModifiersNew(void){
     break;
   default:
     modifier = glutGetModifiers();
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
 #ifdef _DEBUG
@@ -776,17 +718,9 @@ int ColorbarClick(int x, int y){
 
   colorbar_index = GetColorbarIndex(1,x,y);
   if(colorbar_index>=0){
-    int state;
-
     colorbar_select_index=colorbar_index;
-    state=GLUTGETMODIFIERS();
-    if(state==GLUT_ACTIVE_CTRL&&current_colorbar!=NULL&&current_colorbar->nsplits==1){
-      colorbar_splitdrag=1;
-    }
-    else{
-      colorbar_drag=1;
-      UpdateRGBColors(colorbar_index);
-    }
+    colorbar_drag=1;
+    UpdateRGBColors(colorbar_index);
     return 1;
   }
   else if(colorbar_index==CB_SELECT_CONTINUE){
@@ -797,7 +731,7 @@ int ColorbarClick(int x, int y){
     UpdateRGBColors(COLORBAR_INDEX_NONE);
   }
   else{
-    ASSERT(FFALSE);
+    assert(FFALSE);
   }
   return 0;
 }
@@ -930,7 +864,7 @@ void UpdateMouseInfo(int flag, int xm, int ym){
       mi->lastangle = mi->angle;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 
@@ -1029,8 +963,8 @@ void MouseCB(int button, int state, int xm, int ym){
   }
 
   if(autofreeze_volsmoke==ON&&nvolsmoke_loaded>0){
-    if(state==GLUT_DOWN)UpdateFreeze(ON);
-    if(state==GLUT_UP)UpdateFreeze(OFF);
+    if(state==GLUT_DOWN)GLUIUpdateFreeze(ON);
+    if(state==GLUT_UP)GLUIUpdateFreeze(OFF);
   }
   if(state == GLUT_UP){
     alt_ctrl_key_state = KEY_NONE;
@@ -1045,7 +979,7 @@ void MouseCB(int button, int state, int xm, int ym){
   }
 
   if(trainer_mode==1){
-    SetGLuiViewListManual();
+    GLUISetViewListManual();
   }
   eye_xyz = camera_current->eye;
   if(selected_view!=-999){
@@ -1063,12 +997,12 @@ void MouseCB(int button, int state, int xm, int ym){
     eye_xyz0[0]=eye_xyz[0];
     eye_xyz0[1]=eye_xyz[1];
     eye_xyz0[2]=eye_xyz[2];
-    UpdateTranslate();
+    GLUIUpdateTranslate();
     timebar_drag=0;
     colorbar_drag=0;
     colorbar_splitdrag=0;
     GLUTSETCURSOR(GLUT_CURSOR_LEFT_ARROW);
-    UpdateTrainerMoves();
+    GLUIUpdateTrainerMoves();
     geom_bounding_box_mousedown = 0;
     return;
   }
@@ -1098,11 +1032,10 @@ void MouseCB(int button, int state, int xm, int ym){
 
     if(button==GLUT_LEFT_BUTTON){
       if(blockageSelect == 1){
-        GetGeomDialogState();
+        GLUIGetGeomDialogState();
         if(structured_isopen == 1 && unstructured_isopen == 0)MouseEditBlockage(xm, ym);
       }
       if(edittour==1&&blockageSelect==0)MouseEditTour(xm,ym);
-      if(viscolorbarpath==1)MouseEditColorbar(xm, ym);
       if(select_avatar==1)MouseSelectAvatar(xm,ym);
       if(select_device==1)MouseSelectDevice(xm,ym);
       if(select_geom!=GEOM_PROP_NONE)MouseSelectGeom(xm, ym);
@@ -1118,7 +1051,7 @@ void MouseCB(int button, int state, int xm, int ym){
     if(canrestorelastview==0){
       updatemenu=1;
       canrestorelastview=1;
-      EnableResetSavedView();
+      GLUIEnableResetSavedView();
     }
     switch(button){
       case GLUT_MIDDLE_BUTTON:
@@ -1163,7 +1096,7 @@ void MouseCB(int button, int state, int xm, int ym){
   }
   glutPostRedisplay();
   if(blockageSelect == 1){
-    GetGeomDialogState();
+    GLUIGetGeomDialogState();
     if(structured_isopen == 1 && unstructured_isopen == 0)DisplayCB();
   }
 }
@@ -1177,26 +1110,6 @@ void ColorbarDrag(int xm, int ym){
   if(colorbar_index>=0){
     colorbar_select_index=colorbar_index;
     UpdateRGBColors(colorbar_index);
-  }
-}
-
-/* ------------------ ColorbarSplitDrag ------------------------ */
-
-void ColorbarSplitDrag(int xm, int ym){
-  int colorbar_index;
-
-  colorbar_index = GetColorbarIndex(0,xm,ym);
-  if(colorbar_index>=0){
-    int ii;
-
-    if(colorbar_index>250)colorbar_index=250;
-    if(colorbar_index<5)colorbar_index=5;
-    ii=current_colorbar->splits[0];
-    current_colorbar->index_node[ii]=colorbar_index;
-    current_colorbar->index_node[ii-1]=colorbar_index;
-    RemapColorbar(current_colorbar);
-    UpdateRGBColors(COLORBAR_INDEX_NONE);
-    UpdateColorbarSplits(current_colorbar);
   }
 }
 
@@ -1236,7 +1149,7 @@ void DragColorbarEditNode(int xm, int ym){
     cb_rgb[0] = CLAMP(cb_rgb[0]+255*xyz[0],0,255);
     cb_rgb[1] = CLAMP(cb_rgb[1]+255*xyz[1],0,255);
     cb_rgb[2] = CLAMP(cb_rgb[2]+255*xyz[2],0,255);
-    ColorbarCB(COLORBAR_RGB);
+    GLUIColorbarCB(COLORBAR_RGB);
 
     mouse_down_xy0[0] = xm;
     mouse_down_xy0[1] = ym;
@@ -1244,7 +1157,7 @@ void DragColorbarEditNode(int xm, int ym){
   }
   break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
 }
@@ -1297,12 +1210,12 @@ void DragTourNode(int xm, int ym){
 
 // update tour data structures with new tour node location
 
-        UpdateTourParms();
-        UpdateGluiKeyframe();
+        GLUIUpdateTourParms();
+        GLUIUpdateKeyframe();
       }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -1323,7 +1236,7 @@ void MoveGenSlice(int xm, int ym){
         delev = 360.0*dym/(float)screenHeight;
         gslice_normal_azelev[0] += daz;
         gslice_normal_azelev[1] += delev;
-        UpdateGsliceParms();
+        GLUIUpdateGsliceParms();
         start_xyz0[0]=xm;
         start_xyz0[1]=ym;
       }
@@ -1345,7 +1258,7 @@ void MoveGenSlice(int xm, int ym){
         gslice_xyz0[1] = gslice_xyz[1];
         mouse_down_xy0[0]=xm;
         mouse_down_xy0[1]=ym;
-        UpdateGsliceParms();
+        GLUIUpdateGsliceParms();
       }
       break;
     case KEY_ALT:
@@ -1355,14 +1268,14 @@ void MoveGenSlice(int xm, int ym){
         yy = ym-mouse_down_xy0[1];
         yy = yy/(float)screenHeight;
 
-        gslice_xyz[2] = gslice_xyz0[2] - DENORMALIZE_Z(4*(xyzbox-NORMALIZE_Z(gslice_xyz0[2]))*yy);
-        UpdateGsliceParms();
+        gslice_xyz[2] = gslice_xyz0[2] - SMV2FDS_Z(4*(xyzbox-FDS2SMV_Z(gslice_xyz0[2]))*yy);
+        GLUIUpdateGsliceParms();
       }
       break;
     case KEY_SHIFT:
     break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -1410,7 +1323,7 @@ void MoveScene(int xm, int ym){
           start_xyz0[1]=ym;
           break;
         default:
-          ASSERT(FFALSE);
+          assert(FFALSE);
           break;
       }
       break;
@@ -1475,11 +1388,11 @@ void MoveScene(int xm, int ym){
       aperture_glui = CLAMP(aperture_glui0 + aperture_max*yy,aperture_min,aperture_max);
 #define APERTURE 15
 #define ZOOM 12
-      SceneMotionCB(APERTURE);
-      SceneMotionCB(ZOOM);
+      GLUISceneMotionCB(APERTURE);
+      GLUISceneMotionCB(ZOOM);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -1528,12 +1441,6 @@ void MouseDragCB(int xm, int ym){
 
   if( colorbar_drag==1&&(showtime==1 || showplot3d==1)){
     ColorbarDrag(xm,ym);
-    return;
-  }
-  if(
-    colorbar_splitdrag==1&&
-    (showtime==1 || showplot3d==1)&&current_colorbar!=NULL&&current_colorbar->nsplits==1){
-    ColorbarSplitDrag(xm,ym);
     return;
   }
   if(timebar_drag==1){
@@ -1737,7 +1644,7 @@ void Keyboard(unsigned char key, int flag){
           ShowObjectsMenu(OBJECT_PLOT_SHOW_ALL);
           break;
 	default:
-	  ASSERT(FFALSE);
+	  assert(FFALSE);
 	  break;
       }
 // hrr plot
@@ -1753,7 +1660,7 @@ void Keyboard(unsigned char key, int flag){
           ShowObjectsMenu(PLOT_HRRPUV);
           break;
 	default:
-	  ASSERT(FFALSE);
+	  assert(FFALSE);
 	  break;
       }
       break;
@@ -1788,7 +1695,7 @@ void Keyboard(unsigned char key, int flag){
           vecfactor*=1.5;
         }
         PRINTF("vector length factor: %f\n",vecfactor);
-        UpdateGluiVecFactor();
+        GLUIUpdateVecFactor();
       }
       if(visVector==1&&nplot3dloaded>0){
         gbsave=current_mesh;
@@ -1812,7 +1719,7 @@ void Keyboard(unsigned char key, int flag){
         show_geom_boundingbox = SHOW_BOUNDING_BOX_MOUSE_DOWN;
         printf("show bounding box when mouse is down: on\n");
       }
-      UpdateGeomBoundingBox();
+      GLUIUpdateGeomBoundingBox();
 
       break;
     case 'b':
@@ -1854,7 +1761,7 @@ void Keyboard(unsigned char key, int flag){
           if(contour_type==LINE_CONTOURS)printf("line coloring\n");
           if(contour_type==STEPPED_CONTOURS)printf("stepped coloring\n");
           if(contour_type==SHADED_CONTOURS)printf("continuous coloring\n");
-          UpdatePlot3dDisplay();
+          GLUIUpdatePlot3dDisplay();
           UpdateRGBColors(COLORBAR_INDEX_NONE);
         }
       }
@@ -1916,8 +1823,8 @@ void Keyboard(unsigned char key, int flag){
       default:
         rotation_type++;
         if(rotation_type>3)rotation_type=0;
-        RotationTypeCB(rotation_type);
-        UpdateRotationType(rotation_type);
+        GLUIRotationTypeCB(rotation_type);
+        GLUIUpdateRotationType(rotation_type);
         HandleRotationType(ROTATION_2AXIS);
       }
       break;
@@ -1928,7 +1835,7 @@ void Keyboard(unsigned char key, int flag){
       hide_overlaps=1-hide_overlaps;
       updatehiddenfaces=1;
       UpdateHiddenFaces();
-      UpdateShowHideButtons();
+      GLUIUpdateShowHideButtons();
       glutPostRedisplay();
       break;
     case 'g':
@@ -1975,7 +1882,7 @@ void Keyboard(unsigned char key, int flag){
         usegpu=0;
       }
       if(nsmoke3dinfo>0){
-        UpdateSmoke3dFlags();
+        GLUIUpdateSmoke3dFlags();
       }
       PrintGPUState();
       return;
@@ -1992,6 +1899,7 @@ void Keyboard(unsigned char key, int flag){
         break;
       case GLUT_ACTIVE_CTRL:
       default:
+#ifdef pp_HIST
         if(histogram_show_graph == 1 || histogram_show_numbers == 1){
           histogram_show_graph = 0;
           histogram_show_numbers = 0;
@@ -2003,6 +1911,7 @@ void Keyboard(unsigned char key, int flag){
           update_slice_hists = 1;
         }
         UpdateHistogramType();
+#endif
         break;
       }
       break;
@@ -2067,8 +1976,8 @@ void Keyboard(unsigned char key, int flag){
       break;
     case 'I':
       show_slice_in_obst++;
-      if(show_slice_in_obst>2)show_slice_in_obst = 0;
-      UpdateShowSliceInObst(show_slice_in_obst);
+      if(show_slice_in_obst>3)show_slice_in_obst = 0;
+      GLUISliceInObstMenu2Dialog(show_slice_in_obst);
       updatemenu = 1;
       break;
     case 'j':
@@ -2079,7 +1988,7 @@ void Keyboard(unsigned char key, int flag){
       else{
         sensorrelsize *= 1.5;
       }
-      UpdateDeviceSize();
+      GLUIUpdateDeviceSize();
       break;
     case '`':
       if(ndeviceinfo>0){
@@ -2117,8 +2026,14 @@ void Keyboard(unsigned char key, int flag){
         updatemenu = 1;
       }
       break;
-    case 'k':
     case 'K':
+      fix_window_aspect = 1 - fix_window_aspect;
+      if(fix_window_aspect == 1)printf("fix window aspect ratio: on\n");
+      if(fix_window_aspect == 0)printf("fix window aspect ratio: off\n");
+      GLUISceneMotionCB(WINDOW_PRESERVE);
+      GLUIUpdateWindowAspect();
+      break;
+    case 'k':
       if(keystate==GLUT_ACTIVE_ALT){ // toggle device selection
         select_device = 1-select_device;
         updatemenu = 1;
@@ -2162,14 +2077,14 @@ void Keyboard(unsigned char key, int flag){
       if(clip_commandline==1){
         visGrid = 0;
         Keyboard('g', FROM_SMOKEVIEW);
-        clip_mode = 0;
+        clip_mode = CLIP_OFF;
         Keyboard('W', FROM_SMOKEVIEW);
         visgridloc = 1;
         updatemenu = 1;
         UpdateGridClip(0);
         UpdateGridClip(1);
         UpdateGridClip(2);
-        UpdateGluiClip();
+        GLUIUpdateClip();
       }
       if(clip_commandline==0){
         visGrid = NOGRID_PROBE2;
@@ -2191,7 +2106,6 @@ void Keyboard(unsigned char key, int flag){
       }
       break;
     case 'n':
-    case 'N':
       show_cface_normals = 1-show_cface_normals;
       if(show_cface_normals==1){
         printf("show cface normals\n");
@@ -2199,7 +2113,12 @@ void Keyboard(unsigned char key, int flag){
       else{
         printf("hide cface normals\n");
       }
-      UpdateGluiCfaces();
+      GLUIUpdateCfaces();
+      break;
+    case 'N':
+      force_bound_update = 1 - force_bound_update;
+      if(force_bound_update == 1)printf("bound updates: always\n");
+      if(force_bound_update == 0)printf("bound updates: only when bound files have change\n");
       break;
     case 'O':
     if(ncgeominfo>0){
@@ -2234,7 +2153,7 @@ void Keyboard(unsigned char key, int flag){
       if(show_faces_shaded==0&&show_faces_outline==0)printf("hidden");
       printf("\n");
     }
-    UpdateGeometryControls();
+    GLUIUpdateGeometryControls();
       switch(visBlocks){
         case visBLOCKAsInput:
         case visBLOCKAsInputOutline:
@@ -2300,9 +2219,9 @@ void Keyboard(unsigned char key, int flag){
 
         if(is_part_loaded==1||is_plot3d_loaded==1){
           if(is_part_loaded==1){
-            IncrementPartPropIndex();
+            GLUIIncrementPartPropIndex();
 #define BOUND_PERCENTILE_DRAW          120
-            PartBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
+            GLUIPartBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
           }
           if(is_plot3d_loaded==1){
             plotn += FlowDir;
@@ -2314,8 +2233,8 @@ void Keyboard(unsigned char key, int flag){
             }
             UpdateAllPlotSlices();
             if(visiso==1&&cache_plot3d_data==1)UpdateSurface();
-            UpdatePlot3dListIndex();
-            Plot3DBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
+            GLUIUpdatePlot3dListIndex();
+            GLUIPlot3DBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
           }
         }
         else{
@@ -2323,31 +2242,45 @@ void Keyboard(unsigned char key, int flag){
             devicetypes_index++;
             if(devicetypes_index>=ndevicetypes)devicetypes_index = 0;
             updatemenu = 1;
-            UpdateDeviceTypes(devicetypes_index);
+            GLUIUpdateDeviceTypes(devicetypes_index);
           }
         }
       }
       update_chop_colors = 1;
       break;
     case 'q':
+      if(flag==FROM_SMOKEVIEW){
+        blocklocation=blocklocation_menu;
+      }
+      else if(flag == FROM_GEOM_DIALOG){
+        if(glui_use_cfaces == 1){
+          blocklocation = BLOCKlocation_grid;
+        }
+        else{
+          blocklocation = BLOCKlocation_exact;
+        }
+      }
+      else{
+        blocklocation++;
+      }
+      if((ncadgeom==0&&blocklocation>BLOCKlocation_exact)||blocklocation>BLOCKlocation_cad){
+        blocklocation=BLOCKlocation_grid;
+      }
       if(ncgeominfo>0){
-        use_cfaces = 1-use_cfaces;
-        if(use_cfaces==1){
+        if(blocklocation==BLOCKlocation_grid){
+          use_cfaces = 1;
           printf("cfaces: ");
         }
         else{
+          use_cfaces = 0;
+          blocklocation = BLOCKlocation_exact;
           printf("geometry: ");
         }
         if(show_faces_shaded==1) printf("shaded triangles ");
         if(show_faces_outline==1)printf("outlines");
         if(show_faces_shaded==0&&show_faces_outline==0)printf("hidden");
         printf("\n");
-        UpdateGluiCfaces();
-      }
-      blocklocation++;
-      if((ncadgeom==0&&blocklocation>BLOCKlocation_exact)||
-                       blocklocation>BLOCKlocation_cad){
-        blocklocation=BLOCKlocation_grid;
+        GLUIUpdateCfaces();
       }
       if(blocklocation==BLOCKlocation_grid)printf("blocklocation: snapped to grid\n");
       if(blocklocation==BLOCKlocation_exact)printf("blocklocation: as input\n");
@@ -2359,7 +2292,7 @@ void Keyboard(unsigned char key, int flag){
         else{
           blockage_as_input=0;
         }
-        ObjectCB(BLOCKAGE_AS_INPUT2);
+        GLUIObjectCB(BLOCKAGE_AS_INPUT2);
       }
       updatefacelists = 1;
       break;
@@ -2389,7 +2322,7 @@ void Keyboard(unsigned char key, int flag){
 
         if(keystate==GLUT_ACTIVE_ALT&&strncmp((const char *)&key2, "r", 1) == 0){
           research_mode = 1-research_mode;
-          UpdatdateResearchModeCPP();
+          GLUIUpdatdateResearchModeCPP();
           update_research_mode = 1;
           return;
         }
@@ -2432,7 +2365,7 @@ void Keyboard(unsigned char key, int flag){
                 float timediffmin;
 
                 meshi = meshinfo + i;
-                vr = &meshi->volrenderinfo;
+                vr = meshi->volrenderinfo;
                 if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
                 if(vr->loaded==0||vr->display==0)continue;
                 timediffmin = ABS(timeval-vr->times[0]);
@@ -2522,17 +2455,24 @@ void Keyboard(unsigned char key, int flag){
         }
         else{
           vectorskip++;
-          if(vectorskip>4)vectorskip=1;
+          update_vectorskip = 1;
         }
       }
       break;
     case 'S':
-      stereotypeOLD=stereotype;
-      stereotype++;
-      if(stereotype>5)stereotype=0;
-      if(stereotype==STEREO_TIME&&videoSTEREO!=1)stereotype=STEREO_LR;
-      UpdateGluiStereo();
-      break;
+      switch(keystate){
+      case GLUT_ACTIVE_ALT:
+        stereotypeOLD=stereotype;
+        stereotype++;
+        if(stereotype>5)stereotype=0;
+        if(stereotype==STEREO_TIME&&videoSTEREO!=1)stereotype=STEREO_LR;
+        GLUIUpdateStereo();
+        break;
+      default:
+        vectorskip--;
+        if(vectorskip<1)vectorskip=1;
+        update_vectorskip = 1;
+      }
     case 't':
       switch(keystate){
       case GLUT_ACTIVE_ALT:
@@ -2573,7 +2513,7 @@ void Keyboard(unsigned char key, int flag){
       break;
     case 'T':
       vishmsTimelabel = 1-vishmsTimelabel;
-      SetLabelControls();
+      GLUISetLabelControls();
       break;
     case 'u':
     case 'U':
@@ -2593,13 +2533,13 @@ void Keyboard(unsigned char key, int flag){
       break;
     case '|':
       projection_type = 1-projection_type;
-      SceneMotionCB(PROJECTION);
+      GLUISceneMotionCB(PROJECTION);
       break;
     case 'v':
       switch(keystate){
         case GLUT_ACTIVE_ALT:
           projection_type = 1 - projection_type;
-          SceneMotionCB(PROJECTION);
+          GLUISceneMotionCB(PROJECTION);
           break;
         default:
           visVector=1-visVector;
@@ -2610,7 +2550,7 @@ void Keyboard(unsigned char key, int flag){
     case 'V':
       if(nvolrenderinfo>0){
         usevolrender=1-usevolrender;
-        UpdateSmoke3dFlags();
+        GLUIUpdateSmoke3dFlags();
 #ifdef pp_GPU
         PrintGPUState();
 #endif
@@ -2627,32 +2567,32 @@ void Keyboard(unsigned char key, int flag){
           }
           else{
             vis_gslice_data = 1 - vis_gslice_data;
-            UpdateGsliceParms();
+            GLUIUpdateGsliceParms();
           }
           break;
       }
       break;
     case 'W':
       clip_mode++;
-      if(clip_mode>CLIP_MAX)clip_mode=0;
+      if(clip_mode>CLIP_MAX)clip_mode=CLIP_OFF;
       switch(clip_mode){
-        case 0:
+        case CLIP_OFF:
           printf("Clipping disabled\n");
           break;
-        case 1:
+        case CLIP_BLOCKAGES_DATA:
           printf("Clip blockages and data\n");
           break;
-        case 2:
+        case CLIP_BLOCKAGES:
           printf("Clip blockages\n");
           break;
-        case 3:
+        case CLIP_DATA:
           printf("Clip data\n");
           break;
-	default:
-	  ASSERT(FFALSE);
-	  break;
+	    default:
+	      assert(FFALSE);
+	      break;
       }
-      UpdateClipAll();
+      GLUIUpdateClipAll();
       break;
     case 'x':
     case 'X':
@@ -2675,7 +2615,7 @@ void Keyboard(unsigned char key, int flag){
           }
           if(clipinfo.clip_xmax==0)printf("off\n");
         }
-        UpdateGluiClip();
+        GLUIUpdateClip();
       }
 #ifdef pp_DIALOG_SHORTCUTS
       if(keystate==GLUT_ACTIVE_ALT){
@@ -2715,7 +2655,7 @@ void Keyboard(unsigned char key, int flag){
           }
           if(clipinfo.clip_ymax==0)printf("off\n");
         }
-        UpdateGluiClip();
+        GLUIUpdateClip();
       }
       visy_all = 1-visy_all;
       if(visx_all==1||visy_all==1||visz_all==1)update_slice2device = 1;
@@ -2733,7 +2673,7 @@ void Keyboard(unsigned char key, int flag){
           }
           if(clipinfo.clip_zmax==0)printf("off\n");
         }
-        UpdateGluiClip();
+        GLUIUpdateClip();
       }
       rotate_center = 1-rotate_center;
       if(rotate_center==1&&have_geom_bb==1){
@@ -2756,7 +2696,7 @@ void Keyboard(unsigned char key, int flag){
           }
           if(clipinfo.clip_zmin==0)printf("off\n");
         }
-        UpdateGluiClip();
+        GLUIUpdateClip();
       }
 #ifdef pp_DIALOG_SHORTCUTS
       if(keystate==GLUT_ACTIVE_ALT){
@@ -2794,14 +2734,14 @@ void Keyboard(unsigned char key, int flag){
         if(select_geom==GEOM_PROP_VERTEX2)printf("select vertex 2\n");
         if(select_geom==GEOM_PROP_TRIANGLE)printf("select triangle\n");
         if(select_geom==GEOM_PROP_SURF)printf("select surf\n");
-        UpdateSelectGeom();
+        GLUIUpdateSelectGeom();
       }
       break;
     case '!':
       SnapScene();
       break;
     case '"':
-      ShowPlot2D();
+      GLUIShowPlot2D();
       break;
     case '@':
       show_slice_values_all_regions = 1 - show_slice_values_all_regions;
@@ -2816,7 +2756,7 @@ void Keyboard(unsigned char key, int flag){
         show_slice_values[2]=0;
       }
 #define IMMERSED_SWITCH_CELLTYPE 0
-      ImmersedBoundCB(IMMERSED_SWITCH_CELLTYPE);
+      GLUIImmersedBoundCB(IMMERSED_SWITCH_CELLTYPE);
       break;
     case '.':
       lock_mouse_aperture = 1 - lock_mouse_aperture;
@@ -2827,7 +2767,7 @@ void Keyboard(unsigned char key, int flag){
     case ':':
       timebar_overlap++;
       if (timebar_overlap > 2)timebar_overlap = 0;
-      UpdateTimebarOverlap();
+      GLUIUpdateTimebarOverlap();
       printf("overlap time/colorbar region: ");
       switch(timebar_overlap){
       case 0:
@@ -2840,7 +2780,7 @@ void Keyboard(unsigned char key, int flag){
         printf("only if time/colorbar hidden\n");
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
       break;
@@ -2871,15 +2811,29 @@ void Keyboard(unsigned char key, int flag){
       updatemenu = 1;
       break;
     case '<':
+      if(keystate == GLUT_ACTIVE_ALT){
+        colorbartype--;
+        if(colorbartype < 0)colorbartype=ncolorbars-1;
+        ColorbarMenu(colorbartype);
+        updatemenu = 1;
+        break;
+      }
       vectorpointsize+=2;
       if(vectorpointsize>20.0)vectorpointsize = 1.0;
-      UpdateVectorpointsize();
+      GLUIUpdateVectorpointsize();
       updatemenu = 1;
       break;
     case '>':
+      if(keystate == GLUT_ACTIVE_ALT){
+        colorbartype++;
+        if(colorbartype >= ncolorbars)colorbartype = 0;
+        ColorbarMenu(colorbartype);
+        updatemenu = 1;
+        break;
+      }
       vectorpointsize-=2;
       if(vectorpointsize<1.0)vectorpointsize = 20.0;
-      UpdateVectorpointsize();
+      GLUIUpdateVectorpointsize();
       updatemenu = 1;
       break;
     case '#':
@@ -2901,19 +2855,19 @@ void Keyboard(unsigned char key, int flag){
         if(npartthread_ids==1)printf("parallel particle loading: on(1 thread)\n");
       }
       if(part_multithread==0)printf("parallel particle loading: off\n");
-      UpdateGluiPartFast();
+      GLUIUpdatePartFast();
       break;
     case '$':
       trainer_active=1-trainer_active;
       if(trainer_active==1){
         PRINTF("Trainer mode active\n");
         trainer_mode=1;
-        ShowGluiTrainer();
+        GLUIShowTrainer();
       }
       if(trainer_active==0){
         PRINTF("Trainer mode inactive\n");
         trainer_mode=0;
-        HideGluiTrainer();
+        GLUIHideTrainer();
       }
       break;
     case '%':
@@ -2923,8 +2877,16 @@ void Keyboard(unsigned char key, int flag){
       script_step_now=1;
       break;
     case '&':
-      ToggleMetroMode();
-      PRINTF("HVAC metro view mode=%i\n",hvac_metro_view);
+      if(keystate==GLUT_ACTIVE_ALT){
+        if(nhvacinfo > 0){
+          ToggleMetroMode();
+          PRINTF("HVAC metro view mode=%i\n", hvac_metro_view);
+        }
+      }
+      else{
+        antialiasflag = 1 - antialiasflag;
+        PRINTF("antialiasflag=%i\n", antialiasflag);
+      }
       break;
     case '*':
       visx_all=0;
@@ -2939,19 +2901,19 @@ void Keyboard(unsigned char key, int flag){
       clip_rendered_scene=1-clip_rendered_scene;
       break;
     case '[':
-      edittour=1;
-      UpdateEditTour();
-      break;
     case ']':
-      edittour=0;
-      UpdateEditTour();
+      if(key2=='[')partpointsize--;
+      if(key2==']')partpointsize++;
+      partpointsize = CLAMP(partpointsize, PART_MIN_SIZE, PART_MAX_SIZE);
+      printf("particle size: %f\n", partpointsize);
+      GLUIUpdatePartPointSize();
       break;
     case ';':
       ColorbarMenu(COLORBAR_FLIP);
       break;
 #ifdef pp_REFRESH
     case '_':
-      RefreshGluiDialogs();
+      GLUIRefreshDialogs();
       break;
 #endif
     case '{':
@@ -2966,7 +2928,7 @@ void Keyboard(unsigned char key, int flag){
     case ' ':
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 
@@ -3030,7 +2992,7 @@ void Keyboard(unsigned char key, int flag){
       NextZIndex(skip_global*FlowDir,0);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   if(nplot3dloaded>0){
@@ -3089,10 +3051,10 @@ void HandleRotationType(int flag){
     }
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
-  ShowHideTranslate(rotation_type);
+  GLUIShowHideTranslate(rotation_type);
   rotation_type_old = rotation_type;
 }
 
@@ -3164,7 +3126,7 @@ void SpecialKeyboardCB(int key, int x, int y){
       HandleMoveKeys(key);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -3198,7 +3160,7 @@ float SetClipVal(int flag){
         if(plotz>=0)return zplt[plotz];
         break;
       default:
-	ASSERT(FFALSE);
+	assert(FFALSE);
 	break;
     }
   }
@@ -3253,7 +3215,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.xmin = SetClipVal(0);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_RIGHT:
@@ -3267,7 +3229,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.xmin = SetClipVal(0);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_DOWN:
@@ -3281,7 +3243,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.ymin = SetClipVal(1);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_UP:
@@ -3295,7 +3257,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.ymin = SetClipVal(1);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_PAGE_DOWN:
@@ -3309,7 +3271,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.zmin = SetClipVal(2);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_PAGE_UP:
@@ -3323,7 +3285,7 @@ void HandlePLOT3DKeys(int  key){
       else{
         clipinfo.zmin = SetClipVal(2);
       }
-      UpdateGluiClip();
+      GLUIUpdateClip();
     }
     break;
   case GLUT_KEY_HOME:
@@ -3339,7 +3301,7 @@ void HandlePLOT3DKeys(int  key){
         NextZIndex(0,-1);
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
     break;
@@ -3356,7 +3318,7 @@ void HandlePLOT3DKeys(int  key){
         NextZIndex(0,1);
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
     break;
@@ -3522,14 +3484,14 @@ void HandleMoveKeys(int  key){
       if(camera_current->view_angle>360.0)camera_current->view_angle-=360.0;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   if(rotation_type==EYE_CENTERED){
     eye_xyz0[0]=eye_xyz[0];
     eye_xyz0[1]=eye_xyz[1];
     eye_xyz0[2]=eye_xyz[2];
-    UpdateTranslate();
+    GLUIUpdateTranslate();
   }
 }
 
@@ -3603,6 +3565,7 @@ void UpdateFrame(float thisinterval, int *changetime, int *redisplay){
           itimes += render_skip*FlowDir;
         }
       }
+      if(script_render_flag == 1&&IS_LOADRENDER)itimes = script_itime;
 
 // if toggling time display with H then show the frame that was visible
 
@@ -3687,36 +3650,7 @@ void SetScreenSize(int *width, int *height){
     int width_low, height_low, width_high, height_high;
 
     GetRenderResolution(&width_low, &height_low, &width_high, &height_high);
-    UpdateRenderRadioButtons(width_low, height_low, width_high, height_high);
-  }
-}
-
-/* ------------------ AdjustY ------------------------ */
-
-void AdjustY(cameradata *ca){
-
-  if(projection_type!=PROJECTION_PERSPECTIVE||update_saving_viewpoint>0||update_viewpoint_script>0)return;
-  switch(selected_view){
-    case 0:
-    case -1:
-      UpdateCameraYpos(ca, 1);
-      break;
-    case 1:
-    case -2:
-    case -3:
-      UpdateCameraYpos(ca, 2);
-      break;
-    case -4:
-    case -5:
-      UpdateCameraYpos(ca, 3);
-      break;
-    default:
-      UpdateCameraYpos(ca, 2);
-      break;
-  }
-  if(selected_view<=1&&selected_view>-5){
-    void ResetDefaultMenu(int var);
-    ResetDefaultMenu(selected_view);
+    GLUIUpdateRenderRadioButtons(width_low, height_low, width_high, height_high);
   }
 }
 
@@ -3726,22 +3660,22 @@ void ReshapeCB(int width, int height){
   START_TIMER(timer_reshape);
   if(disable_reshape==1)return;
   updatemenu=1;
-  if(strcmp(camera_current->name,"external")!=0||in_external==0){
+  if(update_reshape==0){
     CopyCamera(camera_save,camera_current);
   }
-  SetScreenSize(&width,&height);
-  windowresized=1;
-  UpdateCameraYpos(camera_external, 2);
-  if(strcmp(camera_current->name,"external")==0&&in_external==1){
-    SetViewPoint(RESTORE_EXTERIOR_VIEW);
+  if(fix_window_aspect==1){
+    glui_screenWidth=width;
+    glui_screenHeight=glui_screenWidth*window_aspect;
+    GLUISceneMotionCB(WINDOW_RESIZE);
   }
   else{
-    CopyCamera(camera_current,camera_save);
+    SetScreenSize(&width,&height);
   }
-  if(current_script_command==NULL)AdjustY(camera_current);
+
+  windowresized=1;
+  CopyCamera(camera_current,camera_save);
   windowsize_pointer_old = -1;
-  UpdateWindowSizeList();
-  if(current_script_command==NULL)update_adjust_y = 2;
+  GLUIUpdateWindowSizeList();
   update_reshape = 2;
  }
 
@@ -3834,8 +3768,6 @@ void DoStereo(void){
       screeni = NULL;
       if(render_mode == RENDER_360 && render_status == RENDER_ON)screeni = screeninfo + i;
       if(stereotype_frame==LEFT_EYE||stereotype_frame==BOTH_EYES){
-        int screenWidth_save;
-
         screenWidth_save=screenWidth;
         screenWidth/=2;
         screenWidth = MAX(screenWidth, 1);
@@ -3843,8 +3775,6 @@ void DoStereo(void){
         screenWidth=screenWidth_save;
       }
       if(stereotype_frame==RIGHT_EYE||stereotype_frame==BOTH_EYES){
-        int screenWidth_save;
-
         screenWidth_save=screenWidth;
         screenWidth/=2;
         screenWidth = MAX(screenWidth, 1);
@@ -3969,12 +3899,11 @@ void DoStereo(void){
 void DoScriptLua(void){
   int script_return_code;
   if(runluascript == 1){
-    if(!luascript_loaded && strlen(luascript_filename)>0)
-      load_script(luascript_filename);
+    if(strlen(luascript_filename)>0) LoadScript(luascript_filename);
     runluascript = 0;
     PRINTF("running lua script section\n");
     fflush(stdout);
-    script_return_code = runLuaScript();
+    script_return_code = RunLuaScript();
     if(script_return_code != LUA_OK && script_return_code != LUA_YIELD && exit_on_script_crash){
         SMV_EXIT(1);
     }
@@ -3988,6 +3917,8 @@ void DoScript(void){
   int script_return_code;
 
   if(runscript == 1){
+  // csv files are read in the background.  the following line ensures that they will all be read in
+  // before the script begins. gpf
       runscript = 0;
       PRINTF("running ssf script instruction\n");
       fflush(stdout);
@@ -4034,17 +3965,22 @@ void DoScript(void){
             current_script_command->exit = 0;
           }
       }
-      else if(current_script_command->command==SCRIPT_LOADSLICERENDER){
+      else if(IS_LOADRENDER){
         if(current_script_command->exit==0){
           if(render_resolution==RENDER_RESOLUTION_360){
-            if(viewpoint_script_ptr!=NULL)SetCurrentViewPoint(viewpoint_script);
+            if(viewpoint_script_ptr!=NULL)GLUISetCurrentViewPoint(viewpoint_script);
             render_size_index=RenderWindow;
             resolution_multiplier = 1;
             RenderCB(RENDER_RESOLUTION);
             RenderCB(RENDER_START_360);
           }
           RenderState(RENDER_ON);
-          ScriptLoadSliceRender(current_script_command);
+          if(current_script_command->command == SCRIPT_LOADSLICERENDER){
+            ScriptLoadSliceRender(current_script_command);
+          }
+          else{
+            ScriptLoadSmokeRender(current_script_command);
+          }
         }
         else{
           RenderState(RENDER_OFF);
@@ -4075,7 +4011,7 @@ void DoScript(void){
         SMV_EXIT(0);
       }
       if(current_script_command==NULL){
-        GluiScriptEnable();
+        GLUIScriptEnable();
       }
     }
     else{
@@ -4115,8 +4051,23 @@ void DoScript(void){
 
 void DoScriptHtml(void){
   int i;
+  int error_code;
 
-  CompileScript(default_script->file);
+  error_code = CompileScript(default_script->file);
+  switch(error_code){
+  case 0:
+    StartScript();
+    break;
+  case 1:
+    fprintf(stderr, "*** Error: unable to open script file");
+    if(default_script->file != NULL)fprintf(stderr, ": %s", default_script->file);
+    fprintf(stderr, "\n");
+  case 2:
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
   for(i=0;i<nscriptinfo;i++){
     scriptdata *scripti;
 
@@ -4214,7 +4165,7 @@ void DoNonStereo(void){
       }
     }
     if(stop_rendering==1){
-      ASSERT(render_skip>0);
+      assert(render_skip>0);
       RenderState(RENDER_OFF);
     }
   }

@@ -1,6 +1,7 @@
 #define CPP
 #include "options.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -8,13 +9,17 @@
 
 #include "smokeviewvars.h"
 
+void TerrainCB(int var);
+void VolumeCB(int var);
+
 //*** geomprocinfo entries
 #define STRUCTURED_ROLLOUT     0
 #define UNSTRUCTURED_ROLLOUT   1
 #define IMMERSED_DIAGNOSTICS   2
 #define HVAC_ROLLOUT           3
+#define TERRAIN_ROLLOUT        4
 
-procdata  geomprocinfo[4];
+procdata  geomprocinfo[5];
 int      ngeomprocinfo = 0;
 
 #define XMIN_SPIN             20
@@ -40,8 +45,10 @@ int      ngeomprocinfo = 0;
 #define SURF_GET              50
 #define SHOWONLY_TOP          51
 #define GEOM_FDS_DOMAIN       52
-#ifdef pp_TERRAIN_UPDATE
-#define UPDATE_NORMALS        53
+#define GEOM_OUTLINECOLOR     53
+#ifdef pp_DECIMATE
+#define GEOM_DECIMATE         54
+#define GEOM_DECIMATE_DELTA   55
 #endif
 
 #define HVAC_PROPS            -1
@@ -52,13 +59,30 @@ int      ngeomprocinfo = 0;
 #define HVAC_SHOW_NODE_LABELS -6
 #define HVAC_SHOW_FILTERS     -7
 #define HVAC_METRO_VIEW       -8
-#define HVAC_UPDATE_LIST      -9
-#define HVAC_COPY_ALL         -10
+#define HVAC_SHOWALL_CONNECTIONS  -12
+#define HVAC_HIDEALL_CONNECTIONS  -13
+#define HVAC_SHOW_NETWORKS     -15
+#define HVAC_SHOW_CONNECTIONS  -16
+#define HVAC_DUCTNODE_NETWORK  -17
+#define HVAC_CELL_VIEW         -18
+#define HVAC_NODE_LIST         -19
+#define HVAC_DUCT_LIST         -20
+#define HVACDUCT_SET_BOUNDS    -21
+#define HVACNODE_SET_BOUNDS    -22
 
-GLUI_Checkbox *CHECKBOX_hvac_show             = NULL;
-GLUI_Checkbox *CHECKBOX_hvac_show_duct_labels = NULL;
-GLUI_Checkbox *CHECKBOX_hvac_show_node_labels = NULL;
-GLUI_Checkbox* CHECKBOX_hvac_metro_view       = NULL;
+#define TERRAIN_TYPE      0
+#define TERRAIN_TOP_ONLY  1
+
+GLUI_Checkbox *CHECKBOX_terrain_top_surface    = NULL;
+GLUI_Checkbox **CHECKBOX_hvac_show_networks    = NULL;
+GLUI_Checkbox **CHECKBOX_hvac_show_connections = NULL;
+GLUI_Checkbox *CHECKBOX_hvac_show_connection   = NULL;
+GLUI_Checkbox *CHECKBOX_hvac_show_network      = NULL;
+GLUI_Checkbox *CHECKBOX_hvac_show_duct_labels  = NULL;
+GLUI_Checkbox *CHECKBOX_hvac_show_node_labels  = NULL;
+GLUI_Checkbox* CHECKBOX_hvac_metro_view        = NULL;
+GLUI_Checkbox *CHECKBOX_hvac_cell_view         = NULL;
+
 GLUI_Checkbox *CHECKBOX_showgeom_inside_domain  = NULL;
 GLUI_Checkbox *CHECKBOX_showgeom_outside_domain = NULL;
 GLUI_Checkbox **CHECKBOX_terrain_texture_show   = NULL;
@@ -67,15 +91,16 @@ GLUI_Checkbox *CHECKBOX_show_cface_normals = NULL;
 GLUI_Checkbox *CHECKBOX_show_zlevel = NULL;
 GLUI_Checkbox *CHECKBOX_surface_solid=NULL, *CHECKBOX_surface_outline=NULL, *CHECKBOX_surface_points = NULL;
 GLUI_Checkbox *CHECKBOX_geom_force_transparent = NULL;
-GLUI_Checkbox *CHECKBOX_interior_solid=NULL, *CHECKBOX_interior_outline=NULL;
 GLUI_Checkbox *CHECKBOX_geomtest=NULL, *CHECKBOX_triangletest=NULL;
 GLUI_Checkbox *CHECKBOX_show_geom_normal = NULL;
 GLUI_Checkbox *CHECKBOX_smooth_geom_normal = NULL;
-GLUI_Checkbox *CHECKBOX_volumes_interior=NULL;
-GLUI_Checkbox *CHECKBOX_volumes_exterior=NULL;
 GLUI_Checkbox *CHECKBOX_show_texture_1dimage = NULL;
 GLUI_Checkbox *CHECKBOX_showonly_top = NULL;
+#ifdef pp_DECIMATE
+GLUI_Checkbox *CHECKBOX_use_decimate_geom = NULL;
+#endif
 
+GLUI_RadioGroup *RADIO_terrain_type = NULL;
 GLUI_RadioGroup *RADIO_select_geom = NULL;
 GLUI_RadioGroup *RADIO_cface_type = NULL;
 GLUI_RadioGroup *RADIO_show_geom_boundingbox = NULL;
@@ -98,12 +123,17 @@ GLUI_Rollout *ROLLOUT_geomtest=NULL;
 GLUI_Rollout *ROLLOUT_geom_rgbs = NULL;
 GLUI_Rollout *ROLLOUT_geom_properties=NULL;
 
-GLUI_Panel *PANEL_hvac_filter     = NULL;
-GLUI_Panel *PANEL_hvac_components = NULL;
-GLUI_Panel *PANEL_hvac_duct    = NULL;
-GLUI_Panel *PANEL_hvac_node    = NULL;
-GLUI_Panel *PANEL_hvac_network = NULL;
+GLUI_Panel *PANEL_hvac_options     = NULL;
+GLUI_Panel *PANEL_hvac_filter      = NULL;
+GLUI_Panel *PANEL_hvac_components  = NULL;
+GLUI_Panel *PANEL_hvac_duct        = NULL;
+GLUI_Panel *PANEL_hvac_node        = NULL;
+GLUI_Panel *PANEL_hvac_network     = NULL;
+GLUI_Panel *PANEL_hvac_connections = NULL;
+GLUI_Panel *PANEL_hvac_group1 = NULL;
+GLUI_Panel *PANEL_hvac_group2 = NULL;
 
+GLUI_Panel *PANEL_outlinecolor=NULL;
 GLUI_Panel *PANEL_surf_color = NULL;
 GLUI_Panel *PANEL_surf_axis = NULL;
 GLUI_Panel *PANEL_surf_coloraxis = NULL;
@@ -114,13 +144,20 @@ GLUI_Panel *PANEL_geom_close = NULL;
 GLUI_Panel *PANEL_geom_transparency = NULL;
 GLUI_Panel *PANEL_normals = NULL;
 
-GLUI_Spinner *SPINNER_geom_transparency=NULL;
-GLUI_Spinner *SPINNER_hvac_duct_width=NULL;
-GLUI_Spinner *SPINNER_hvac_node_size=NULL;
-GLUI_Spinner *SPINNER_hvac_duct_size = NULL;
+GLUI_Spinner *SPINNER_terrain_skip        = NULL;
+GLUI_Spinner *SPINNER_slice_skip2         = NULL;
+GLUI_Spinner *SPINNER_geom_transparency   = NULL;
+GLUI_Spinner *SPINNER_hvac_duct_width     = NULL;
+GLUI_Spinner *SPINNER_hvac_node_size      = NULL;
+GLUI_Spinner *SPINNER_hvac_cell_node_size = NULL;
+GLUI_Spinner *SPINNER_hvac_component_size = NULL;
+GLUI_Spinner *SPINNER_hvac_filter_size    = NULL;
 GLUI_Spinner *SPINNER_hvac_duct_color[3];
 GLUI_Spinner *SPINNER_hvac_node_color[3];
 
+GLUI_Spinner *SPINNER_outlinecolor_red = NULL;
+GLUI_Spinner *SPINNER_outlinecolor_green = NULL;
+GLUI_Spinner *SPINNER_outlinecolor_blue = NULL;
 GLUI_Spinner *SPINNER_geom_ivecfactor = NULL;
 GLUI_Spinner *SPINNER_geom_vert_exag=NULL;
 GLUI_Spinner *SPINNER_geom_zmin = NULL, *SPINNER_geom_zmax = NULL, *SPINNER_geom_zlevel=NULL;
@@ -129,6 +166,9 @@ GLUI_Spinner *SPINNER_geom_vertex2_rgb[3]  = {NULL, NULL, NULL};
 GLUI_Spinner *SPINNER_geom_triangle_rgb[3] = {NULL, NULL, NULL};
 GLUI_Spinner *SPINNER_surf_rgb[3]          = {NULL, NULL, NULL};
 GLUI_Spinner *SPINNER_surf_axis[3]         = {NULL, NULL, NULL};
+#ifdef pp_DECIMATE
+GLUI_Spinner *SPINNER_terrain_deimate_delta=NULL;
+#endif
 
 #define VOL_SHOWHIDE           3
 #define SELECT_GEOM            4
@@ -148,7 +188,9 @@ GLUI_EditText *EDIT_xmax=NULL, *EDIT_ymax=NULL, *EDIT_zmax=NULL;
 
 GLUI_Listbox *LIST_obst_surface[7]={NULL,NULL,NULL,NULL,NULL,NULL,NULL};
 GLUI_Listbox *LIST_geom_surface=NULL;
-GLUI_Listbox *LIST_hvac_network = NULL;
+GLUI_Listbox *LIST_hvac_network_ductnode_index = NULL;
+GLUI_Listbox *LIST_hvacnodevar_index = NULL;
+GLUI_Listbox *LIST_hvacductvar_index = NULL;
 
 GLUI_Panel *PANEL_geomtest2 = NULL;
 GLUI_Panel *PANEL_cfaces = NULL;
@@ -166,24 +208,43 @@ GLUI_Panel *PANEL_geomedgecheck=NULL;
 GLUI_Panel *PANEL_group1=NULL;
 GLUI_Panel *PANEL_geom_offset=NULL;
 GLUI_Panel *PANEL_terrain_images = NULL;
+#ifdef pp_DECIMATE
+GLUI_Panel *PANEL_terrain_decimate = NULL;
+GLUI_Panel *PANEL_terrain_decimate_sizes = NULL;
+#endif
 GLUI_Panel *PANEL_geom_show = NULL;
 
 GLUI_Rollout *ROLLOUT_hvac = NULL;
 GLUI_Rollout *ROLLOUT_structured=NULL;
 GLUI_Rollout *ROLLOUT_unstructured=NULL;
+GLUI_Rollout *ROLLOUT_terrain = NULL;
 
 GLUI_Spinner *SPINNER_face_factor=NULL;
 
+#ifdef pp_DECIMATE
+GLUI_StaticText *STATIC_terrain_pixel_size=NULL;
+GLUI_StaticText *STATIC_terrain_cell_size=NULL;
+GLUI_StaticText *STATIC_terrain_geom_size=NULL;
+#endif
 GLUI_StaticText *STATIC_blockage_index=NULL;
 GLUI_StaticText *STATIC_mesh_index=NULL;
 GLUI_StaticText *STATIC_label=NULL;
+GLUI_StaticText *STATIC_id_label = NULL;
 
 char a_updatelabel[1000];
 char *updatelabel=NULL;
 
-/* ------------------ UpdateTerrainTexture ------------------------ */
 
-extern "C" void UpdateTerrainTexture(int val){
+/* ------------------ GLUIUpdateHVACViews ------------------------ */
+
+extern "C" void GLUIUpdateHVACViews(void){
+  CHECKBOX_hvac_metro_view->set_int_val(hvac_metro_view);
+  CHECKBOX_hvac_cell_view->set_int_val(hvac_cell_view);
+}
+
+  /* ------------------ GLUIUpdateTerrainTexture ------------------------ */
+
+extern "C" void GLUIUpdateTerrainTexture(int val){
   if(CHECKBOX_terrain_texture_show!=NULL&&val>=0&&val<nterrain_textures){
     texturedata *texti;
 
@@ -203,33 +264,31 @@ void TerrainTextureCB(int val){
 /* ------------------ GeomRolloutCB ------------------------ */
 
 void GeomRolloutCB(int var){
-  ToggleRollout(geomprocinfo, ngeomprocinfo, var);
+  GLUIToggleRollout(geomprocinfo, ngeomprocinfo, var);
 }
 
-/* ------------------ UpdateSelectGeom ------------------------ */
+/* ------------------ GLUIUpdateSelectGeom ------------------------ */
 
-extern "C" void UpdateSelectGeom(void){
+extern "C" void GLUIUpdateSelectGeom(void){
   RADIO_select_geom->set_int_val(select_geom);
 }
 
-/* ------------------ UpdateShowOnlyTop ------------------------ */
+/* ------------------ GLUIUpdateShowOnlyTop ------------------------ */
 
-extern "C" void UpdateShowOnlyTop(void){
+extern "C" void GLUIUpdateShowOnlyTop(void){
   if(CHECKBOX_showonly_top!=NULL)CHECKBOX_showonly_top->set_int_val(terrain_showonly_top);
 }
 
-/* ------------------ UpdateWhereFaceVolumes ------------------------ */
+/* ------------------ GLUIUpdateWhereFaceVolumes ------------------------ */
 
-extern "C" void UpdateWhereFaceVolumes(void){
-  if(CHECKBOX_volumes_interior != NULL)CHECKBOX_volumes_interior->set_int_val(show_volumes_interior);
-  if(CHECKBOX_volumes_exterior != NULL)CHECKBOX_volumes_exterior->set_int_val(show_volumes_exterior);
+extern "C" void GLUIUpdateWhereFaceVolumes(void){
   if(CHECKBOX_showgeom_inside_domain!=NULL)CHECKBOX_showgeom_inside_domain->set_int_val(showgeom_inside_domain);
   if(CHECKBOX_showgeom_outside_domain!=NULL)CHECKBOX_showgeom_outside_domain->set_int_val(showgeom_outside_domain);
 }
 
-/* ------------------ UpdateGluiCfaces ------------------------ */
+/* ------------------ GLUIUpdateCfaces ------------------------ */
 
-extern "C" void UpdateGluiCfaces(void){
+extern "C" void GLUIUpdateCfaces(void){
   glui_use_cfaces = use_cfaces;
   if(CHECKBOX_cfaces!=NULL){
     CHECKBOX_cfaces->set_int_val(use_cfaces);
@@ -237,27 +296,25 @@ extern "C" void UpdateGluiCfaces(void){
   if(CHECKBOX_show_cface_normals!=NULL)CHECKBOX_show_cface_normals->set_int_val(show_cface_normals);
 }
 
-/* ------------------ UpdateGeomBoundingBox ------------------------ */
+/* ------------------ GLUIUpdateGeomBoundingBox ------------------------ */
 
-extern "C" void UpdateGeomBoundingBox(void){
+extern "C" void GLUIUpdateGeomBoundingBox(void){
   if(RADIO_show_geom_boundingbox!=NULL)RADIO_show_geom_boundingbox->set_int_val(show_geom_boundingbox);
 }
 
-/* ------------------ UpdateGeometryControls ------------------------ */
+/* ------------------ GLUIUpdateGeometryControls ------------------------ */
 
-extern "C" void UpdateGeometryControls(void){
+extern "C" void GLUIUpdateGeometryControls(void){
   if(CHECKBOX_surface_solid!=NULL)CHECKBOX_surface_solid->set_int_val(show_faces_shaded);
   if(CHECKBOX_surface_outline!=NULL)CHECKBOX_surface_outline->set_int_val(show_faces_outline);
-  if(CHECKBOX_interior_solid!=NULL)CHECKBOX_interior_solid->set_int_val(show_volumes_solid);
-  if(CHECKBOX_interior_outline!=NULL)CHECKBOX_interior_outline->set_int_val(show_volumes_outline);
 
   if(CHECKBOX_show_geom_normal != NULL)CHECKBOX_show_geom_normal->set_int_val(show_geom_normal);
   if(CHECKBOX_smooth_geom_normal != NULL)CHECKBOX_smooth_geom_normal->set_int_val(smooth_geom_normal);
 }
 
-/* ------------------ GetGeomDialogState ------------------------ */
+/* ------------------ GLUIGetGeomDialogState ------------------------ */
 
-extern "C" void GetGeomDialogState(void){
+extern "C" void GLUIGetGeomDialogState(void){
   if(ROLLOUT_structured!=NULL){
     if(ROLLOUT_structured->is_open){
       structured_isopen=1;
@@ -302,16 +359,16 @@ void BlockeditDlgCB(int var){
     DialogMenu(DIALOG_GEOMETRY);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
 
 }
 
-/* ------------------ UpdateTriangleInfo ------------------------ */
+/* ------------------ GLUIUpdateTriangleInfo ------------------------ */
 
 
-extern "C" void UpdateTriangleInfo(surfdata *tri_surf, float tri_area){
+extern "C" void GLUIUpdateTriangleInfo(surfdata *tri_surf, float tri_area){
   char label[100];
 
   LIST_geom_surface->set_int_val(tri_surf->in_geom_list);
@@ -322,9 +379,9 @@ extern "C" void UpdateTriangleInfo(surfdata *tri_surf, float tri_area){
   VolumeCB(SURF_GET);
 }
 
-  /* ------------------ UpdateVertexInfo ------------------------ */
+  /* ------------------ GLUIUpdateVertexInfo ------------------------ */
 
-extern "C" void UpdateVertexInfo(float *xyz1, float *xyz2){
+extern "C" void GLUIUpdateVertexInfo(float *xyz1, float *xyz2){
   char label[100];
 
   if(xyz1!=NULL){
@@ -378,38 +435,73 @@ extern "C" void UpdateVertexInfo(float *xyz1, float *xyz2){
 /* ------------------ Glui2HVAC ------------------------ */
 
 void Glui2HVAC(void){
-  memcpy(hvacinfo + hvac_network_index, glui_hvac, sizeof(hvacdata));
+  int i;
+
+  for(i = 0;i < nhvacinfo;i++){
+    if(hvac_network_ductnode_index==-1||hvac_network_ductnode_index==i){
+      int display;
+      hvacdata *hvaci;
+      char *network_name;
+
+      hvaci = hvacinfo + i;
+      display      = hvaci->display;
+      network_name = hvaci->network_name;
+      memcpy(hvaci, glui_hvac, sizeof(hvacdata));
+      hvaci->display      = display;
+      hvaci->network_name = network_name;
+    }
+  }
 }
 
-/* ------------------ HVAC2Glui ------------------------ */
+/* ------------------ GLUIHVAC2Glui ------------------------ */
 
-extern "C" void HVAC2Glui(int index){
+extern "C" void GLUIHVAC2Glui(int index){
   hvacdata *hvaci;
   int i;
 
-  index = CLAMP(index, 0, nhvacinfo-1);
+  if(index >= nhvacinfo)return;
+  if(index < 0){
+    Glui2HVAC();
+    return;
+  }
+
   hvaci = hvacinfo + index;
   memcpy(glui_hvac, hvaci, sizeof(hvacdata));
   for(i=0;i<3;i++){
     SPINNER_hvac_duct_color[i]->set_int_val(glui_hvac->duct_color[i]);
     SPINNER_hvac_node_color[i]->set_int_val(glui_hvac->node_color[i]);
   }
-  CHECKBOX_hvac_show->set_int_val(glui_hvac->display);
 
-  CHECKBOX_hvac_metro_view->set_int_val(hvac_metro_view);
   SPINNER_hvac_duct_width->set_float_val(glui_hvac->duct_width);
   RADIO_hvac_show_component_labels->set_int_val(glui_hvac->show_component);
   CHECKBOX_hvac_show_duct_labels->set_int_val(glui_hvac->show_duct_labels);
 
-  SPINNER_hvac_duct_size->set_float_val(glui_hvac->duct_size);
+  SPINNER_hvac_filter_size->set_float_val(glui_hvac->filter_size);
+  SPINNER_hvac_component_size->set_float_val(glui_hvac->component_size);
   SPINNER_hvac_node_size->set_float_val(glui_hvac->node_size);
+  SPINNER_hvac_cell_node_size->set_float_val(glui_hvac->cell_node_size);
   CHECKBOX_hvac_show_node_labels->set_int_val(glui_hvac->show_node_labels);
   RADIO_hvac_show_filters->set_int_val(glui_hvac->show_filters);
 }
 
+/* ------------------ GLUIUpdateTerrain ------------------------ */
+
+extern "C" void GLUIUpdateTerrain(void){
+  if(CHECKBOX_terrain_top_surface!=NULL)CHECKBOX_terrain_top_surface->set_int_val(terrain_showonly_top);
+  if(CHECKBOX_showonly_top != NULL)CHECKBOX_showonly_top->set_int_val(terrain_showonly_top);
+  if(RADIO_terrain_type!=NULL)RADIO_terrain_type->set_int_val(visTerrainType);
+}
+
+/* ------------------ GLUIUpdateHVACVarLists ------------------------ */
+
+extern "C" void GLUIUpdateHVACVarLists(void){
+  if(LIST_hvacductvar_index!=NULL)LIST_hvacductvar_index->set_int_val(hvacductvar_index);
+  if(LIST_hvacnodevar_index!=NULL)LIST_hvacnodevar_index->set_int_val(hvacnodevar_index);
+}
+
 /* ------------------ HvacCB ------------------------ */
 
-extern "C" void HvacCB(int var){
+void HvacCB(int var){
   int i;
 
   updatemenu = 1;
@@ -417,43 +509,80 @@ extern "C" void HvacCB(int var){
     return;
   }
   switch(var){
-    case HVAC_COPY_ALL:
-      if(hvac_copy_all == 1){
-        for(i = 0; i < nhvacinfo; i++){
-          char* labelsave;
-          hvacdata* hvaci;
-
-          if (i == hvac_network_index)continue;
-          hvaci = hvacinfo + i;
-          labelsave = hvaci->network_name;
-          memcpy(hvaci, glui_hvac, sizeof(hvacdata));
-          hvaci->network_name = labelsave;
-        }
+    case HVACDUCT_SET_BOUNDS:
+      GLUIShowBoundsDialog(DLG_HVACDUCT);
+      break;
+    case HVACNODE_SET_BOUNDS:
+      GLUIShowBoundsDialog(DLG_HVACNODE);
+      break;
+    case HVAC_NODE_LIST:
+      if(hvacnodevar_index>=0){
+        if(hvacnodevalsinfo->loaded == 0)ReadHVACData(LOAD);
+        HVACNodeValueMenu(hvacnodevar_index);
       }
       break;
-    case HVAC_UPDATE_LIST:
-      HVAC2Glui(hvac_network_index);
+    case HVAC_DUCT_LIST:
+      if(hvacductvar_index>=0){
+        if(hvacductvalsinfo->loaded == 0)ReadHVACData(LOAD);
+        HVACDuctValueMenu(hvacductvar_index);
+      }
+    break;
+    case HVAC_DUCTNODE_NETWORK:
+      GLUIHVAC2Glui(hvac_network_ductnode_index);
       break;
     case HVAC_SHOW_DUCT_LABELS:
     case HVAC_SHOW_COMPONENTS:
     case HVAC_SHOW_NODE_LABELS:
     case HVAC_SHOW_FILTERS:
     case HVAC_METRO_VIEW:
+    case HVAC_CELL_VIEW:
       break;
     case HVAC_PROPS:
       if(glui_hvac->duct_width<1.0){
         glui_hvac->duct_width = 1.0;
         SPINNER_hvac_duct_width->set_float_val(glui_hvac->duct_width);
       }
-      if(glui_hvac->duct_size < 0.1){
-        glui_hvac->duct_size = 0.1;
-        SPINNER_hvac_duct_size->set_float_val(glui_hvac->duct_size);
+      if(glui_hvac->component_size < 0.1){
+        glui_hvac->component_size = 0.1;
+        SPINNER_hvac_component_size->set_float_val(glui_hvac->component_size);
+      }
+      if(glui_hvac->filter_size < 0.1){
+        glui_hvac->filter_size = 0.1;
+        SPINNER_hvac_filter_size->set_float_val(glui_hvac->filter_size);
       }
       if(glui_hvac->node_size<1.0){
         glui_hvac->node_size = 1.0;
         SPINNER_hvac_node_size->set_float_val(glui_hvac->node_size);
       }
+      if(glui_hvac->cell_node_size<1.0){
+        glui_hvac->cell_node_size = 1.0;
+        SPINNER_hvac_cell_node_size->set_float_val(glui_hvac->cell_node_size);
+      }
       Glui2HVAC();
+      break;
+    case HVAC_SHOW_NETWORKS:
+      if(hvac_show_networks==1){
+        PANEL_hvac_network->enable();
+        if(nhvacconnectinfo > 0){
+          PANEL_hvac_connections->disable();
+          hvac_show_connections = 0;
+          CHECKBOX_hvac_show_connection->set_int_val(hvac_show_connections);
+        }
+      }
+      else{
+        PANEL_hvac_network->disable();
+      }
+      break;
+    case HVAC_SHOW_CONNECTIONS:
+      if(hvac_show_connections==1){
+        PANEL_hvac_network->disable();
+        if(PANEL_hvac_connections!=NULL)PANEL_hvac_connections->enable();
+        hvac_show_networks = 0;
+        if(CHECKBOX_hvac_show_network!=NULL)CHECKBOX_hvac_show_network->set_int_val(hvac_show_networks);
+      }
+      else{
+        if(PANEL_hvac_connections != NULL)PANEL_hvac_connections->disable();
+      }
       break;
     case HVAC_SHOWALL_NETWORK:
     case HVAC_HIDEALL_NETWORK:
@@ -463,19 +592,139 @@ extern "C" void HvacCB(int var){
         hvaci = hvacinfo + i;
         if(var==HVAC_SHOWALL_NETWORK)hvaci->display = 1;
         if(var==HVAC_HIDEALL_NETWORK)hvaci->display = 0;
+        CHECKBOX_hvac_show_networks[i]->set_int_val(hvaci->display);
       }
-      HVAC2Glui(hvac_network_index);
+      break;
+    case HVAC_SHOWALL_CONNECTIONS:
+    case HVAC_HIDEALL_CONNECTIONS:
+      for (i = 0; i < nhvacconnectinfo; i++){
+        hvacconnectdata *hi;
+
+        hi = hvacconnectinfo + i;
+        if(var==HVAC_SHOWALL_CONNECTIONS)hi->display = 1;
+        if(var==HVAC_HIDEALL_CONNECTIONS)hi->display = 0;
+        CHECKBOX_hvac_show_connections[i]->set_int_val(hi->display);
+      }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
-  if(hvac_copy_all==1&&var!=HVAC_COPY_ALL)HvacCB(HVAC_COPY_ALL);
+  GLUTPOSTREDISPLAY;
 }
 
-/* ------------------ GluiGeometrySetup ------------------------ */
+#ifdef pp_DECIMATE
+/* ------------------ AverageTerrainSize ------------------------ */
 
-extern "C" void GluiGeometrySetup(int main_window){
+float AverageTerrainSize(void){
+  int i;
+  float total_distance, average_distance;
+  int ntriangles = 0;
+  int count, skip;
+
+  for(i = 0; i < nmeshes; i++){
+    meshdata *meshi;
+
+    meshi = meshinfo + i;
+    meshi->decimated = 0;
+  }
+  for(i = 0; i < npatchinfo; i++){
+    meshdata *meshi;
+    patchdata *patchi;
+    geomlistdata *geomlisti;
+
+    patchi = patchinfo + i;
+    if(patchi->loaded == 0 || patchi->display == 0 || patchi->blocknumber < 0)continue;
+    meshi = meshinfo + patchi->blocknumber;
+    if(meshi->decimated == 1)continue;
+    if(patchi->geominfo == NULL || patchi->geominfo->display == 0 || patchi->geominfo->loaded == 0)continue;
+    meshi->decimated = 1;
+    geomlisti = patchi->geominfo->geomlistinfo - 1;
+    ntriangles += geomlisti->ntriangles;
+  }
+  skip = MAX(ntriangles / 5000, 1);
+  for(i = 0; i < nmeshes; i++){
+    meshdata *meshi;
+
+    meshi = meshinfo + i;
+    meshi->decimated = 0;
+  }
+  count = 0;
+  total_distance = 0.0;
+  for(i = 0; i < npatchinfo; i++){
+    meshdata *meshi;
+    patchdata *patchi;
+    geomlistdata *geomlisti;
+
+    patchi = patchinfo + i;
+    if(patchi->loaded == 0 || patchi->display == 0 || patchi->blocknumber < 0)continue;
+    meshi = meshinfo + patchi->blocknumber;
+    if(meshi->decimated == 1)continue;
+    if(patchi->geominfo == NULL || patchi->geominfo->display == 0 || patchi->geominfo->loaded == 0)continue;
+    meshi->decimated = 1;
+    geomlisti = patchi->geominfo->geomlistinfo - 1;
+    int j;
+
+    for(j = 0; j < geomlisti->ntriangles; j += skip){
+      vertdata *v1, *v2, *v3;
+      float dist1, dist2, dist3, dx, dy, dz;
+
+      v1 = geomlisti->triangles->verts[0];
+      v2 = geomlisti->triangles->verts[1];
+      v3 = geomlisti->triangles->verts[2];
+      DDIST3(v1->xyz, v2->xyz, dist1);
+      DDIST3(v1->xyz, v3->xyz, dist2);
+      DDIST3(v2->xyz, v3->xyz, dist3);
+      total_distance += (dist1+dist2+dist3);
+      count+=3;
+    }
+  }
+  if(count > 0){
+    average_distance = total_distance / ( float )count;
+  }
+  else{
+    average_distance = 0.0;
+  }
+  return average_distance;
+}
+
+/* ------------------ UpdateTerrainSizes ------------------------ */
+
+void UpdateTerrainSizes(void){
+  float domain_width, cell_width, pixel_width;
+  int screen_width;
+  float average_terrain_size;
+
+  screen_width = GLUTGetScreenWidth();                      // number of pixels
+  domain_width = xbarORIG - xbar0ORIG;                            // meters
+  cell_width = meshinfo->xplt_orig[1]-meshinfo->xplt_orig[0];
+  pixel_width = domain_width / ( float )screen_width;
+
+  char label[500], cval[500];
+
+  Float2String(cval, pixel_width, 3, 1);
+  sprintf(label, "pixel: %s m", cval);
+  STATIC_terrain_pixel_size->set_name(label);
+
+  Float2String(cval, cell_width, 3, 1);
+  sprintf(label, "cell: %s m", cval);
+  STATIC_terrain_cell_size->set_name(label);
+
+  average_terrain_size = AverageTerrainSize();
+  if(average_terrain_size > 0.0){
+    Float2String(cval, average_terrain_size, 3, 1);
+    sprintf(label, "geom: %s m", cval);
+  }
+  else{
+    strcpy(label, "geom:");
+  }
+  STATIC_terrain_geom_size->set_name(label);
+}
+#endif
+
+/* ------------------ GLUIGeometrySetup ------------------------ */
+
+extern "C" void GLUIGeometrySetup(int main_window){
   int ibar,jbar,kbar;
   float *xplt_orig, *yplt_orig, *zplt_orig;
   char *surfacelabel;
@@ -497,58 +746,129 @@ extern "C" void GluiGeometrySetup(int main_window){
 
   if(nhvacinfo > 0){
     NewMemory(( void ** )&glui_hvac, sizeof(hvacdata));
-    memcpy(glui_hvac, hvacinfo + hvac_network_index, sizeof(hvacdata));
+    memcpy(glui_hvac, hvacinfo, sizeof(hvacdata));
     ROLLOUT_hvac = glui_geometry->add_rollout("HVAC", false, HVAC_ROLLOUT, GeomRolloutCB);
     INSERT_ROLLOUT(ROLLOUT_hvac, glui_geometry);
     ADDPROCINFO(geomprocinfo, ngeomprocinfo, ROLLOUT_hvac, HVAC_ROLLOUT, glui_geometry);
 
-    LIST_hvac_network = glui_geometry->add_listbox_to_panel(ROLLOUT_hvac, "network:", &hvac_network_index, HVAC_UPDATE_LIST, HvacCB);
+    NewMemory((void **)&CHECKBOX_hvac_show_networks, nhvacinfo*sizeof(GLUI_Checkbox *));
+    PANEL_hvac_options = glui_geometry->add_panel_to_panel(ROLLOUT_hvac, "", false);
+    PANEL_hvac_options->set_alignment(GLUI_ALIGN_LEFT);
+    CHECKBOX_hvac_metro_view = glui_geometry->add_checkbox_to_panel(PANEL_hvac_options, "metro view", &hvac_metro_view, HVAC_METRO_VIEW, HvacCB);
+    CHECKBOX_hvac_cell_view = glui_geometry->add_checkbox_to_panel(PANEL_hvac_options, "show cells", &hvac_cell_view, HVAC_CELL_VIEW, HvacCB);
+    if(nhvacconnectinfo > 0){
+      CHECKBOX_hvac_show_network = glui_geometry->add_checkbox_to_panel(PANEL_hvac_options, "Show by network", &hvac_show_networks, HVAC_SHOW_NETWORKS, HvacCB);
+      CHECKBOX_hvac_show_connection = glui_geometry->add_checkbox_to_panel(PANEL_hvac_options, "Show by connection", &hvac_show_connections, HVAC_SHOW_CONNECTIONS, HvacCB);
+    }
+    if(nhvacconnectinfo > 0){
+      PANEL_hvac_group1 = glui_geometry->add_panel_to_panel(ROLLOUT_hvac, "", false);
+      PANEL_hvac_network = glui_geometry->add_panel_to_panel(PANEL_hvac_group1, "networks");
+    }
+    else{
+      hvac_show_networks = 1;
+      PANEL_hvac_network = glui_geometry->add_panel_to_panel(ROLLOUT_hvac, "networks");
+    }
     for (i = 0; i < nhvacinfo; i++){
       hvacdata* hvaci;
 
       hvaci = hvacinfo + i;
-      LIST_hvac_network->add_item(i, hvaci->network_name);
+      CHECKBOX_hvac_show_networks[i] = glui_geometry->add_checkbox_to_panel(PANEL_hvac_network, hvaci->network_name, &hvaci->display);
     }
-    CHECKBOX_hvac_show = glui_geometry->add_checkbox_to_panel(ROLLOUT_hvac, "show current network", &glui_hvac->display, HVAC_PROPS, HvacCB);
-    memcpy(glui_hvac, hvacinfo + hvac_network_index, sizeof(hvacdata));
-
     if(nhvacinfo > 1){
-      glui_geometry->add_button_to_panel(ROLLOUT_hvac, "show all networks",    HVAC_SHOWALL_NETWORK, HvacCB);
-      glui_geometry->add_button_to_panel(ROLLOUT_hvac, "hide all networks",    HVAC_HIDEALL_NETWORK, HvacCB);
-      glui_geometry->add_checkbox_to_panel(ROLLOUT_hvac, "copy settings to all networks", &hvac_copy_all, HVAC_COPY_ALL, HvacCB);
+      glui_geometry->add_button_to_panel(PANEL_hvac_network, "show all", HVAC_SHOWALL_NETWORK, HvacCB);
+      glui_geometry->add_button_to_panel(PANEL_hvac_network, "hide all", HVAC_HIDEALL_NETWORK, HvacCB);
+      //      glui_geometry->add_checkbox_to_panel(ROLLOUT_hvac, "copy settings to all networks", &hvac_copy_all, HVAC_COPY_ALL, HvacCB);
     }
-    CHECKBOX_hvac_metro_view = glui_geometry->add_checkbox_to_panel(ROLLOUT_hvac, "metro view", &hvac_metro_view, HVAC_METRO_VIEW, HvacCB);
-    PANEL_hvac_duct                = glui_geometry->add_panel_to_panel(ROLLOUT_hvac,       "duct");
-    SPINNER_hvac_duct_width        = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "width", GLUI_SPINNER_FLOAT, &glui_hvac->duct_width,       HVAC_PROPS, HvacCB);
-    SPINNER_hvac_duct_size         = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "size",  GLUI_SPINNER_FLOAT, &glui_hvac->duct_size,        HVAC_PROPS, HvacCB);
-    SPINNER_hvac_duct_color[0]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "red",   GLUI_SPINNER_INT,    glui_hvac->duct_color,       HVAC_PROPS, HvacCB);
-    SPINNER_hvac_duct_color[1]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "green", GLUI_SPINNER_INT,    glui_hvac->duct_color + 1,   HVAC_PROPS, HvacCB);
-    SPINNER_hvac_duct_color[2]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "blue",  GLUI_SPINNER_INT,    glui_hvac->duct_color + 2,   HVAC_PROPS, HvacCB);
+
+    if(nhvacconnectinfo>0){
+      NewMemory((void **)&CHECKBOX_hvac_show_connections, nhvacconnectinfo*sizeof(GLUI_Checkbox *));
+      glui_geometry->add_column_to_panel(PANEL_hvac_group1, false);
+      PANEL_hvac_connections = glui_geometry->add_panel_to_panel(PANEL_hvac_group1, "connections");
+      for (i = 0; i < nhvacconnectinfo; i++){
+        hvacconnectdata *hi;
+        char label[100];
+
+        hi = hvacconnectinfo + i;
+        snprintf(label, sizeof(label), "%i", hi->index);
+        CHECKBOX_hvac_show_connections[i] = glui_geometry->add_checkbox_to_panel(PANEL_hvac_connections, label, &hi->display);
+      }
+      if(nhvacconnectinfo > 1){
+        glui_geometry->add_button_to_panel(PANEL_hvac_connections, "show all", HVAC_SHOWALL_CONNECTIONS, HvacCB);
+        glui_geometry->add_button_to_panel(PANEL_hvac_connections, "hide all", HVAC_HIDEALL_CONNECTIONS, HvacCB);
+      }
+    }
+
+    LIST_hvac_network_ductnode_index = glui_geometry->add_listbox_to_panel(ROLLOUT_hvac, "set duct/node properties for:", &hvac_network_ductnode_index, HVAC_DUCTNODE_NETWORK, HvacCB);
+    LIST_hvac_network_ductnode_index->add_item(-1, "all networks");
+    for(i = 0; i<nhvacinfo; i++){
+      hvacdata *hvaci;
+
+      hvaci = hvacinfo + i;
+      LIST_hvac_network_ductnode_index->add_item(i, hvaci->network_name);
+    }
+
+    PANEL_hvac_group2 = glui_geometry->add_panel_to_panel(ROLLOUT_hvac, "", false);
+    PANEL_hvac_duct                = glui_geometry->add_panel_to_panel(PANEL_hvac_group2,       "duct properties");
+
+    SPINNER_hvac_duct_color[0] = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct, "red", GLUI_SPINNER_INT, glui_hvac->duct_color, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_duct_color[1] = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct, "green", GLUI_SPINNER_INT, glui_hvac->duct_color + 1, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_duct_color[2] = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct, "blue", GLUI_SPINNER_INT, glui_hvac->duct_color + 2, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_duct_width        = glui_geometry->add_spinner_to_panel(PANEL_hvac_duct,  "line width", GLUI_SPINNER_FLOAT, &glui_hvac->duct_width,       HVAC_PROPS, HvacCB);
     CHECKBOX_hvac_show_duct_labels = glui_geometry->add_checkbox_to_panel(PANEL_hvac_duct, "show duct IDs", &glui_hvac->show_duct_labels, HVAC_PROPS, HvacCB);
     PANEL_hvac_components          = glui_geometry->add_panel_to_panel(PANEL_hvac_duct,       "components");
     RADIO_hvac_show_component_labels = glui_geometry->add_radiogroup_to_panel(PANEL_hvac_components, &glui_hvac->show_component, HVAC_PROPS, HvacCB);
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_component_labels, "text");
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_component_labels, "symbol");
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_component_labels, "hide");
+    SPINNER_hvac_component_size = glui_geometry->add_spinner_to_panel(PANEL_hvac_components, "size", GLUI_SPINNER_FLOAT, &glui_hvac->component_size, HVAC_PROPS, HvacCB);
 
-    PANEL_hvac_node                = glui_geometry->add_panel_to_panel(ROLLOUT_hvac, "node");
-    SPINNER_hvac_node_size         = glui_geometry->add_spinner_to_panel(PANEL_hvac_node,  "size", GLUI_SPINNER_FLOAT, &glui_hvac->node_size,        HVAC_PROPS, HvacCB);
-    SPINNER_hvac_node_color[0]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_node,  "red",   GLUI_SPINNER_INT,   glui_hvac->node_color,       HVAC_PROPS, HvacCB);
-    SPINNER_hvac_node_color[1]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_node,  "green", GLUI_SPINNER_INT,   glui_hvac->node_color + 1,   HVAC_PROPS, HvacCB);
-    SPINNER_hvac_node_color[2]     = glui_geometry->add_spinner_to_panel(PANEL_hvac_node,  "blue",  GLUI_SPINNER_INT,   glui_hvac->node_color + 2,   HVAC_PROPS, HvacCB);
+    if(hvacductvalsinfo!=NULL&&hvacductvalsinfo->n_duct_vars>0){
+      LIST_hvacductvar_index = glui_geometry->add_listbox_to_panel(PANEL_hvac_duct, "quantity:", &hvacductvar_index, HVAC_DUCT_LIST, HvacCB);
+      LIST_hvacductvar_index->add_item(-1, "");
+      for(i = 0;i < hvacductvalsinfo->n_duct_vars;i++){
+        hvacvaldata *hi;
+
+        hi = hvacductvalsinfo->duct_vars + i;
+        LIST_hvacductvar_index->add_item(i, hi->label.shortlabel);
+      }
+      glui_geometry->add_button_to_panel(PANEL_hvac_duct, _("Set duct bounds"), HVACDUCT_SET_BOUNDS, HvacCB);
+      glui_geometry->add_button_to_panel(PANEL_hvac_duct, _("Set node bounds"), HVACNODE_SET_BOUNDS, HvacCB);
+    }
+
+    glui_geometry->add_column_to_panel(PANEL_hvac_group2, false);
+    PANEL_hvac_node                = glui_geometry->add_panel_to_panel(PANEL_hvac_group2, "node properties");
+
+    SPINNER_hvac_node_color[0] = glui_geometry->add_spinner_to_panel(PANEL_hvac_node, "red", GLUI_SPINNER_INT, glui_hvac->node_color, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_node_color[1] = glui_geometry->add_spinner_to_panel(PANEL_hvac_node, "green", GLUI_SPINNER_INT, glui_hvac->node_color + 1, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_node_color[2] = glui_geometry->add_spinner_to_panel(PANEL_hvac_node, "blue", GLUI_SPINNER_INT, glui_hvac->node_color + 2, HVAC_PROPS, HvacCB);
+    SPINNER_hvac_node_size         = glui_geometry->add_spinner_to_panel(PANEL_hvac_node, "node size",      GLUI_SPINNER_FLOAT, &glui_hvac->node_size,      HVAC_PROPS, HvacCB);
+    SPINNER_hvac_cell_node_size    = glui_geometry->add_spinner_to_panel(PANEL_hvac_node, "cell node size", GLUI_SPINNER_FLOAT, &glui_hvac->cell_node_size, HVAC_PROPS, HvacCB);
     CHECKBOX_hvac_show_node_labels = glui_geometry->add_checkbox_to_panel(PANEL_hvac_node, "show node IDs",            &glui_hvac->show_node_labels, HVAC_PROPS, HvacCB);
     PANEL_hvac_filter              = glui_geometry->add_panel_to_panel(PANEL_hvac_node,       "filter");
     RADIO_hvac_show_filters        = glui_geometry->add_radiogroup_to_panel(PANEL_hvac_filter, &glui_hvac->show_filters, HVAC_PROPS, HvacCB);
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_filters, "text");
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_filters, "symbol");
     glui_geometry->add_radiobutton_to_group(RADIO_hvac_show_filters, "hide");
+    SPINNER_hvac_filter_size = glui_geometry->add_spinner_to_panel(PANEL_hvac_filter, "size", GLUI_SPINNER_FLOAT, &glui_hvac->filter_size, HVAC_PROPS, HvacCB);
     for(i = 0; i < 3; i++){
       SPINNER_hvac_duct_color[i]->set_int_limits(0, 255);
       SPINNER_hvac_node_color[i]->set_int_limits(0, 255);
     }
-    HVAC2Glui(hvac_network_index);
-    HvacCB(HVAC_COPY_ALL);
+    if(hvacnodevalsinfo!=NULL&&hvacnodevalsinfo->n_node_vars>0){
+      LIST_hvacnodevar_index = glui_geometry->add_listbox_to_panel(PANEL_hvac_node, "quantity:", &hvacnodevar_index, HVAC_NODE_LIST, HvacCB);
+      LIST_hvacnodevar_index->add_item(-1, "");
+      for(i = 0;i < hvacnodevalsinfo->n_node_vars;i++){
+        hvacvaldata *hi;
+
+        hi = hvacnodevalsinfo->node_vars + i;
+        LIST_hvacnodevar_index->add_item(i, hi->label.shortlabel);
+      }
+      glui_geometry->add_button_to_panel(PANEL_hvac_node, _("Set duct bounds"), HVACDUCT_SET_BOUNDS, HvacCB);
+      glui_geometry->add_button_to_panel(PANEL_hvac_node, _("Set node bounds"), HVACNODE_SET_BOUNDS, HvacCB);
+    }
     HvacCB(HVAC_PROPS);
+    HvacCB(HVAC_SHOW_NETWORKS);
+    HvacCB(HVAC_SHOW_CONNECTIONS);
   }
 
   if(have_obsts == 1){
@@ -566,7 +886,7 @@ extern "C" void GluiGeometrySetup(int main_window){
     if(nsurfinfo>0){
       glui_geometry->add_statictext_to_panel(PANEL_faces, "");
 
-      LIST_obst_surface[DOWN_X] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Left"), surface_indices+DOWN_X, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[DOWN_X] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Left"), surface_indices+DOWN_X, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[DOWN_X]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -578,7 +898,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[DOWN_X]->add_item(i, surfacelabel);
       }
 
-      LIST_obst_surface[UP_X] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Right"), surface_indices+UP_X, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[UP_X] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Right"), surface_indices+UP_X, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[UP_X]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -590,7 +910,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[UP_X]->add_item(i, surfacelabel);
       }
 
-      LIST_obst_surface[DOWN_Y] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Front"), surface_indices+DOWN_Y, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[DOWN_Y] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Front"), surface_indices+DOWN_Y, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[DOWN_Y]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -602,7 +922,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[DOWN_Y]->add_item(i, surfacelabel);
       }
 
-      LIST_obst_surface[UP_Y] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Back"), surface_indices+UP_Y, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[UP_Y] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Back"), surface_indices+UP_Y, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[UP_Y]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -614,7 +934,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[UP_Y]->add_item(i, surfacelabel);
       }
 
-      LIST_obst_surface[DOWN_Z] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Down"), surface_indices+DOWN_Z, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[DOWN_Z] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Down"), surface_indices+DOWN_Z, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[DOWN_Z]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -626,7 +946,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[DOWN_Z]->add_item(i, surfacelabel);
       }
 
-      LIST_obst_surface[UP_Z] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Up"), surface_indices+UP_Z, UPDATE_LIST, ObjectCB);
+      LIST_obst_surface[UP_Z] = glui_geometry->add_listbox_to_panel(PANEL_faces, _("Up"), surface_indices+UP_Z, UPDATE_LIST, GLUIObjectCB);
       LIST_obst_surface[UP_Z]->set_w(260);
       for(i = 0; i<nsurfinfo; i++){
         surfdata *surfi;
@@ -638,7 +958,7 @@ extern "C" void GluiGeometrySetup(int main_window){
         LIST_obst_surface[UP_Z]->add_item(i, surfacelabel);
       }
 
-      ObjectCB(RADIO_WALL);
+      GLUIObjectCB(RADIO_WALL);
       for(i = 0; i<6; i++){
         LIST_obst_surface[i]->disable();
       }
@@ -656,7 +976,8 @@ extern "C" void GluiGeometrySetup(int main_window){
 
     }
     STATIC_blockage_index = glui_geometry->add_statictext_to_panel(PANEL_obj_stretch4, "&OBST number: ");
-    STATIC_label = glui_geometry->add_statictext_to_panel(PANEL_obj_stretch4, "&OBST label:");
+    STATIC_label          = glui_geometry->add_statictext_to_panel(PANEL_obj_stretch4, "&OBST label:");
+    STATIC_id_label       = glui_geometry->add_statictext_to_panel(PANEL_obj_stretch4, "&OBST ID:");
 
     PANEL_obj_stretch2 = glui_geometry->add_panel_to_panel(ROLLOUT_structured, "Coordinates");
 
@@ -668,16 +989,16 @@ extern "C" void GluiGeometrySetup(int main_window){
     }
     blockage_as_input = 1-blockage_snapped;
     CHECKBOX_blockage = glui_geometry->add_checkbox_to_panel(PANEL_obj_stretch2, _("Dimensions snapped to grid"), &blockage_snapped,
-                                                             BLOCKAGE_AS_INPUT, ObjectCB);
+                                                             BLOCKAGE_AS_INPUT, GLUIObjectCB);
     PANEL_obj_stretch3 = glui_geometry->add_panel_to_panel(PANEL_obj_stretch2, "", GLUI_PANEL_NONE);
-    EDIT_xmin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "x", GLUI_EDITTEXT_FLOAT, &glui_block_xmin, XMIN_SPIN, ObjectCB);
-    EDIT_ymin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "y", GLUI_EDITTEXT_FLOAT, &glui_block_ymin, YMIN_SPIN, ObjectCB);
-    EDIT_zmin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "z", GLUI_EDITTEXT_FLOAT, &glui_block_zmin, ZMIN_SPIN, ObjectCB);
+    EDIT_xmin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "x", GLUI_EDITTEXT_FLOAT, &glui_block_xmin, XMIN_SPIN, GLUIObjectCB);
+    EDIT_ymin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "y", GLUI_EDITTEXT_FLOAT, &glui_block_ymin, YMIN_SPIN, GLUIObjectCB);
+    EDIT_zmin = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "z", GLUI_EDITTEXT_FLOAT, &glui_block_zmin, ZMIN_SPIN, GLUIObjectCB);
 
     glui_geometry->add_column_to_panel(PANEL_obj_stretch3, false);
-    EDIT_xmax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_xmax, XMAX_SPIN, ObjectCB);
-    EDIT_ymax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_ymax, YMAX_SPIN, ObjectCB);
-    EDIT_zmax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_zmax, ZMAX_SPIN, ObjectCB);
+    EDIT_xmax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_xmax, XMAX_SPIN, GLUIObjectCB);
+    EDIT_ymax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_ymax, YMAX_SPIN, GLUIObjectCB);
+    EDIT_zmax = glui_geometry->add_edittext_to_panel(PANEL_obj_stretch3, "", GLUI_EDITTEXT_FLOAT, &glui_block_zmax, ZMAX_SPIN, GLUIObjectCB);
 
     EDIT_xmin->disable();
     EDIT_ymin->disable();
@@ -686,7 +1007,7 @@ extern "C" void GluiGeometrySetup(int main_window){
     EDIT_xmax->disable();
     EDIT_ymax->disable();
     EDIT_zmax->disable();
-    ObjectCB(BLOCKAGE_AS_INPUT);
+    GLUIObjectCB(BLOCKAGE_AS_INPUT);
 
     EDIT_xmin->set_float_limits(xplt_orig[0], xplt_orig[ibar], GLUI_LIMIT_CLAMP);
     EDIT_xmax->set_float_limits(xplt_orig[0], xplt_orig[ibar], GLUI_LIMIT_CLAMP);
@@ -718,9 +1039,9 @@ extern "C" void GluiGeometrySetup(int main_window){
     PANEL_face_cface->set_alignment(GLUI_ALIGN_LEFT);
     PANEL_triangles = glui_geometry->add_panel_to_panel(PANEL_face_cface, "faces");
     PANEL_triangles->set_alignment(GLUI_ALIGN_LEFT);
-    CHECKBOX_surface_solid = glui_geometry->add_checkbox_to_panel(PANEL_triangles, "solid", &show_faces_shaded, VOL_SHOWHIDE, VolumeCB);
+    CHECKBOX_surface_solid = glui_geometry->add_checkbox_to_panel(PANEL_triangles,   "solid",   &show_faces_shaded,  VOL_SHOWHIDE, VolumeCB);
     CHECKBOX_surface_outline = glui_geometry->add_checkbox_to_panel(PANEL_triangles, "outline", &show_faces_outline, VOL_SHOWHIDE, VolumeCB);
-    CHECKBOX_surface_points = glui_geometry->add_checkbox_to_panel(PANEL_triangles, "points", &show_geom_verts, VOL_SHOWHIDE, VolumeCB);
+    CHECKBOX_surface_points = glui_geometry->add_checkbox_to_panel(PANEL_triangles,  "points",  &show_geom_verts,    VOL_SHOWHIDE, VolumeCB);
 
     if(ncgeominfo>0){
       glui_geometry->add_column_to_panel(PANEL_face_cface, false);
@@ -738,7 +1059,7 @@ extern "C" void GluiGeometrySetup(int main_window){
 
     PANEL_geom_offset_outline = glui_geometry->add_panel_to_panel(PANEL_group1, "offset outline/points");
     PANEL_geom_offset_outline->set_alignment(GLUI_ALIGN_LEFT);
-    glui_geometry->add_spinner_to_panel(PANEL_geom_offset_outline, "normal", GLUI_SPINNER_FLOAT, &geom_norm_offset);
+    glui_geometry->add_spinner_to_panel(PANEL_geom_offset_outline, "normal",   GLUI_SPINNER_FLOAT, &geom_norm_offset);
     glui_geometry->add_spinner_to_panel(PANEL_geom_offset_outline, "vertical", GLUI_SPINNER_FLOAT, &geom_dz_offset);
 
     PANEL_boundingbox = glui_geometry->add_panel_to_panel(PANEL_group1, "show bounding box");
@@ -763,16 +1084,15 @@ extern "C" void GluiGeometrySetup(int main_window){
     SPINNER_geom_ivecfactor = glui_geometry->add_spinner_to_panel(PANEL_normals, "length", GLUI_SPINNER_INT, &geom_ivecfactor, GEOM_IVECFACTOR, VolumeCB);
     SPINNER_geom_ivecfactor->set_int_limits(0, 200);
 
+    PANEL_outlinecolor = glui_geometry->add_panel_to_panel(PANEL_group1, "outline color when grid is shown");
+    SPINNER_outlinecolor_red   = glui_geometry->add_spinner_to_panel(PANEL_outlinecolor, "red",   GLUI_SPINNER_INT, glui_outlinecolor  , GEOM_OUTLINECOLOR, VolumeCB);
+    SPINNER_outlinecolor_green = glui_geometry->add_spinner_to_panel(PANEL_outlinecolor, "green", GLUI_SPINNER_INT, glui_outlinecolor+1, GEOM_OUTLINECOLOR, VolumeCB);
+    SPINNER_outlinecolor_blue  = glui_geometry->add_spinner_to_panel(PANEL_outlinecolor, "blue",  GLUI_SPINNER_INT, glui_outlinecolor+2, GEOM_OUTLINECOLOR, VolumeCB);
+    SPINNER_outlinecolor_red->set_int_limits(0, 255);
+    SPINNER_outlinecolor_green->set_int_limits(0, 255);
+    SPINNER_outlinecolor_blue->set_int_limits(0, 255);
 
     glui_geometry->add_column_to_panel(PANEL_group1, false);
-
-    if(have_volumes==1){
-      PANEL_volumes = glui_geometry->add_panel_to_panel(PANEL_group1, "volumes");
-      CHECKBOX_volumes_interior = glui_geometry->add_checkbox_to_panel(PANEL_volumes, "interior", &show_volumes_interior);
-      CHECKBOX_volumes_exterior = glui_geometry->add_checkbox_to_panel(PANEL_volumes, "exterior", &show_volumes_exterior);
-      CHECKBOX_interior_solid = glui_geometry->add_checkbox_to_panel(PANEL_volumes, "shaded", &show_volumes_solid, VOL_SHOWHIDE, VolumeCB);
-      CHECKBOX_interior_outline = glui_geometry->add_checkbox_to_panel(PANEL_volumes, "outline", &show_volumes_outline, VOL_SHOWHIDE, VolumeCB);
-    }
 
     UpdateGeomAreas();
 
@@ -800,7 +1120,7 @@ extern "C" void GluiGeometrySetup(int main_window){
     STATIC_vertx2 = glui_geometry->add_statictext_to_panel(PANEL_properties_vertex, "x2:");
     STATIC_verty2 = glui_geometry->add_statictext_to_panel(PANEL_properties_vertex, "y2:");
     STATIC_vertz2 = glui_geometry->add_statictext_to_panel(PANEL_properties_vertex, "z2:");
-    UpdateVertexInfo(NULL, NULL);
+    GLUIUpdateVertexInfo(NULL, NULL);
 
     PANEL_properties_triangle = glui_geometry->add_panel_to_panel(PANEL_properties2, "triangle");
     STATIC_tri_area = glui_geometry->add_statictext_to_panel(PANEL_properties_triangle, "area:");
@@ -878,9 +1198,6 @@ extern "C" void GluiGeometrySetup(int main_window){
     PANEL_geom_show->set_alignment(GLUI_ALIGN_LEFT);
     if(terrain_nindices>0){
       CHECKBOX_showonly_top = glui_geometry->add_checkbox_to_panel(PANEL_geom_show, "only top surface", &terrain_showonly_top, SHOWONLY_TOP, VolumeCB);
-#ifdef pp_TERRAIN_UPDATE
-      glui_geometry->add_button_to_panel(PANEL_geom_show, _("Update normals"), UPDATE_NORMALS, VolumeCB);
-#endif
     }
     CHECKBOX_showgeom_inside_domain = glui_geometry->add_checkbox_to_panel(PANEL_geom_show, "inside FDS domain", &showgeom_inside_domain, GEOM_FDS_DOMAIN, VolumeCB);
     CHECKBOX_showgeom_outside_domain = glui_geometry->add_checkbox_to_panel(PANEL_geom_show, "outside FDS domain", &showgeom_outside_domain, GEOM_FDS_DOMAIN, VolumeCB);
@@ -910,14 +1227,29 @@ extern "C" void GluiGeometrySetup(int main_window){
         }
       }
     }
+#ifdef pp_DECIMATE
+    if(nterraininfo > 0){
+      terrain_decimate_delta     = MAX((xbarFDS - xbar0FDS)/screenWidth, (ybarFDS - ybar0FDS)/screenHeight);
+      terrain_decimate_delta_min = terrain_decimate_delta/4.0;
+      PANEL_terrain_decimate = glui_geometry->add_panel_to_panel(PANEL_group1, "Decimate terrain geometry");
+      SPINNER_terrain_deimate_delta = glui_geometry->add_spinner_to_panel(PANEL_terrain_decimate, "delta", GLUI_SPINNER_FLOAT, &terrain_decimate_delta, GEOM_DECIMATE_DELTA, VolumeCB);
+      CHECKBOX_use_decimate_geom = glui_geometry->add_checkbox_to_panel(PANEL_terrain_decimate, "use decimated geometry", &use_decimate_geom);
+      BUTTON_reset_zbounds = glui_geometry->add_button_to_panel(PANEL_terrain_decimate, _("Decimate"), GEOM_DECIMATE, VolumeCB);
+      PANEL_terrain_decimate_sizes = glui_geometry->add_panel_to_panel(PANEL_terrain_decimate, "Sizes (approximate)");
+      STATIC_terrain_cell_size = glui_geometry->add_statictext_to_panel(PANEL_terrain_decimate_sizes, "cell:");
+      STATIC_terrain_pixel_size = glui_geometry->add_statictext_to_panel(PANEL_terrain_decimate_sizes,"pixel:");
+      STATIC_terrain_geom_size  = glui_geometry->add_statictext_to_panel(PANEL_terrain_decimate_sizes, "geom:");
+      UpdateTerrainSizes();
+    }
+#endif
 
     PANEL_elevation_color = glui_geometry->add_panel_to_panel(PANEL_group1, "color by elevation");
     PANEL_elevation_color->set_alignment(GLUI_ALIGN_LEFT);
     CHECKBOX_show_texture_1dimage = glui_geometry->add_checkbox_to_panel(PANEL_elevation_color, "show elevation colors", &show_texture_1dimage, SHOW_TEXTURE_1D_IMAGE, VolumeCB);
+    GetGeomZBounds(&terrain_zmin, &terrain_zmax);
     terrain_zlevel = (terrain_zmin+terrain_zmax)/2.0;
     CHECKBOX_show_zlevel = glui_geometry->add_checkbox_to_panel(PANEL_elevation_color, "hilight elevation", &show_zlevel, SHOW_ZLEVEL, VolumeCB);
 
-    GetGeomZBounds(&terrain_zmin, &terrain_zmax);
     SPINNER_geom_zmin = glui_geometry->add_spinner_to_panel(PANEL_elevation_color, "zmin", GLUI_SPINNER_FLOAT, &terrain_zmin, TERRAIN_ZMIN, VolumeCB);
     SPINNER_geom_zmin->set_float_limits(zbar0ORIG, zbarORIG);
 
@@ -928,7 +1260,25 @@ extern "C" void GluiGeometrySetup(int main_window){
     SPINNER_geom_zlevel->set_float_limits(zbar0ORIG, zbarORIG);
 
     VolumeCB(GEOM_VERT_EXAG);
-    BUTTON_reset_zbounds = glui_geometry->add_button_to_panel(PANEL_elevation_color, _("Reset zmin/zmax"), RESET_ZBOUNDS, VolumeCB);
+    BUTTON_reset_zbounds = glui_geometry->add_button_to_panel(PANEL_elevation_color, _("Reset"), RESET_ZBOUNDS, VolumeCB);
+  }
+
+  if(nterraininfo>0&&ngeominfo==0){
+    ROLLOUT_terrain = glui_geometry->add_rollout("Terrain", false, TERRAIN_ROLLOUT, GeomRolloutCB);
+    INSERT_ROLLOUT(ROLLOUT_terrain, glui_geometry);
+    ADDPROCINFO(geomprocinfo, ngeomprocinfo, ROLLOUT_terrain, TERRAIN_ROLLOUT, glui_geometry);
+
+    CHECKBOX_terrain_top_surface = glui_geometry->add_checkbox_to_panel(ROLLOUT_terrain, "Show only top surface",
+      &terrain_showonly_top, TERRAIN_TOP_ONLY, TerrainCB);
+    RADIO_terrain_type = glui_geometry->add_radiogroup_to_panel(ROLLOUT_terrain, &visTerrainType, TERRAIN_TYPE, TerrainCB);
+    glui_geometry->add_radiobutton_to_group(RADIO_terrain_type, "3D surface");
+    glui_geometry->add_radiobutton_to_group(RADIO_terrain_type, "Image");
+    glui_geometry->add_radiobutton_to_group(RADIO_terrain_type, "Hidden");
+    SPINNER_terrain_skip = glui_geometry->add_spinner_to_panel(ROLLOUT_terrain, "terrain skip", GLUI_SPINNER_INT, &terrain_skip);
+    SPINNER_terrain_skip->set_int_limits(1, 10);
+#define SLICE_SKIP 124
+    SPINNER_slice_skip2 = glui_geometry->add_spinner_to_panel(ROLLOUT_terrain, "slice data skip", GLUI_SPINNER_INT, &slice_skip, SLICE_SKIP, GLUISliceBoundCB);
+    GLUISliceBoundCB(SLICE_SKIP);
   }
 
   PANEL_geom_close = glui_geometry->add_panel("", GLUI_PANEL_NONE);
@@ -945,9 +1295,57 @@ extern "C" void GluiGeometrySetup(int main_window){
   glui_geometry->set_main_gfx_window( main_window );
 }
 
+/* ------------------ TerrainCB ------------------------ */
+
+void TerrainCB(int var){
+  switch (var){
+    case TERRAIN_TYPE:
+      GeometryMenu(17+visTerrainType);
+      break;
+    case TERRAIN_TOP_ONLY:
+      terrain_showonly_top = 1 - terrain_showonly_top;
+      GeometryMenu(17+TERRAIN_TOP);
+      GLUIUpdateShowOnlyTop();
+      break;
+    default:
+    assert(FFALSE);
+    break;
+  }
+}
+
+/* ------------------ GetGeomZBounds ------------------------ */
+
+void GetGeomZBounds(float *zmin, float *zmax){
+  int i;
+  geomlistdata *terrain;
+  int first = 1;
+
+  if(geominfo->geomlistinfo == NULL)return;
+  terrain = geominfo->geomlistinfo - 1;
+
+  for(i = 0; i < terrain->nverts; i++){
+    vertdata *verti;
+    float zval;
+
+    verti = terrain->verts + i;
+    zval = terrain->zORIG[i];
+    if(terrain_showonly_top == 0 || verti->vert_norm[2] > 0.0){
+      if(first == 1){
+        *zmin = zval;
+        *zmax = zval;
+        first = 0;
+      }
+      else{
+        *zmin = MIN(*zmin, zval);
+        *zmax = MAX(*zmax, zval);
+      }
+    }
+  }
+}
+
 /* ------------------ VolumeCB ------------------------ */
 
-extern "C" void VolumeCB(int var){
+void VolumeCB(int var){
   int i;
   switch(var){
   case SURF_GET:
@@ -1016,7 +1414,7 @@ extern "C" void VolumeCB(int var){
     case GEOM_PROP_VERTEX2:
       selected_geom_triangle = -1;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
     break;
@@ -1031,12 +1429,6 @@ extern "C" void VolumeCB(int var){
   case SHOWONLY_TOP:
     updatemenu = 1;
     break;
-#ifdef pp_TERRAIN_UPDATE
-  case UPDATE_NORMALS:
-    terrain_update_normals = 1;
-    GLUTPOSTREDISPLAY;
-    break;
-#endif
   case SHOW_ZLEVEL:
     if(show_texture_1dimage==0&&show_zlevel==1){
       show_texture_1dimage = 1;
@@ -1048,6 +1440,8 @@ extern "C" void VolumeCB(int var){
   break;
   case RESET_ZBOUNDS:
     GetGeomZBounds(&terrain_zmin, &terrain_zmax);
+    terrain_zlevel = (terrain_zmin+terrain_zmax)/2.0;
+    SPINNER_geom_zlevel->set_float_val(terrain_zlevel);
     SPINNER_geom_zmin->set_float_val(terrain_zmin);
     SPINNER_geom_zmax->set_float_val(terrain_zmax);
     SPINNER_geom_zlevel->set_float_limits(terrain_zmin, terrain_zmax);
@@ -1067,12 +1461,26 @@ extern "C" void VolumeCB(int var){
         texti = terrain_textures+i;
         if(texti->loaded==1){
           texti->display = 0;
-          UpdateTerrainTexture(i);
+          GLUIUpdateTerrainTexture(i);
         }
       }
       updatemenu = 1;
     }
     break;
+  case GEOM_OUTLINECOLOR:
+    break;
+#ifdef pp_DECIMATE
+  case GEOM_DECIMATE:
+    UpdateTerrainSizes();
+    DecimateAllTerrains();
+    break;
+  case GEOM_DECIMATE_DELTA:
+    if(terrain_decimate_delta < terrain_decimate_delta_min){
+      terrain_decimate_delta = terrain_decimate_delta_min;
+      SPINNER_terrain_deimate_delta->set_float_val(terrain_decimate_delta);
+    }
+    break;
+#endif
   case GEOM_IVECFACTOR:
     geom_vecfactor = (float)geom_ivecfactor/1000.0;
     break;
@@ -1086,34 +1494,28 @@ extern "C" void VolumeCB(int var){
     updatemenu=1;
     break;
   case VOL_USE_CFACES:
-    if(glui_use_cfaces==1&&show_faces_outline==0){
-      show_faces_outline = 1;
-      CHECKBOX_surface_outline->set_int_val(1);
-      VolumeCB(VOL_SHOWHIDE);
-    }
-    blocklocation--;
-    use_cfaces = 1 - glui_use_cfaces;
-    Keyboard('q',FROM_SMOKEVIEW);
+    VolumeCB(VOL_SHOWHIDE);
+    Keyboard('q',FROM_GEOM_DIALOG);
     break;
   case GEOM_BOUNDING_BOX:
     updatemenu=1;
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
 }
 
-/* ------------------ HideGluiHVAC ------------------------ */
+/* ------------------ GLUIHideHVAC ------------------------ */
 
-extern "C" void HideGluiHVAC(void){
+extern "C" void GLUIHideHVAC(void){
   showhvac_dialog = 0;
-  CloseRollouts(glui_geometry);
+  GLUICloseRollouts(glui_geometry);
 }
 
-/* ------------------ ShowGluiHVAC ------------------------ */
+/* ------------------ GLUIShowHVAC ------------------------ */
 
-extern "C" void ShowGluiHVAC(void){
+extern "C" void GLUIShowHVAC(void){
   if(glui_geometry!=NULL && ROLLOUT_hvac!=NULL){
     showhvac_dialog=1;
     glui_geometry->show();
@@ -1121,21 +1523,21 @@ extern "C" void ShowGluiHVAC(void){
   }
 }
 
-/* ------------------ HideGluiGeometry ------------------------ */
+/* ------------------ GLUIHideGeometry ------------------------ */
 
-extern "C" void HideGluiGeometry(void){
+extern "C" void GLUIHideGeometry(void){
   blockageSelect=0;
-  CloseRollouts(glui_geometry);
+  GLUICloseRollouts(glui_geometry);
   showedit_dialog=0;
   editwindow_status=CLOSE_WINDOW;
 }
 
-/* ------------------ ShowGluiGeometry ------------------------ */
+/* ------------------ GLUIShowGeometry ------------------------ */
 
-extern "C" void ShowGluiGeometry(void){
+extern "C" void GLUIShowGeometry(void){
   showedit_dialog=1;
   blockageSelect=1;
-  UpdateBlockVals(NOT_SELECT_BLOCKS);
+  GLUIUpdateBlockVals(NOT_SELECT_BLOCKS);
   if(glui_geometry!=NULL){
     glui_geometry->show();
     if(ROLLOUT_unstructured!=NULL&&ROLLOUT_structured==NULL){
@@ -1147,9 +1549,29 @@ extern "C" void ShowGluiGeometry(void){
   }
 }
 
-/* ------------------ UpdateBlockVals ------------------------ */
+/* ------------------ GLUIShowTerrain ------------------------ */
 
-extern "C" void UpdateBlockVals(int flag){
+extern "C" void GLUIShowTerrain(void){
+  showterrain_dialog = 1;
+  if(glui_geometry != NULL){
+    glui_geometry->show();
+    if(ROLLOUT_terrain != NULL){
+      ROLLOUT_terrain->open();
+    }
+  }
+}
+
+/* ------------------ GLUIHideTerrain ------------------------ */
+
+extern "C" void GLUIHideTerrain(void){
+  showterrain_dialog = 0;
+  GLUICloseRollouts(glui_geometry);
+  editwindow_status = CLOSE_WINDOW;
+}
+
+/* ------------------ GLUIUpdateBlockVals ------------------------ */
+
+extern "C" void GLUIUpdateBlockVals(int flag){
   float xmin, xmax, ymin, ymax, zmin, zmax;
   int imin, jmin, kmin;
   int i;
@@ -1182,12 +1604,13 @@ extern "C" void UpdateBlockVals(int flag){
   EDIT_zmax->set_float_val(zmax);
   if(bchighlight!=NULL&&nsurfinfo>0){
     wall_case=bchighlight->walltype;
-    ObjectCB(RADIO_WALL);
+    GLUIObjectCB(RADIO_WALL);
   }
 
   if(flag==SELECT_BLOCKS){
     if(bchighlight!=NULL){
       char dialog_label[255];
+      char dialog_id[255];
       meshdata *blockmesh;
 
       if(nmeshes>1){
@@ -1202,6 +1625,9 @@ extern "C" void UpdateBlockVals(int flag){
       strcpy(dialog_label,"&OBST label: ");
       strcat(dialog_label,bchighlight->label);
       STATIC_label->set_text(dialog_label);
+      strcpy(dialog_id, "&OBST ID: ");
+      strcat(dialog_id, bchighlight->id_label);
+      STATIC_id_label->set_text(dialog_id);
 
       switch(wall_case){
       case WALL_1:
@@ -1219,7 +1645,7 @@ extern "C" void UpdateBlockVals(int flag){
       case WALL_6:
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
 
@@ -1243,9 +1669,9 @@ extern "C" void UpdateBlockVals(int flag){
   }
 }
 
-/* ------------------ ObjectCB ------------------------ */
+/* ------------------ GLUIObjectCB ------------------------ */
 
-extern "C" void ObjectCB(int var){
+extern "C" void GLUIObjectCB(int var){
   int i,temp;
   switch(var){
     case VISAXISLABELS:
@@ -1281,7 +1707,7 @@ extern "C" void ObjectCB(int var){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
 
@@ -1346,10 +1772,10 @@ extern "C" void ObjectCB(int var){
         LIST_obst_surface[UP_X]->set_name("");
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
-      ObjectCB(UPDATE_LIST);
+      GLUIObjectCB(UPDATE_LIST);
       break;
       case BLOCKAGE_AS_INPUT2:
       case BLOCKAGE_AS_INPUT:
@@ -1366,10 +1792,10 @@ extern "C" void ObjectCB(int var){
             blocklocation=BLOCKlocation_grid;
           }
         }
-        UpdateBlockVals(NOT_SELECT_BLOCKS);
+        GLUIUpdateBlockVals(NOT_SELECT_BLOCKS);
         break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }

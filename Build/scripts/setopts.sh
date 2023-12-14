@@ -1,8 +1,8 @@
 #!/bin/bash
 SMV_MAKE_OPTS=
 TEST=
-SMV_MPI=
 TESTFLAG=
+SANITIZE=
 if [ "`uname`" == "Darwin" ]; then
   GLUT=
   GLIBDIROPT=
@@ -22,7 +22,7 @@ if [ "$BUILD_ALL" == "1" ]; then
   FULL_BUILD="[default]"
 fi
 TESTOPT=
-while getopts 'AfhiLmpqQrtT' OPTION
+while getopts 'AfhiLmpqQrStT' OPTION
 do
 case $OPTION in
   A)
@@ -39,6 +39,7 @@ case $OPTION in
   echo "-i - incremental build"
   echo "-L - rebuild all libraries"
   echo "-p - build a profiling version of smokeview"
+  echo "-S - build smokeview with sanitize debug options"
   echo "-t - build a test version of smokeview"
   echo "-T - same as -t"
   exit
@@ -64,6 +65,9 @@ case $OPTION in
   ;;
   r)
   ;;
+  S)
+   SANITIZE=1
+  ;;
   t)
    TESTOPT=1
    ;;
@@ -81,7 +85,7 @@ fi
 export SMV_MAKE_OPTS
 export GLUT
 export TEST
-export SMV_MPI
+export SANITIZE
 if [ "$NOQUARTZ" != "" ]; then
   TESTFLAG="$TESTFLAG -D pp_NOQUARTZ"
   SMV_MAKE_OPTS="$SMV_MAKE_OPTS NOQUARTZ=\"\" "

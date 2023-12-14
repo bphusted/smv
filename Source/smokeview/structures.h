@@ -1,5 +1,10 @@
-#ifndef FLOWFILES_H_DEFINED
-#define FLOWFILES_H_DEFINED
+#ifndef STRUCTURES_H_DEFINED
+#define STRUCTURES_H_DEFINED
+
+#if defined(WIN32)
+#include <windows.h>
+#endif
+#include GL_H
 
 #include "stdio_m.h"
 #include "string_util.h" // necessary for flowlabels
@@ -47,10 +52,14 @@ typedef struct _csvdata{
 
 /* --------------------------  _csvfiledata ------------------------------------ */
 
+#define CSV_FDS_FORMAT   0
+#define CSV_CFAST_FORMAT 1
 typedef struct _csvfiledata {
   char *file;
   csvdata *csvinfo, *time;
+  int defined, glui_defined;
   int ncsvinfo;
+  int format;
   int loaded, display;
   char c_type[32];
 } csvfiledata;
@@ -88,35 +97,20 @@ typedef struct _tridata {
   int vert_index[3], exterior, geomtype, insolid, outside_domain;
   vertdata *verts[3];
   edgedata *edges[3];
+#ifdef pp_DECIMATE
+  int ival;
+#endif
 } tridata;
-
-/* --------------------------  tetdata ------------------------------------ */
-
-typedef struct _tetdata {
-  float distance, *color, face_norm[4];
-  int vert_index[4],exterior[4],faces[12];
-  struct _matldata *matl;
-  vertdata *verts[4];
-  edgedata *edges[4];
-} tetdata;
-
-/* --------------------------  volfacedata ------------------------------------ */
-
-typedef struct _volfacedata {
-  tetdata *vol;
-  int faceindex;
-} volfacedata;
 
 /* --------------------------  geomlistdata ------------------------------------ */
 
 typedef struct _geomlistdata {
-  int nverts,nedges,ntriangles,nvolumes,norms_defined;
+  int nverts,nedges,ntriangles,norms_defined;
   float *zORIG;
   vertdata *verts;
   float *vertvals;
   tridata *triangles, **triangleptrs, **connected_triangles;
   edgedata *edges;
-  tetdata *volumes;
 } geomlistdata;
 
 /* --------------------------  geomobjdata ------------------------------------ */
@@ -173,19 +167,12 @@ typedef struct _screendata {
 /* --------------------------  bounddata ------------------------------------ */
 
 typedef struct _boundata {
+#ifdef pp_HIST
   float percentile_min, percentile_max;
+#endif
   float global_min, global_max;
   int defined;
 } bounddata;
-
-/* --------------------------  boundfiledata ------------------------------------ */
-
-#ifdef pp_CACHE_FILEBOUNDS
-typedef struct _boundfiledata {
-  char *file;
-  float valmin, valmax;
-} boundfiledata;
-#endif
 
 /* --------------------------  propdata ------------------------------------ */
 #define PROPVARMAX 100
@@ -265,13 +252,20 @@ typedef struct _scriptdata {
   char command_label[32], quantity2[32];
   int ival,ival2,ival3,ival4,ival5;
   int need_graphics;
-  char *cval,*cval2;
+  char *cval,*cval2,*cval3;
   float fval,fval2,fval3,fval4,fval5;
   int exit,first,remove_frame;
   char *quantity, *id, *c_pbxyz;
   float pbxyz_val;
   int pbxyz_dir, cell_centered, vector;
 } scriptdata;
+
+/* --------------------------  keyworddata ------------------------------------ */
+
+typedef struct _keyworddata{
+  char keyword[32];
+  int index, nparams, line_number;
+} keyworddata;
 
 /* --------------------------  treedata ------------------------------------ */
 
@@ -287,14 +281,29 @@ typedef struct _treedata {
 
 /* --------------------------  colorbardata ------------------------------------ */
 
+#define CB_RAINBOW    0
+#define CB_ORIGINAL   1
+#define CB_LINEAR     2
+#define CB_DIVERGENT  3
+#define CB_CIRCULAR   4
+#define CB_DEPRECATED 5
+#define CB_USER       6
+#define CB_OTHER      7
+#define INTERP_RGB    0
+#define INTERP_LAB    1
 typedef struct _colorbardata {
-  char label[1024], *label_ptr ;        // menu label
-  int nnodes,nodehilight,nsplits;
-  unsigned char rgb_node[3*1024];
-  unsigned char alpha[1024];
-  unsigned char index_node[1024];  // colorbar index
-  unsigned char splits[1024];
-  float colorbar[3*1024];
+  char menu_label[1024];        // menu label
+  char colorbar_type[256];      // rainbow, linear, divergent, etc
+  int nnodes, nnodes_orig, node_index_orig[1024], nodehilight, type;
+  unsigned char node_rgb_orig[3*1024], node_rgb[3*1024], colorbar_alpha[1024];
+  unsigned char node_index[1024];  // colorbar index
+  float node_dist[1024];
+  float colorbar_dist[256];
+  int dist_ind[256];
+  float colorbar_dist_delta[1024];
+  int interp;   // (LAB or RGB)
+  int can_adjust, adjusted;
+  float colorbar_rgb[3*1024], colorbar_lab[3*1024];
 } colorbardata;
 
 /* --------------------------  colortabledata ------------------------------------ */
@@ -363,13 +372,6 @@ typedef struct _terraindata {
   struct _meshdata *terrain_mesh;
 } terraindata;
 
-/* --------------------------  matldata ------------------------------------ */
-
-typedef struct _matldata {
-  char *matllabel;
-  float *color;
-} matldata;
-
 /* --------------------------  surfdata ------------------------------------ */
 
 typedef struct _surfdata {
@@ -423,9 +425,6 @@ typedef struct _facedata {
   int patchpresent;
   struct _culldata *cullport;
   int **showtimelist_handle;
-#ifdef pp_THINFACE
-  int thinface;
-#endif
   int show_bothsides, is_interior;
   struct _blockagedata *bc;
   surfdata *surfinfo;
@@ -458,8 +457,8 @@ typedef struct _blockagedata {
   int ijk[6];
   float xmin, xmax, ymin, ymax, zmin, zmax;
   float xyzEXACT[6], xyzDELTA[18];
-  surfdata *surf[6];
-  propdata *prop;
+  struct _surfdata *surf[6];
+  struct _propdata *prop;
   int walltype,walltypeORIG;
   int surf_index[6];
   int patchvis[7];
@@ -478,11 +477,11 @@ typedef struct _blockagedata {
   int *showtimelist;
   unsigned char *showhide;
   int nshowtime, show;
-  char *label;
+  char *label, *id_label;
   float *color;
   int colorindex;
   int useblockcolor;
-  facedata *faceinfo[6];
+  struct _facedata *faceinfo[6];
   float texture_origin[3];
 } blockagedata;
 
@@ -615,7 +614,7 @@ typedef struct _isodata {
   float fds_delta;
   int nnormaltable;
   char *file,*tfile;
-  int dataflag,geomflag;
+  int dataflag,geomflag,get_isolevels;
   int is_fed;
   feddata *fedptr;
   int type;
@@ -635,9 +634,13 @@ typedef struct _isodata {
   int *geom_nstatics, *geom_ndynamics;
   float *geom_times, *geom_vals;
   float geom_globalmin, geom_globalmax;
+#ifdef pp_HIST
   float geom_percentilemin, geom_percentilemax;
+#endif
   int geom_nvals;
+#ifdef pp_HIST
   histogramdata *histogram;
+#endif
 } isodata;
 
 /* --------------------------  volrenderdata ------------------------------------ */
@@ -645,25 +648,14 @@ typedef struct _isodata {
 typedef struct _volrenderdata {
   char *rendermeshlabel;
   int is_compressed;
-#ifdef pp_VOLCO2
-  struct _slicedata   *smokeslice,            *fireslice,            *lightslice,            *co2slice;
-  unsigned char *c_smokedata_view,      *c_firedata_view,      *c_lightdata_view,      *c_co2data_view;
-  int      *nsmokedata_compressed, *nfiredata_compressed, *nlightdata_compressed, *nco2data_compressed;
-  float           *smokedata_full,        *firedata_full,        *lightdata_full,        *co2data_full;
-  float           *smokedata_view,        *firedata_view,        *lightdata_view,        *co2data_view;
-  LINT                  *smokepos,              *firepos,              *lightpos,              *co2pos;
-  void              *smokedataptr,          *firedataptr,          *lightdataptr,          *co2dataptr;
-  void            **smokedataptrs,        **firedataptrs,        **lightdataptrs,        **co2dataptrs;
-#else
-  struct _slicedata   *smokeslice,            *fireslice,            *lightslice;
-  unsigned char *c_smokedata_view,      *c_firedata_view,      *c_lightdata_view;
-  int      *nsmokedata_compressed, *nfiredata_compressed, *nlightdata_compressed;
-  float           *smokedata_full,        *firedata_full,        *lightdata_full;
-  float           *smokedata_view,        *firedata_view,        *lightdata_view;
-  LINT                  *smokepos,              *firepos,              *lightpos;
-  void              *smokedataptr,          *firedataptr,          *lightdataptr;
-  void            **smokedataptrs,        **firedataptrs,        **lightdataptrs;
-#endif
+  struct _slicedata   *smokeslice,            *fireslice;
+  unsigned char *c_smokedata_view,      *c_firedata_view;
+  int      *nsmokedata_compressed, *nfiredata_compressed;
+  float           *smokedata_full,        *firedata_full;
+  float           *smokedata_view,        *firedata_view;
+  LINT                  *smokepos,              *firepos;
+  void              *smokedataptr,          *firedataptr;
+  void            **smokedataptrs,        **firedataptrs;
   float *times;
   int *dataready;
   int itime, ntimes, times_defined;
@@ -697,16 +689,16 @@ typedef struct _meshdata {
 
   int *cutcells, ncutcells;
   int update_smoke3dcolors;
-  terraindata *terrain;
+  struct _terraindata *terrain;
   float *znodes_complete;
   int nznodes;
   struct _meshdata *floor_mesh;
-  int mesh_type;
 #ifdef pp_GPU
   GLuint blockage_texture_id;
   struct _smoke3ddata *smoke3d_soot, *smoke3d_hrrpuv, *smoke3d_temp, *smoke3d_co2;
-  GLuint     volsmoke_texture_id,     volfire_texture_id,     vollight_texture_id;
-  float *volsmoke_texture_buffer,*volfire_texture_buffer,*vollight_texture_buffer;
+  GLuint     volsmoke_texture_id,     volfire_texture_id;
+  float *volsmoke_texture_buffer,*volfire_texture_buffer;
+  int voltest_update;
   GLuint slice3d_texture_id;
   float *slice3d_c_buffer;
 #ifdef pp_WINGPU
@@ -728,7 +720,9 @@ typedef struct _meshdata {
                      //  MESH_INT if face i is completely adjacent to another mesh,
                      // MESH_BOTH if face i is neither
   int inside;
+  int in_frustum;    // 1 if part or all of mesh is in the view frustum
   float boxmin[3], boxmiddle[3], boxmax[3], dbox[3], boxeps[3], dcell, dcell3[3], verts[24], eyedist;
+  float boxeps_fds[3];
   float slice_min[3], slice_max[3];
   float boxmin_scaled[3], boxmiddle_scaled[3], boxmax_scaled[3];
   float xyz_bar0[3], xyz_bar[3];
@@ -742,6 +736,8 @@ typedef struct _meshdata {
   int plotx, ploty, plotz;
   int slicedir;
   int plotn;
+  int *imap, *jmap, *kmap;
+  int n_imap, n_jmap, n_kmap;
 
   char *c_iblank_node0, *c_iblank_cell0, *c_iblank_x0, *c_iblank_y0, *c_iblank_z0;
   char *c_iblank_node_html;
@@ -758,10 +754,10 @@ typedef struct _meshdata {
   int zdist_flag;
   unsigned char *iblank_smoke3d;
   int iblank_smoke3d_defined;
-  blockagedata **blockageinfoptrs;
+  struct _blockagedata **blockageinfoptrs;
   int *obst_bysize;
-  ventdata *ventinfo;
-  cventdata *cventinfo;
+  struct _ventdata *ventinfo;
+  struct _cventdata *cventinfo;
   unsigned char *is_block_terrain;
   unsigned char *iqdata;
   float *qdata, *udata, *vdata, *wdata;
@@ -773,10 +769,10 @@ typedef struct _meshdata {
   float *dx_yz, *dy_yz, *dz_yz;
   char *c_iblank_xy, *c_iblank_xz, *c_iblank_yz;
   float plot3d_speedmax;
-  contour plot3dcontour1,plot3dcontour2,plot3dcontour3;
-  isosurface currentsurf,currentsurf2;
-  isosurface *blockagesurface;
-  isosurface **blockagesurfaces;
+  struct _contour *plot3dcontour1, *plot3dcontour2, *plot3dcontour3;
+  struct _isosurface *currentsurf, *currentsurf2;
+  struct _isosurface *blockagesurface;
+  struct _isosurface **blockagesurfaces;
   int ntc;
   int nspr;
   float *xsprplot, *ysprplot, *zsprplot, *tspr;
@@ -785,7 +781,7 @@ typedef struct _meshdata {
   float *xspr, *yspr, *zspr;
   float *xheat, *yheat, *zheat;
 
-  isosurface *animatedsurfaces;
+  struct _isosurface *animatedsurfaces;
   int nisolevels, *showlevels;
   float *isolevels;
   int isomin_index, isomax_index;
@@ -795,12 +791,14 @@ typedef struct _meshdata {
   int iso_itime;
   int smokedir,smokedir_old;
   float dxDdx, dyDdx, dzDdx, dxyDdx, dxzDdx, dyzDdx, dxyz_orig[3];
+  float smoke_dist[6];
   float norm[3];
   float dplane_min[4], dplane_max[4];
 
   int *boundarytype;
   int *patchdir,*patch_surfindex;
   int *pi1, *pi2, *pj1, *pj2, *pk1, *pk2;
+  struct _meshdata *skip_nabors[6];
   int *blockonpatch;
   struct _meshdata **meshonpatch;
   struct _meshdata *nabors[6];
@@ -825,10 +823,10 @@ typedef struct _meshdata {
 
   int nface_textures, nface_outlines, nfaces;
   int nface_normals_single, nface_normals_double, nface_transparent_double;
-  facedata *faceinfo, **face_normals_single, **face_normals_double, **face_transparent_double, **face_textures, **face_outlines;
-  facedata **face_normals_single_DOWN_X,**face_normals_single_UP_X;
-  facedata **face_normals_single_DOWN_Y,**face_normals_single_UP_Y;
-  facedata **face_normals_single_DOWN_Z,**face_normals_single_UP_Z;
+  struct _facedata *faceinfo, **face_normals_single, **face_normals_double, **face_transparent_double, **face_textures, **face_outlines;
+  struct _facedata **face_normals_single_DOWN_X,**face_normals_single_UP_X;
+  struct _facedata **face_normals_single_DOWN_Y,**face_normals_single_UP_Y;
+  struct _facedata **face_normals_single_DOWN_Z,**face_normals_single_UP_Z;
   int nface_normals_single_DOWN_X,nface_normals_single_UP_X;
   int nface_normals_single_DOWN_Y,nface_normals_single_UP_Y;
   int nface_normals_single_DOWN_Z,nface_normals_single_UP_Z;
@@ -839,22 +837,28 @@ typedef struct _meshdata {
   float vent_offset[3];
   int select_min, select_max;
 
-  clipdata box_clipinfo;
+  struct _clipdata *box_clipinfo;
 
   unsigned char *merge_color,*merge_alpha;
   unsigned char *smokecolor_ptr, *smokealpha_ptr;
-  float *light_fraction;
-  unsigned char *uc_light_fraction;
 
   char *label;
 
   int ncullgeominfo,nxyzgeomcull[3],nxyzskipgeomcull[3];
   struct _culldata *cullgeominfo;
+#ifdef pp_DECIMATE
+  struct _vertdata *dec_verts;
+  struct _tridata *dec_triangles;
+  int ndec_triangles, ndec_verts, decimated;
+#endif
 
-  volrenderdata volrenderinfo;
 
-  meshplanedata gsliceinfo;
-  meshplanedata *smokeplaneinfo;
+  struct _volrenderdata *volrenderinfo;
+  int  nslicex,  nslicey,  nslicez;
+  struct _slicedata **slicex, **slicey, **slicez;
+
+  struct _meshplanedata *gsliceinfo;
+  struct _meshplanedata *smokeplaneinfo;
   int nsmokeplaneinfo;
   int s_offset[3];
 } meshdata;
@@ -864,8 +868,8 @@ typedef struct _meshdata {
 typedef struct _supermeshdata {
 #ifdef pp_GPU
   GLuint blockage_texture_id;
-  GLuint volsmoke_texture_id,         volfire_texture_id,     vollight_texture_id;
-  float *volsmoke_texture_buffer,*volfire_texture_buffer,*vollight_texture_buffer;
+  GLuint volsmoke_texture_id,         volfire_texture_id;
+  float *volsmoke_texture_buffer,*volfire_texture_buffer;
 #endif
   float *f_iblank_cell;
   float boxmin_scaled[3], boxmax_scaled[3];
@@ -899,6 +903,7 @@ typedef struct _culldata {
 typedef struct _keyframe {
   int selected, npoints;
   float time;
+  float pause_time, cum_pause_time;
   float view_smv[3], view2_smv[3];
   float xyz_fds[3], xyz_smv[3];
   float arc_dist, line_dist, xyz_diff[3], view_diff[3];
@@ -914,8 +919,7 @@ typedef struct _tourdata {
   keyframe first_frame,last_frame, **keyframe_list;
   int glui_avatar_index, display2;
   float *path_times,*keyframe_times;
-  float xyz_smv[3], view_smv[3], *path_xyzs, *path_views;
-  struct _keyframe **path_keyframes;
+  float xyz_smv[3], view_smv[3];
   float global_dist;
   int *timeslist;
   int ntimes, nkeyframes;
@@ -938,7 +942,7 @@ typedef struct _tokendata {
 } tokendata;
 
 /* --------------------------  sv_object_frame ------------------------------------ */
-#define NEVAC_TOKENS 12
+
 typedef struct _sv_object_frame {
   int use_bw;
   int error;
@@ -966,11 +970,13 @@ typedef struct _sv_object {
 
 /* --------------------------  device ------------------------------------ */
 
+#define LENDEVICEBUFFER 255
 typedef struct _device {
   int active;
+  int show;
   int screenijk[3], visval, target_index;
-  char deviceID[30], csvlabel[30], *labelptr;
-  char quantity[30], unit[30];
+  char deviceID[LENDEVICEBUFFER], csvlabel[LENDEVICEBUFFER], *labelptr;
+  char quantity[LENDEVICEBUFFER], unit[LENDEVICEBUFFER];
   float *times, *vals;
   float *vals_orig;
   int update_avg;
@@ -1154,7 +1160,6 @@ typedef struct _cameradata {
 
 typedef struct _partclassdata {
   char *name;
-  int kind;
   int col_diameter, col_length, col_azimuth, col_elevation;
   int col_u_vel, col_v_vel, col_w_vel;
   float dx, dy, dz;
@@ -1179,21 +1184,24 @@ typedef struct _partpropdata {
   float *partlabelvals;
   unsigned char *class_present, *class_vis;
   unsigned int *class_types;
-  int human_property, particle_property;
   int display;
   float ppartlevels256[256];
   float valmin, valmax;
   int imin, imax;
   float dlg_global_valmin, dlg_global_valmax;
   int set_global_bounds;
+#ifdef pp_HIST
   float percentile_min, percentile_max;
+#endif
   float user_min, user_max;
   int setvalmin, setvalmax;
   float chopmin, chopmax;
   int setchopmin, setchopmax;
   int extreme_min, extreme_max;
+#ifdef pp_HIST
   histogramdata histogram;
   int *buckets;
+#endif
 } partpropdata;
 
 /* --------------------------  part5data ------------------------------------ */
@@ -1205,7 +1213,6 @@ typedef struct _part5data {
   short *sx, *sy, *sz;
   float *dsx, *dsy, *dsz;
   float *avatar_angle, *avatar_width, *avatar_depth, *avatar_height;
-  int humancolor_varindex;
   int *tags,*sort_tags;
   unsigned char *vis_part;
   float *rvals,**rvalsptr;
@@ -1218,7 +1225,11 @@ typedef struct _part5data {
 typedef struct _partdata {
   FILE_m *stream;
 
-  char *file, *comp_file, *size_file, *reg_file, *hist_file, *bound_file;
+#ifdef pp_HIST
+  char *file, *size_file, *reg_file, *hist_file, *bound_file;
+#else
+  char *file, *size_file, *reg_file, *bound_file;
+#endif
   int have_bound_file;
   int seq_id, autoload, loaded, skipload, request_load, display, reload, finalize;
   int loadstatus, boundstatus;
@@ -1226,6 +1237,7 @@ typedef struct _partdata {
   int blocknumber;
   int *timeslist, ntimes, itime;
   FILE_SIZE bound_file_size;
+  int npoints;
 
   float zoffset, *times;
   FILE_SIZE reg_file_size, file_size;
@@ -1237,6 +1249,9 @@ typedef struct _partdata {
   partclassdata **partclassptr;
   part5data *data5;
   histogramdata **histograms;
+#ifndef pp_HIST
+  int hist_update;
+#endif
   int bounds_set;
   float *global_min, *global_max;
   float *valmin_fds, *valmax_fds;   // read in from .bnd files
@@ -1247,9 +1262,6 @@ typedef struct _partdata {
   int *sort_tags;
   short *sx, *sy, *sz;
   unsigned char *irvals;
-#ifdef pp_SMOKE3DSTREAM
-  streamdata *part_stream;
-#endif
 } partdata;
 
 /* --------------------------  compdata ------------------------------------ */
@@ -1263,9 +1275,9 @@ typedef struct _compdata {
 #define DUCT_COMPONENT_SYMBOLS 1
 #define DUCT_COMPONENT_HIDE    2
 
-#define NODE_INFO_LABELS  0
-#define NODE_INFO_SYMBOLS 1
-#define NODE_INFO_HIDE    2
+#define NODE_FILTERS_LABELS  0
+#define NODE_FILTERS_SYMBOLS 1
+#define NODE_FILTERS_HIDE    2
 
 #define DUCT_XYZ 0
 #define DUCT_YXZ 1
@@ -1274,30 +1286,43 @@ typedef struct _compdata {
 #define DUCT_YZX 4
 #define DUCT_ZYX 5
 
+
+/* --------------------------  hvacconnectdata ------------------------------------ */
+
+typedef struct hvacconnectdata {
+  int index, display;
+} hvacconnectdata;
+
+
 /* --------------------------  hvacnodedata ------------------------------------ */
 
 typedef struct _hvacnodedata {
   char *node_name, *vent_name, *duct_name, *network_name;
   char c_filter[10];
-  int node_id, filter, use_node;
+  int node_id, filter, use_node, connect_id;
+  hvacconnectdata *connect;
   struct _hvacductdata *duct;
-  float xyz[3];
+  float xyz[3], xyz_orig[3];
 } hvacnodedata;
 
 /* --------------------------  hvacductdata ------------------------------------ */
 
 typedef struct _hvacductdata {
   char *duct_name, *network_name, c_component[4];
-  int duct_id, component, nduct_cells, n_waypoints;
-  int node_id_from, node_id_to, use_duct;
+  int duct_id, component, nduct_cells;
+  int node_id_from, node_id_to, use_duct, connect_id;
+  hvacconnectdata *connect;
   int nact_times, *act_states, metro_path;
   float *act_times;
   float xyz_symbol[3], xyz_symbol_metro[3];
   float xyz_label[3],  xyz_label_metro[3];
-  float xyz_metro1[3], xyz_metro2[3], xyz_metro3[3], xyz_metro4[3];
   float normal[3], normal_metro[3];
   hvacnodedata* node_from, * node_to;
-  float *waypoints;
+  float xyz_met[12], *xyz_reg;
+  int   nxyz_met, nxyz_reg;
+  float *xyz_met_cell, *xyz_reg_cell;
+  int   nxyz_met_cell, nxyz_reg_cell;
+  int    *cell_met,    *cell_reg;
 } hvacductdata;
 
 /* --------------------------  hvacdata ------------------------------------ */
@@ -1307,14 +1332,38 @@ typedef struct _hvacdata {
   int display;
   int show_node_labels, show_duct_labels;
   int show_filters, show_component;
-  float node_size, duct_size, duct_width;
+  float cell_node_size, node_size, component_size, duct_width, filter_size;
   int duct_color[3], node_color[3];
 } hvacdata;
+
+/* --------------------------  hvacvaldata ------------------------------------ */
+
+typedef struct _hvacvaldata{
+  float *vals, valmin, valmax;
+  int setvalmin, setvalmax;
+  int vis, nvals;
+  int firstshort;
+  char  colorlabels[12][11];
+  float colorvalues[12];
+  float levels256[256];
+  flowlabels label;
+} hvacvaldata;
+
+/* --------------------------  _hvacvalsdata ------------------------------------ */
+
+typedef struct _hvacvalsdata {
+  char *file;
+  int loaded;
+  int n_node_vars, n_duct_vars, ntimes;
+  float *times;
+  hvacvaldata *node_vars, *duct_vars;
+} hvacvalsdata;
 
 /* --------------------------  menudata ------------------------------------ */
 
 typedef struct _menudata {
   int menuvar;
+  int status;
 #ifdef pp_DEBUG_SUBMENU
   int *menuvar_ptr;
 #endif
@@ -1331,7 +1380,6 @@ typedef struct _fileboundsdata {
 /* --------------------------  slicedata ------------------------------------ */
 
 typedef struct _slicedata {
-  int mesh_type;
   int seq_id, autoload;
   char *file, *size_file, *bound_file;
   int have_bound_file;
@@ -1384,6 +1432,10 @@ typedef struct _slicedata {
   int have_agl_data;
   int volslice;
   int is1, is2, js1, js2, ks1, ks2;
+  int iis1, iis2, jjs1, jjs2, kks1, kks2;
+  int *imap, *jmap, *kmap;
+  int n_imap, n_jmap, n_kmap;
+  int plotx, ploty, plotz;
   int ijk_min[3], ijk_max[3];
   float xmin,xmax,ymin,ymax,zmin,zmax;
   float xyz_min[3], xyz_max[3];
@@ -1401,14 +1453,17 @@ typedef struct _slicedata {
   int cell_center;
   float delta_orig, dplane_min, dplane_max;
   int extreme_min, extreme_max;
+#ifndef pp_HIST
+  int hist_update;
+#endif
+  int nhistograms;
   histogramdata *histograms;
   histogramdata *histogram;
-  int nhistograms;
   struct _patchdata *patchgeom;
   FILE_SIZE file_size;
   int *geom_offsets;
   devicedata vals2d;
-#ifdef pp_SLICETHREAD
+#ifdef pp_SLICE_MULTI
   int loadstatus;
 #endif
 } slicedata;
@@ -1422,7 +1477,6 @@ typedef struct _slicemenudata {
 /* --------------------------  multislicedata ------------------------------------ */
 
 typedef struct _multislicedata {
-  int mesh_type;
   int seq_id, autoload;
   int loaded, display;
   int ndirxyz[4];
@@ -1435,7 +1489,6 @@ typedef struct _multislicedata {
 /* --------------------------  multivslicedata ------------------------------------ */
 
 typedef struct _multivslicedata {
-  int mesh_type;
   int seq_id, autoload;
   int loaded,display,mvslicefile_labelindex;
   int nvslices;
@@ -1445,6 +1498,16 @@ typedef struct _multivslicedata {
   char menulabel2[128];
 } multivslicedata;
 
+/* --------------------------  splitslicedata ------------------------------------ */
+
+typedef struct _splitslicedata {
+  slicedata *slice;
+  meshdata *mesh;
+  int splitdir;
+  int is1, is2, js1, js2, ks1, ks2;
+  int plotx, ploty, plotz;
+} splitslicedata;
+
 /* --------------------------  cpp_boundsdata ------------------------------------ */
 
 typedef struct _cpp_boundsdata {
@@ -1453,7 +1516,11 @@ typedef struct _cpp_boundsdata {
   float valmin[4], valmax[4], chopmin, chopmax;
   float glui_valmin, glui_valmax;
   int set_valtype, cache;
+#ifdef pp_HIST
   histogramdata *hist;
+#else
+  histogramdata *hist;
+#endif
 } cpp_boundsdata;
 /* --------------------------  boundsdata ------------------------------------ */
 
@@ -1513,22 +1580,28 @@ typedef struct {
 typedef struct _smoke3ddata {
   int seq_id,autoload;
   char *file;
-#ifdef pp_SMOKE3DSTREAM
-  char *size_file;
-#endif
   char *comp_file, *reg_file;
+#ifdef pp_SMOKE16
+  char *s16_file;
+#endif
   int filetype;
   int loaded, finalize, display, request_load, primary_file;
   int is_zlib;
+#ifdef pp_SMOKE16
+  int is_s16;
+#endif
   smokestatedata *smokestate;
   int blocknumber;
   int type;
   int is1, is2, js1, js2, ks1, ks2;
-  int compression_type;
+  int compression_type, compression_type_temp;
   flowlabels label;
   char menulabel[128];
   float *times;
   int *use_smokeframe;
+#ifdef pp_SMOKE_SKIP
+  int *smokeframe_loaded;
+#endif
   float extinct, valmin, valmax;
   char cextinct[32];
 #define ALPHA_X  0
@@ -1546,6 +1619,10 @@ typedef struct _smoke3ddata {
 
   int ncomp_smoke_total;
   int *nchars_compressed_smoke, *nchars_compressed_smoke_full;
+#ifdef pp_SMOKE16
+  unsigned short *val16s;
+  float *val16_mins, *val16_maxs, *times16;
+#endif
   float maxval;
   unsigned char *smokeframe_in, *smokeframe_out, **smokeframe_comp_list;
   unsigned char *smokeview_tmp;
@@ -1553,10 +1630,7 @@ typedef struct _smoke3ddata {
   unsigned char *frame_all_zeros;
   FILE_SIZE file_size;
   float *smoke_boxmin, *smoke_boxmax;
-  smokedata smoke, light;
-#ifdef pp_SMOKE3DSTREAM
-  streamdata *smoke_stream;
-#endif
+  smokedata smoke;
   int dir;
 } smoke3ddata;
 
@@ -1580,17 +1654,23 @@ typedef struct _patchdata {
   char *filetype_label;
   geomdata *geominfo;
   int *geom_offsets;
-  //int *patchsize;
+#ifdef pp_BNDF
+  int have_geom;
+#endif
   int skip,dir;
   float xyz_min[3], xyz_max[3];
   int ntimes, ntimes_old;
   int version;
   int patch_filetype, structured;
   int shortlabel_index;
+  int *cvals_offsets, *cvals_sizes;
+  unsigned char *cbuffer;
+  int is_compressed;
+  int cbuffer_size;
   int boundary;
   int inuse,inuse_getbounds;
   int firstshort;
-  int compression_type;
+  int compression_type, compression_type_temp;
   int setvalmin, setvalmax;
   float valmin_fds, valmax_fds;   // read in from .bnd files
   float valmin_smv, valmax_smv;   // computed by smokeview
@@ -1598,13 +1678,14 @@ typedef struct _patchdata {
   int setchopmin, setchopmax;
   float chopmin, chopmax;
   float diff_valmin, diff_valmax;
-  int blocknumber,loaded,display;
+  int blocknumber,loaded,loaded2,display;
   float *geom_times, *geom_vals;
   int *geom_timeslist,geom_itime;
-  unsigned char *geom_ivals, **geom_ivals_static, **geom_ivals_dynamic;
+  unsigned char *geom_ivals;
+  int *geom_ivals_static_offset, *geom_ivals_dynamic_offset;
+  int *geom_vals_static_offset,  *geom_vals_dynamic_offset;
   unsigned char *geom_ival_static, *geom_ival_dynamic;
-  float **geom_vals_static, **geom_vals_dynamic;
-  float  *geom_val_static,   *geom_val_dynamic;
+  float         *geom_val_static,  *geom_val_dynamic;
   int geom_nval_static, geom_nval_dynamic;
   int *geom_nstatics, *geom_ndynamics;
   int geom_vert2tri;
@@ -1615,8 +1696,12 @@ typedef struct _patchdata {
   int extreme_min, extreme_max;
   time_t modtime;
   int finalize;
+#ifdef pp_HIST
   histogramdata *histogram;
   int histogram_nframes;
+#else
+  int hist_update;
+#endif
   bounddata bounds;
   boundsdata *bounds2;
 } patchdata;
@@ -1625,10 +1710,8 @@ typedef struct _patchdata {
 
 typedef struct _plot3ddata {
   int seq_id, autoload;
-  char *file,*reg_file,*comp_file;
-  char *bound_file;
+  char *file, *reg_file,  *bound_file;
   int have_bound_file;
-  int compression_type;
   int finalize;
   int memory_id;
   float time;
@@ -1641,6 +1724,10 @@ typedef struct _plot3ddata {
   flowlabels label[MAXPLOT3DVARS];
   char menulabel[256], longlabel[256], timelabel[256];
   histogramdata *histograms[MAXPLOT3DVARS];
+#ifndef pp_HIST
+  int hist_update;
+#endif
+
 } plot3ddata;
 
 /* --------------------------  zonedata ------------------------------------ */

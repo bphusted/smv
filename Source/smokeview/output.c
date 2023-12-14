@@ -6,6 +6,7 @@
 #endif
 
 #include GLUT_H
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -19,7 +20,7 @@
 
 /* ------------------ PrintTime ------------------------ */
 
-void PrintTime(const char *filepath, int line, float *timer, const char *label){
+void PrintTime(const char *filepath, int line, float *timer, const char *label, int stop_flag){
   char *file;
 
   if(show_timings==0)return;
@@ -32,7 +33,7 @@ void PrintTime(const char *filepath, int line, float *timer, const char *label){
     file++;
   }
   if(label!=NULL){
-    STOP_TIMER(*timer);
+    if(stop_flag==1)STOP_TIMER(*timer);
     if(*timer>0.1)printf("%s/%i/%s %.1f s\n", file, line, label, *timer);
   }
   START_TIMER(*timer);
@@ -40,6 +41,7 @@ void PrintTime(const char *filepath, int line, float *timer, const char *label){
 
   /* ------------------ DrawHistogram ------------------------ */
 
+#ifdef pp_HIST
 #define MAXN 201
 void DrawHistogram(histogramdata *histogram, float valmin, float valmax, float gmin, float gmax, int ndigits){
   float x[MAXN], y[MAXN], ymax, *buckets, valmin_normalized, valmax_normalized;
@@ -186,6 +188,7 @@ void DrawHistogram(histogramdata *histogram, float valmin, float valmax, float g
   }
   glPopMatrix();
 }
+#endif
 
 /* ------------------------ GetFontHeight ------------------------- */
 
@@ -203,7 +206,7 @@ int GetFontHeight(void){
         height = glutStrokeWidth(GLUT_STROKE_ROMAN, 'A');
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   return height;
@@ -848,4 +851,3 @@ void ScaleFont3D(void){
     glLineWidth((float)scaled_font3d_thickness);
   }
 }
-

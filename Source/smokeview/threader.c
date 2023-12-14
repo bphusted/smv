@@ -7,22 +7,24 @@
 #include "smokeviewvars.h"
 #include "IOvolsmoke.h"
 #include "smokestream.h"
+#include GLUT_H
 
 /* ------------------ InitMultiThreading ------------------------ */
 
 void InitMultiThreading(void){
 #ifdef pp_THREAD
   pthread_mutex_init(&mutexREADALLGEOM, NULL);
-#ifdef pp_SLICETHREAD
+#ifdef pp_SLICE_MULTI
   pthread_mutex_init(&mutexSLICE_LOAD, NULL);
 #endif
   pthread_mutex_init(&mutexPART_LOAD, NULL);
   pthread_mutex_init(&mutexCOMPRESS,NULL);
   pthread_mutex_init(&mutexVOLLOAD,NULL);
   pthread_mutex_init(&mutexIBLANK, NULL);
-#ifdef pp_STREAM
-  pthread_mutex_init(&mutexSTREAM, NULL);
-#endif
+  pthread_mutex_init(&mutexSETUP_FFMPEG, NULL);
+  pthread_mutex_init(&mutexCHECKFILES, NULL);
+  pthread_mutex_init(&mutexSLICEBOUNDS, NULL);
+  pthread_mutex_init(&mutexPATCHBOUNDS, NULL);
 #endif
 }
 
@@ -34,7 +36,7 @@ void CompressSVZip2(void){
   char shellcommand[1024];
 
   PRINTF("Compressing...\n");
-  CompressOnOff(OFF);
+  GLUICompressOnOff(OFF);
 
   WriteIni(LOCAL_INI, NULL);
 
@@ -59,7 +61,7 @@ void CompressSVZip2(void){
   system(shellcommand);
   UpdateSmoke3dMenuLabels();
   UpdateBoundaryMenuLabels();
-  CompressOnOff(ON);
+  GLUICompressOnOff(ON);
   updatemenu = 1;
   PRINTF("Compression completed\n");
 }
@@ -124,9 +126,11 @@ void *MtLoadAllPartFiles(void *arg){
 void LoadAllPartFilesMT(int partnum){
   int i;
 
+#ifdef pp_HIST
   if(part_multithread==1&&current_script_command==NULL&&update_generate_part_histograms==-1){
     JOIN_PART_HIST;
   }
+#endif
   if(part_multithread==0){
     LoadAllPartFiles(partnum);
     return;
@@ -138,6 +142,7 @@ void LoadAllPartFilesMT(int partnum){
   for(i=0;i<npartthread_ids;i++){
     pthread_join(partthread_ids[i],NULL);
   }
+  INIT_PRINT_TIMER(part_timer);
   if(partnum<0){
     for(i = 0; i<npartinfo; i++){
       partdata *parti;
@@ -159,6 +164,7 @@ void LoadAllPartFilesMT(int partnum){
   else{
     FinalizePartLoad(partinfo+partnum);
   }
+  PRINT_TIMER(part_timer, "finalize particle time");
 }
 #else
 void LoadAllPartFilesMT(int partnum){
@@ -233,6 +239,8 @@ void *MtReadAllGeom(void *arg){
   return NULL;
 }
 
+/* ------------------ ReadAllGeomMT ------------------------ */
+
 void ReadAllGeomMT(void){
   if(readallgeom_multithread==1){
     int i;
@@ -251,8 +259,9 @@ void ReadAllGeomMT(void){
   }
 }
 
-/* ------------------ MtReadAllGeom ------------------------ */
+/* ------------------ MTGeneratePartHistograms ------------------------ */
 
+#ifdef pp_HIST
 void *MTGeneratePartHistograms(void *arg){
   GeneratePartHistograms();
   pthread_exit(NULL);
@@ -260,8 +269,10 @@ void *MTGeneratePartHistograms(void *arg){
 }
 
 void GeneratePartHistogramsMT(void){
+  in_part_mt = 1;
   pthread_create(&generate_part_histogram_id, NULL, MTGeneratePartHistograms, NULL);
 }
+#endif
 #else
 void GeneratePartHistogramsMT(void){
   GeneratePartHistograms();
@@ -320,78 +331,7 @@ void *MtReadBufferi(void *arg){
 }
 #endif
 
-#ifdef pp_THREADBUFFER
-/* ------------------ ReadBuffer ------------------------ */
-
-int ReadBuffer(char *filename, int filesize, char *buffer, int nthreads, int use_multithread){
-  int i, filesizei, returnval;
-  readbufferdata *readbufferinfo;
-
-  returnval = 1;
-  filesizei = filesize/nthreads;
-
-  NewMemory((void **)&readbufferinfo, nthreads*sizeof(readbufferdata));
-#ifdef pp_THREAD
-  if(use_multithread==1&&nthreads>1){
-    NewMemory((void **)&readbuffer_ids, nthreads*sizeof(pthread_t));
-  }
-#endif
-
-  for(i = 0; i<nthreads; i++){
-    readbufferdata *readbufferi;
-    int start, end;
-
-    start = i*filesizei;
-    if(i==nthreads-1){
-      end = filesize;
-    }
-    else{
-      end = start+filesizei;
-    }
-    if(end>filesize)end = filesize;;
-
-    readbufferi = readbufferinfo+i;
-    readbufferi->buffer = buffer;
-    readbufferi->filename = filename;
-    readbufferi->start = start;
-    readbufferi->size = end-start;
-#ifdef pp_THREAD
-    if(use_multithread==1&&nthreads>1){
-      pthread_create(readbuffer_ids+i, NULL, MtReadBufferi, readbufferi);
-    }
-    else{
-      ReadBufferi(readbufferi);
-    }
-  }
-  if(use_multithread==1&&nthreads>1){
-    for(i = 0; i<nthreads; i++){
-      pthread_join(readbuffer_ids[i], NULL);
-    }
-  }
-#else
-    ReadBufferi(readbufferi);
-  }
-#endif
-  for(i = 0; i<nthreads; i++){
-    readbufferdata *readbufferi;
-
-    readbufferi = readbufferinfo+i;
-    if(readbufferi->returnval==0){
-      returnval = 0;
-      break;
-    }
-  }
-  FREEMEMORY(readbufferinfo);
-#ifdef pp_THREAD
-  if(use_multithread==1&&nthreads>1){
-    FREEMEMORY(readbuffer_ids);
-  }
-#endif
-  return returnval;
-}
-#endif
-
-  //***************************** multi threading triangle update ***********************************
+//***************************** multi threading triangle update ***********************************
 
 /* ------------------ MtUpdateTriangles ------------------------ */
 
@@ -446,19 +386,190 @@ void FinishUpdateTriangles(void){
 }
 #endif
 
-//***************************** multi threaded blank creation ***********************************
+/* ------------------ MtSetupFF ------------------------ */
 
-/* ------------------ MtMakeIBlank ------------------------ */
+void SetupFF(void){
+  int have_ffmpeg_local, have_ffplay_local;
+
+#ifdef WIN32
+  have_ffmpeg_local = HaveProg("ffmpeg -version> Nul 2>Nul");
+  have_ffplay_local = HaveProg("ffplay -version> Nul 2>Nul");
+#else
+  have_ffmpeg_local = HaveProg("ffmpeg -version >/dev/null 2>/dev/null");
+  have_ffplay_local = HaveProg("ffplay -version >/dev/null 2>/dev/null");
+#endif
+
+  update_ff = 1;
+  have_ffmpeg = have_ffmpeg_local;
+  have_ffplay = have_ffplay_local;
+}
+
+/* ------------------ MtSetupFF ------------------------ */
+
+void *MtSetupFF(void *arg){
+  int have_ffmpeg_local, have_ffplay_local;
+
+#ifdef WIN32
+  have_ffmpeg_local = HaveProg("ffmpeg -version> Nul 2>Nul");
+  have_ffplay_local = HaveProg("ffplay -version> Nul 2>Nul");
+#else
+  have_ffmpeg_local = HaveProg("ffmpeg -version >/dev/null 2>/dev/null");
+  have_ffplay_local = HaveProg("ffplay -version >/dev/null 2>/dev/null");
+#endif
+
+  LOCK_SETUP_FFMPEG
+  update_ff = 1;
+  have_ffmpeg = have_ffmpeg_local;
+  have_ffplay = have_ffplay_local;
+  UNLOCK_SETUP_FFMPEG
 #ifdef pp_THREAD
-void *MtMakeIBlank(void *arg){
+  pthread_exit(NULL);
+#endif
+  return NULL;
+}
 
-  MakeIBlank();
-  SetCVentDirs();
-  LOCK_IBLANK
-  update_setvents = 1;
-  UNLOCK_IBLANK
+/* ------------------ SetupFFMT ------------------------ */
+
+void SetupFFMT(void){
+#ifdef pp_THREAD
+  if(ffmpeg_multithread == 1){
+    pthread_create(&setupff_thread_id, NULL, MtSetupFF, NULL);
+  }
+  else{
+    SetupFF();
+  }
+#else
+  SetupFF();
+#endif
+}
+
+#ifndef pp_CHECK
+/* ------------------ CheckFiles ------------------------ */
+
+void CheckFiles(void){
+  int i;
+
+  LOCK_CHECKFILES;
+  have_compressed_files = 0;
+  UNLOCK_CHECKFILES;
+  for(i=0;i<npatchinfo;i++){
+    patchdata *patchi;
+    int have_file;
+
+    patchi = patchinfo + i;
+    have_file = FILE_EXISTS_CASEDIR(patchi->comp_file);
+    LOCK_CHECKFILES;
+    if(have_file==YES){
+      patchi->compression_type_temp = COMPRESSED_ZLIB;
+      have_compressed_files = 1;
+    }
+    UNLOCK_CHECKFILES;
+  }
+  for(i=0;i<nsmoke3dinfo;i++){
+    smoke3ddata *smoke3di;
+    int have_file;
+
+    smoke3di = smoke3dinfo + i;
+    have_file = FILE_EXISTS_CASEDIR(smoke3di->comp_file);
+    LOCK_CHECKFILES;
+    if(have_file==YES){
+      smoke3di->compression_type_temp = COMPRESSED_ZLIB;
+      have_compressed_files = 1;
+    }
+    UNLOCK_CHECKFILES;
+  }
+  if(have_compressed_files==0)return;
+  LOCK_CHECKFILES;
+  for(i = 0; i < npatchinfo; i++){
+    patchdata *patchi;
+
+    patchi = patchinfo + i;
+    if(patchi->compression_type_temp==COMPRESSED_ZLIB){
+      patchi->compression_type = COMPRESSED_ZLIB;
+      patchi->file             = patchi->comp_file;
+    }
+  }
+  for(i = 0; i < nsmoke3dinfo; i++){
+    smoke3ddata *smoke3di;
+
+    smoke3di = smoke3dinfo + i;
+    if(smoke3di->compression_type_temp==COMPRESSED_ZLIB){
+      smoke3di->file             = smoke3di->comp_file;
+      smoke3di->is_zlib          = 1;
+      smoke3di->compression_type = COMPRESSED_ZLIB;
+    }
+  }
+  updatemenu = 1;
+  UNLOCK_CHECKFILES;
+}
+
+/* ------------------ MtCheckFiles ------------------------ */
+
+#ifdef pp_THREAD
+void *MtCheckFiles(void *arg){
+  CheckFiles();
   pthread_exit(NULL);
   return NULL;
+}
+
+void CheckFilesMT(void){
+  if(checkfiles_multithread==1){
+    pthread_create(&checkfiles_multithread_id, NULL, MtCheckFiles, NULL);
+  }
+  else{
+    CheckFiles();
+  }
+}
+#else
+void CheckFilesMT(void){
+  CheckFiles();
+}
+#endif
+
+/* ------------------ MtGetGlobalSliceBounds ------------------------ */
+
+#ifdef pp_THREAD
+void *MtGetGlobalSliceBounds(void *arg){
+  GetGlobalSliceBoundsFull();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void GetGlobalSliceBoundsMT(void){
+  if(slicebounds_thread == 1){
+    pthread_create(&SLICEBOUNDS_thread_id, NULL, MtGetGlobalSliceBounds, NULL);
+  }
+  else{
+    GetGlobalSliceBoundsFull();
+  }
+}
+#else
+void GetGlobalSliceBoundsMT(void){
+  GetGlobalSliceBounds();
+}
+#endif
+#endif
+
+/* ------------------ MtGetGlobalPatchBounds ------------------------ */
+
+#ifdef pp_THREAD
+void *MtGetGlobalPatchBounds(void *arg){
+  GetGlobalPatchBoundsFull();
+  pthread_exit(NULL);
+  return NULL;
+}
+
+void GetGlobalPatchBoundsMT(void){
+  if(patchbounds_thread == 1){
+    pthread_create(&PATCHBOUNDS_thread_id, NULL, MtGetGlobalPatchBounds, NULL);
+  }
+  else{
+    GetGlobalPatchBoundsFull();
+  }
+}
+#else
+void GetGlobalPatchBoundsMT(void){
+  GetGlobalPatchBounds();
 }
 #endif
 
@@ -491,83 +602,38 @@ void SampleMT(void){
 #endif
 #endif
 
-/* ------------------ I/O streaming ------------------------ */
-
-#ifdef pp_STREAM
+//***************************** multi threaded blank creation ***********************************
 
 #ifdef pp_THREAD
+/* ------------------ MtMakeIBlank ------------------------ */
 
-/* ------------------ MtStreamReadList ------------------------ */
-
-void *MtStreamReadList(void *arg){
-  streamlistargdata *streamlist;
-  streamdata **streams;
-  int nstreams;
-
-  streamlist = (streamlistargdata *)arg;
-
-  streams  = streamlist->streams;
-  nstreams = streamlist->nstreams;
-
-  StreamReadList(streams, nstreams);
+void *MtMakeIBlank(void *arg){
+  MakeIBlank();
+  SetCVentDirs();
+  LOCK_IBLANK
+  update_setvents = 1;
+  UNLOCK_IBLANK
   pthread_exit(NULL);
   return NULL;
 }
 
-/* ------------------ GetThreads ------------------------ */
-
-pthread_t *GetThreads(int nthreads){
-  pthread_t *threads = NULL;
-
-  if(nthreads<=0)return NULL;
-  NewMemory((void **)&threads, nthreads*sizeof(pthread_t));
-  return threads;
-}
-
-/* ------------------ StreamReadListMT ------------------------ */
-
-void StreamReadListMT(streamlistargdata *arg, int nthreads){
-  pthread_t *threads=NULL;
-
-  if(nthreads>0&&stream_multithread==1)threads = GetThreads(nthreads);
-  if(threads!=NULL){
-    int i;
-
-    for(i=0;i<nthreads;i++){
-      pthread_create(threads+i, NULL, MtStreamReadList, (void *)arg);
-    }
-  }
-  else{
-    streamdata **streams;
-    int nstreams;
-
-    streams = arg->streams;
-    nstreams = arg->nstreams;
-    StreamReadList(streams, nstreams);
-  }
-}
-#else
-void StreamReadListMT(streamlistargdata *arg){
-  streamdata **streams;
-  int nstreams;
-
-  streams = arg->streams;
-  nstreams = arg->nstreams;
-  StreamReadList(streams, nstreams);
-}
-#endif
-#endif
-
 /* ------------------ makeiblank_all ------------------------ */
 
-#ifdef pp_THREAD
-void MakeIBlankAll(void){
-  pthread_create(&makeiblank_thread_id, NULL, MtMakeIBlank, NULL);
+void MakeIBlankAllMT(void){
+  if(iblank_multithread == 1){
+    pthread_create(&makeiblank_thread_id, NULL, MtMakeIBlank, NULL);
+  }
+  else{
+    MakeIBlank();
+    SetCVentDirs();
+    update_setvents = 1;
+  }
 }
 #else
-void MakeIBlankAll(void){
+void MakeIBlankAllMT(void){
   MakeIBlank();
   SetCVentDirs();
+  update_setvents = 1;
 }
 #endif
 
@@ -610,6 +676,7 @@ void PSystem(char *commandline){
 
 /* ------------------ Update_Bounds ------------------------ */
 
+#ifdef pp_HIST
 int Update_Bounds(void){
   UpdateAllBoundaryBounds();
 #ifdef pp_THREAD
@@ -633,6 +700,7 @@ void UpdateAllBoundaryBounds(void){
 void UpdateAllBoundaryBounds(void){
   UpdateAllBoundaryBoundsST();
 }
+#endif
 #endif
 
 /* ------------------ MtReadVolsmokeAllFramesAllMeshes2 ------------------------ */

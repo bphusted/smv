@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,14 +66,10 @@ void ClosePartFiles(void){
   }
 }
 
-/* ------------------ GetEvacPartColor ------------------------ */
+/* ------------------ GetPartColor ------------------------ */
 
-#ifdef pp_PARTVAL
 int GetPartColor(float **color_handle, part5data*datacopy, int show_default, int j, int itype,
                      float valmin, float valmax){
-#else
-int GetPartColor(float **color_handle, part5data*datacopy, int show_default, int j, int itype){
-#endif
   float *colorptr;
   unsigned char *color;
   int showcolor;
@@ -82,24 +79,16 @@ int GetPartColor(float **color_handle, part5data*datacopy, int show_default, int
     colorptr = datacopy->partclassbase->rgb;
   }
   else{
-#ifdef pp_PARTVAL
     float *rvals;
-#endif
 
     color = datacopy->irvals + itype*datacopy->npoints;
-#ifdef pp_PARTVAL
     rvals = datacopy->rvals + itype*datacopy->npoints;
-#endif
     {
      int colorj;
-#ifdef pp_PARTVAL
       float rval;
 
-      rval = CLAMP(254.0*(rvals[j]-valmin)/(valmax-valmin), 0.0, 254.0);
+      rval = CLAMP(255.0*(rvals[j]-valmin)/(valmax-valmin), 0.0, 255.0);
       colorj = rval;
-#else
-      colorj = color[j];
-#endif
       colorptr = rgb_part + 4*colorj;
     }
     if(current_property != NULL && (color[j] > current_property->imax || color[j] < current_property->imin))showcolor = 0;
@@ -211,8 +200,8 @@ int GetTagIndex(const partdata *partin_arg, part5data **datain_arg, int tagval_a
     if(parti_local->loaded == 0 || parti_local->display == 0)continue;
 
     if(data_local->npoints == 0)continue;
-    ASSERT(data_local->npoints>0);
-    ASSERT(data_local->sort_tags != NULL);
+    assert(data_local->npoints>0);
+    assert(data_local->sort_tags != NULL);
     returnval_local = bsearch(&tagval_arg, data_local->sort_tags, data_local->npoints, 2 * sizeof(int), CompareTags);
     if(returnval_local== NULL)continue;
     *datain_arg = data_local;
@@ -222,12 +211,11 @@ int GetTagIndex(const partdata *partin_arg, part5data **datain_arg, int tagval_a
 }
 
 /* ------------------ GetPartBounds ------------------------ */
-#ifdef pp_PARTVAL
+
 void GetPartBounds(float *valmin, float *valmax){
   *valmin = part5propinfo[global_prop_index].ppartlevels256[0];
   *valmax = part5propinfo[global_prop_index].ppartlevels256[255];
 }
-#endif
 
 /* ------------------ DrawPart ------------------------ */
 
@@ -238,9 +226,7 @@ void DrawPart(const partdata *parti){
   int i, j;
   int offset_terrain;
   propdata *prop;
-#ifdef pp_PARTVAL
   float valmin, valmax;
-#endif
 
   if(nglobal_times<1||parti->times[0] > global_times[itimes])return;
   if(nterraininfo > 0 && ABS(vertical_factor - 1.0) > 0.01){
@@ -251,15 +237,13 @@ void DrawPart(const partdata *parti){
   }
 
   if(current_property == NULL)return;
-#ifdef pp_PARTVAL
   GetPartBounds(&valmin, &valmax);
   if(valmin>=valmax){
     valmin = 0.0;
     valmax = 1.0;
   }
-#endif
   ipframe = parti->itime;
-  ASSERT(ipframe>=0);
+  assert(ipframe>=0);
   if(ipframe < 0){
     ipframe = 0;
   } //xxx need to check this - why is ipframe < 0 ???
@@ -315,25 +299,15 @@ void DrawPart(const partdata *parti){
                 }
               }
               else{
-#ifdef pp_PARTVAL
                 float *rvals;
-#endif
 
-                color = datacopy->irvals + itype*datacopy->npoints;
-#ifdef pp_PARTVAL
                 rvals = datacopy->rvals+itype*datacopy->npoints;
-#endif
                 for(j = 0;j < datacopy->npoints;j++){
                   if(vis[j] == 1){
                     int colorj;
-
-#ifdef pp_PARTVAL
                     float rval;
-                    rval = CLAMP(254.0*(rvals[j]-valmin)/(valmax-valmin), 0.0, 254.0);
+                    rval = CLAMP(255.0*(rvals[j]-valmin)/(valmax-valmin), 0.0, 255.0);
                     colorj = rval;
-#else
-                    colorj = color[j];
-#endif
                     if(current_property != NULL && (colorj > current_property->imax || colorj < current_property->imin))continue;
                     if(rgb_part[4*colorj+3]==0.0)continue;
                     glColor4fv(rgb_part+4*colorj);
@@ -366,10 +340,12 @@ void DrawPart(const partdata *parti){
                   colorptr = datacopy->partclassbase->rgb;
                 }
                 else{
-                  color = datacopy->irvals + itype*datacopy->npoints;
-                  colorptr = rgb_full[color[j]];
-                }
+                  float *rvals, rval;
 
+                  rvals = datacopy->rvals+itype*datacopy->npoints;
+                  rval = CLAMP(255.0*(rvals[j]-valmin)/(valmax-valmin), 0.0, 255.0);
+                  colorptr = rgb_full[(int)rval];
+                }
                 prop = datacopy->partclassbase->prop;
                 CopyDepVals(partclassi, datacopy, colorptr, prop, j);
                 glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
@@ -515,11 +491,7 @@ void DrawPart(const partdata *parti){
 
         // draw the streak line
 
-#ifdef pp_PARTVAL
         GetPartColor(&colorptr, datacopy, show_default, 0, itype, valmin, valmax);
-#else
-        GetPartColor(&colorptr, datacopy, show_default, 0, itype);
-#endif
         glColor4fv(colorptr);
 
         glLineWidth(streaklinewidth);
@@ -556,11 +528,7 @@ void DrawPart(const partdata *parti){
 
           tagval = datacopy->tags[j];
           if(vis[j] == 0)continue;
-#ifdef pp_PARTVAL
           if(GetPartColor(&colorptr, datacopy, show_default, j, itype, valmin, valmax)==0)continue;
-#else
-          if(GetPartColor(&colorptr, datacopy, show_default, j, itype)==0)continue;
-#endif
           if(colorptr[3]==0.0)continue;
 
           glBegin(GL_LINE_STRIP);
@@ -577,11 +545,7 @@ void DrawPart(const partdata *parti){
             syy = datapast->sy;
             szz = datapast->sz;
 
-#ifdef pp_PARTVAL
             GetPartColor(&colorptr, datacopy, show_default, jj, itype, valmin, valmax);
-#else
-            GetPartColor(&colorptr, datacopy, show_default, jj, itype);
-#endif
             glColor4fv(colorptr);
             glVertex3f(xplts[sxx[jj]], yplts[syy[jj]], zplts[szz[jj]]);
           }
@@ -753,6 +717,7 @@ void UpdateAllPartVis(partdata *parti){
 
 /* ------------------ GetHistFileStatus ------------------------ */
 
+#ifdef pp_HIST
 int GetHistFileStatus(partdata *parti){
 
   // return -1 if history file cannot be created (corresponding particle file does not exist)
@@ -776,6 +741,7 @@ int GetHistFileStatus(partdata *parti){
   if(stat_regfile_buffer.st_mtime > stat_histfile_buffer.st_mtime)return HIST_OLD; // size file is older than particle file
   return HIST_OK;
 }
+#endif
 
 /* ------------------ GetSizeFileStatus ------------------------ */
 
@@ -978,17 +944,18 @@ LINT GetPartHeaderOffset(partdata *parti_arg){
 /* ------------------ CreatePartBoundFile ------------------------ */
 
 void CreatePartBoundFile(partdata *parti){
-  FILE_m *PART5FILE;
+  FILE_m *PART5FILE=NULL;
   int one_local, version_local, nclasses_local;
   int i;
   size_t returncode;
   float time_local;
   int nparts_local, *numtypes_local = NULL, numtypes_temp_local[2];
-  FILE *stream_out_local;
+  FILE *stream_out_local=NULL;
 
-  PART5FILE = fopen_m(parti->reg_file, "rbm");
-  if(PART5FILE==NULL)return;
-  stream_out_local = fopen(parti->bound_file, "w");
+  
+  if(parti->reg_file!=NULL)PART5FILE = fopen_m(parti->reg_file, "rbm");
+  if(parti->reg_file==NULL||PART5FILE==NULL)return;
+  if(parti->bound_file!=NULL)stream_out_local = fopen(parti->bound_file, "w");
   if(stream_out_local==NULL){
     FCLOSE_m(PART5FILE);
     return;
@@ -1081,10 +1048,13 @@ wrapup:
 
 /* ------------------ CreatePartSizeFile ------------------------ */
 
-void CreatePartSizeFile(partdata*parti){
-  FILE *stream_local;
+void CreatePartSizeFile(partdata *parti){
+  FILE *stream_local=NULL;
   LINT header_offset_local;
 
+  if(parti->reg_file!=NULL)stream_local = fopen(parti->reg_file, "rb");
+  if(parti->reg_file==NULL||stream_local==NULL)return;
+  fclose(stream_local);
   header_offset_local =GetPartHeaderOffset(parti);
   stream_local = fopen(parti->bound_file, "r");
   if(stream_local==NULL){
@@ -1197,7 +1167,9 @@ void MergePartHistograms(void){
 void GeneratePartHistograms(void){
   int i;
 
+#ifdef pp_HIST
   EnableDisablePartPercentileDraw(0);
+#endif
   for(i=0;i<npartinfo;i++){
     partdata *parti;
 
@@ -1207,68 +1179,14 @@ void GeneratePartHistograms(void){
     }
   }
   MergePartHistograms();
+#ifdef pp_HIST
   EnableDisablePartPercentileDraw(1);
-  if(part_multithread==1)printf("particle setup complete\n");
-}
-
-/* ------------------ GetPartSizes------------------------ */
-#ifdef pp_PARTSTREAM
-void GetPartSizes(char *file, int *header_size, int *frame_sizes, int nframes){
-  FILE *stream;
-//  size_t file_size;
-  int i, skip;
-
-//  file_size = GetFileSizeSMV(file); use late to make more robust
-
-  stream = fopen(file, "rb");
-  if(stream==NULL)return;
-
-  fseek(stream,12,SEEK_CUR); //one
-  fseek(stream,12,SEEK_CUR); //version
-
-  int nclasses, *numtypes, *numpoints;
-  fseek(stream,4,SEEK_CUR);fread(&nclasses, 4, 1, stream);fseek(stream,4,SEEK_CUR); //nclasses
-
-  NewMemory((void **)&numtypes,2*nclasses*sizeof(int));
-  NewMemory((void **)&numpoints,nclasses*sizeof(int));
-  for(i=0;i<nclasses;i++){
-    int nt[2];
-
-    fseek(stream,4,SEEK_CUR);fread(nt, 4, 2, stream);fseek(stream,4,SEEK_CUR);
-    numtypes[2*i] = nt[0];
-    numtypes[2*i+1] = nt[1];
-    skip = 2*(nt[0]+nt[1])*(8 + 30);
-    fseek(stream,skip,SEEK_CUR);
-  }
-  CheckMemory;
-
-  *header_size = ftell(stream);
-  for(i=0;i<nframes;i++){
-    int j;
-    float time;
-
-   // fseek(stream,12,SEEK_CUR); //time
-    fseek(stream, 4, SEEK_CUR); fread(&time, 4, 1, stream); fseek(stream, 4, SEEK_CUR);
-    for(j=0;j<nclasses;j++){
-      int nparts;
-
-      fseek(stream,4,SEEK_CUR);fread(&nparts, 4, 1, stream);                  fseek(stream,4,SEEK_CUR);      //nparts
-      fseek(stream,4,SEEK_CUR);fseek(stream,NXYZ_COMP_PART*nparts*4,SEEK_CUR);fseek(stream,4,SEEK_CUR);      // xyz
-      fseek(stream,4,SEEK_CUR);fseek(stream,nparts*4,SEEK_CUR);               fseek(stream,4,SEEK_CUR);      // tags
-      fseek(stream,4,SEEK_CUR);fseek(stream,nparts*numtypes[2*j]*4,SEEK_CUR); fseek(stream,4,SEEK_CUR);      // part values
-    }
-    CheckMemory;
-    frame_sizes[i] = (int)ftell(stream);
-  }
-  for(i=nframes-1;i>0;i--){
-    frame_sizes[i] = frame_sizes[i]-frame_sizes[i-1];
-  }
-  frame_sizes[0]-=(*header_size);
-  CheckMemory;
-  FREEMEMORY(numtypes);
-  FREEMEMORY(numpoints);
-}
 #endif
+  if(in_part_mt == 1){
+    printf("particle setup complete\n");
+    in_part_mt = 0;
+  }
+}
 
 /* ------------------ GetPartData ------------------------ */
 
@@ -1375,9 +1293,9 @@ void GetPartData(partdata *parti, int nf_all_arg, FILE_SIZE *file_size_arg){
             float xx_local, yy_local, zz_local;
             int factor_local=256*128-1;
 
-            xx_local = NORMALIZE_X(x_local[j])/xbar;
-            yy_local = NORMALIZE_Y(y_local[j])/ybar;
-            zz_local = NORMALIZE_Z(z_local[j])/zbar;
+            xx_local = FDS2SMV_X(x_local[j])/xbar;
+            yy_local = FDS2SMV_Y(y_local[j])/ybar;
+            zz_local = FDS2SMV_Z(z_local[j])/zbar;
 
             sx_local[j] = factor_local*xx_local;
             sy_local[j] = factor_local*yy_local;
@@ -1417,16 +1335,6 @@ void GetPartData(partdata *parti, int nf_all_arg, FILE_SIZE *file_size_arg){
 
           FORTPART5READ_mv((void **)&(datacopy_local->rvals), nparts_local*numtypes_local[2*class_index]);
           if(returncode==FAIL_m)goto wrapup;
-
-#ifdef pp_PART_TEST
-          int iii, jjj;
-
-          for(jjj = 0; jjj < numtypes_local[2 * class_index]; jjj++){
-            for(iii = 0; iii < nparts_local; iii++){
-              datacopy_local->rvals[iii+jjj*nparts_local] = 1000.0*parti->seq_id + 200*jjj+ (float)RandInt(-1000, 1000) / 1000.0;
-            }
-          }
-#endif
 
           valmin_smv = parti->valmin_smv;
           valmax_smv = parti->valmax_smv;
@@ -1495,7 +1403,9 @@ void PrintPartProp(void){
     else{
       PRINTF("label=%s min=%f max=%f\n", propi->label->longlabel, propi->valmin, propi->valmax);
       PRINTF("   glbmin=%f glbmax=%f\n", propi->dlg_global_valmin, propi->dlg_global_valmax);
+#ifdef pp_HIST
       PRINTF("   permin=%f permax=%f\n", propi->percentile_min, propi->percentile_max);
+#endif
     }
     PRINTF("\n");
   }
@@ -1525,12 +1435,12 @@ int GetPartPropIndex(int class_i, int class_i_j){
   partclassdata *partclassi;
   flowlabels *labels, *labelj;
 
-  ASSERT(class_i>=0&&class_i<npartclassinfo);
+  assert(class_i>=0&&class_i<npartclassinfo);
   class_i = CLAMP(class_i,0, npartclassinfo-1);
   partclassi = partclassinfo+class_i;
 
   labels = partclassi->labels;
-  ASSERT(class_i_j>=0&&class_i_j<partclassi->ntypes);
+  assert(class_i_j>=0&&class_i_j<partclassi->ntypes);
   class_i_j = CLAMP(class_i_j,0, partclassi->ntypes-1);
   labelj = labels+class_i_j;
 
@@ -1539,7 +1449,7 @@ int GetPartPropIndex(int class_i, int class_i_j){
     partpropdata *propi;
 
     propi = part5propinfo + i;
-    if(strcmp(propi->label->longlabel,label)==0)return i;
+    if(label!=NULL&&strcmp(propi->label->longlabel,label)==0)return i;
   }
   return 0;
 }
@@ -1610,10 +1520,7 @@ void InitPartProp(void){
 
           propi = part5propinfo + npart5prop;
 
-          propi->human_property=0;
-          propi->particle_property=0;
           propi->label=flowlabel;
-
           propi->setvalmin=GLOBAL_MIN;
           propi->setvalmax=GLOBAL_MAX;
           propi->set_global_bounds=1;
@@ -1621,8 +1528,10 @@ void InitPartProp(void){
           propi->dlg_global_valmax=-propi->dlg_global_valmin;
           propi->valmin=1.0;
           propi->valmax=0.0;
+#ifdef pp_HIST
           propi->percentile_min=1.0;
           propi->percentile_max=0.0;
+#endif
           propi->user_min=1.0;
           propi->user_max=0.0;
           propi->display=0;
@@ -1633,11 +1542,12 @@ void InitPartProp(void){
           propi->chopmin=1.0;
           propi->chopmax=0.0;
 
-          propi->buckets=NULL;
           propi->partlabelvals = NULL;
           NewMemory((void **)&propi->partlabelvals, 256*sizeof(float));
+#ifdef pp_HIST
+          propi->buckets = NULL;
           InitHistogram(&propi->histogram, NHIST_BUCKETS, NULL, NULL);
-
+#endif
           npart5prop++;
         }
       }
@@ -1673,12 +1583,6 @@ void InitPartProp(void){
       flowlabel = partclassi->labels + j;
       classprop = GetPartProp(flowlabel->longlabel);
       if(classprop!=NULL){
-        if(partclassi->kind==1){
-          classprop->human_property=1;
-        }
-        else{
-          classprop->particle_property=1;
-        }
         classprop->class_present[i]=1;
         classprop->class_types[i]=j-2;
       }
@@ -1935,25 +1839,22 @@ int GetPartHeader(partdata *parti, int *nf_all, int option_arg, int print_option
         datacopy_local++;
       }
     }
-    if(nall_points_local>0){
-      FREEMEMORY(parti->vis_part);
-      FREEMEMORY(parti->tags);
-      FREEMEMORY(parti->sort_tags);
-      FREEMEMORY(parti->sx);
-      FREEMEMORY(parti->sy);
-      FREEMEMORY(parti->sz);
+    FREEMEMORY(parti->vis_part);
+    FREEMEMORY(parti->tags);
+    FREEMEMORY(parti->sort_tags);
+    FREEMEMORY(parti->sx);
+    FREEMEMORY(parti->sy);
+    FREEMEMORY(parti->sz);
 
-      NewMemory((void **)&parti->vis_part,    nall_points_local*sizeof(unsigned char));
-      NewMemory((void **)&parti->tags,        nall_points_local*sizeof(int));
-      NewMemory((void **)&parti->sort_tags, 2*nall_points_local*sizeof(int));
-      NewMemory((void **)&parti->sx,          nall_points_local*sizeof(short));
-      NewMemory((void **)&parti->sy,          nall_points_local*sizeof(short));
-      NewMemory((void **)&parti->sz,          nall_points_local*sizeof(short));
-    }
-    if(nall_points_types_local>0){
-      FREEMEMORY(parti->irvals);
-      NewMemory((void **)&parti->irvals, nall_points_types_local*sizeof(unsigned char));
-    }
+    NewMemory((void **)&parti->vis_part,    MAX(nall_points_local, 1)*sizeof(unsigned char));
+    NewMemory((void **)&parti->tags,        MAX(nall_points_local, 1)*sizeof(int));
+    NewMemory((void **)&parti->sort_tags, 2*MAX(nall_points_local, 1)*sizeof(int));
+    NewMemory((void **)&parti->sx,          MAX(nall_points_local, 1)*sizeof(short));
+    NewMemory((void **)&parti->sy,          MAX(nall_points_local, 1)*sizeof(short));
+    NewMemory((void **)&parti->sz,          MAX(nall_points_local, 1)*sizeof(short));
+
+    FREEMEMORY(parti->irvals);
+    NewMemory((void **)&parti->irvals, MAX(nall_points_types_local,1)*sizeof(unsigned char));
 
     datacopy_local =parti->data5;
     nall_points_types_local = 0;
@@ -2056,30 +1957,34 @@ void FinalizePartLoad(partdata *parti){
 
   // generate histograms now rather than in the background if a script is running
 
+#ifdef pp_HIST
   if(current_script_command!=NULL||part_multithread==0){
     GeneratePartHistograms();
   }
   else{
     update_generate_part_histograms = 1;
   }
+#endif
+  INIT_PRINT_TIMER(part_time1);
   GetGlobalPartBounds(ALL_FILES);
+  PRINT_TIMER(part_time1, "particle get bounds time");
   if(cache_part_data==1){
+    INIT_PRINT_TIMER(part_time2);
+#ifdef pp_HIST
     SetPercentilePartBounds();
+#endif
     for(j = 0; j<npartinfo; j++){
       partdata *partj;
 
       partj = partinfo+j;
       if(partj->loaded==1){
-#ifdef pp_PARTVAL
         UpdatePartColors(partj, 0);
-#else
-        UpdatePartColors(partj, 1);
-#endif
       }
     }
+    PRINT_TIMER(part_time2, "particle update colors time");
   }
 #define BOUND_PERCENTILE_DRAW          120
-  PartBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
+  GLUIPartBoundsCPP_CB(BOUND_PERCENTILE_DRAW);
   parttype = 0;
   ParticlePropShowMenu(part5colorindex);
   plotstate = GetPlotState(DYNAMIC_PLOTS);
@@ -2099,12 +2004,14 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   FILE_SIZE file_size_local;
   float load_time_local;
 
+#ifdef pp_PART_HIST
   if(loadflag_arg==UNLOAD&&part_multithread==1&&update_generate_part_histograms==-1){
     JOIN_PART_HIST;
   }
+#endif
   SetTimeState();
   START_TIMER(load_time_local);
-  ASSERT(ifile_arg>=0&&ifile_arg<npartinfo);
+  assert(ifile_arg>=0&&ifile_arg<npartinfo);
   parti=partinfo+ifile_arg;
 
   FreeAllPart5Data(parti);
@@ -2124,21 +2031,13 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   FREEMEMORY(parti->filepos);
 
   if(loadflag_arg==UNLOAD){
-#ifdef pp_PARTSTREAM
-    StreamClose(&(parti->part_stream));
-#endif
     if(parti->finalize == 1){
-#ifdef pp_PARTVAL
       UpdatePartColors(parti, 0);
-#else
-      UpdatePartColors(parti, 1);
-#endif
       UpdateTimes();
       updatemenu = 1;
       UpdatePart5Extremes();
       PrintMemoryInfo;
     }
-    update_draw_hist = 1;
     return 0.0;
   }
 
@@ -2164,29 +2063,17 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
     ReadPart("", ifile_arg, UNLOAD, &error_local);
     return 0.0;
   }
-#ifdef pp_PARTSTREAM
-  int header_size, *frame_sizes, nframes;
-
-  nframes = GetNPartFrames(parti);
-  NewMemory((void **)&frame_sizes,nframes*sizeof(int));
-  GetPartSizes(parti->reg_file, &header_size, frame_sizes, nframes);
-  parti->part_stream = StreamOpen(parti->part_stream, parti->file, header_size, frame_sizes, nframes, NULL, 0);
- // StreamCheck(parti->part_stream);
-
-  FREEMEMORY(frame_sizes);
-#endif
   CheckMemory;
   GetPartData(parti, nf_all_local, &file_size_local);
   CheckMemory;
   LOCK_PART_LOAD;
   parti->loaded = 1;
   parti->display = 1;
-  if(cache_part_data==0){
-#ifdef pp_PARTVAL
-    UpdatePartColors(parti, 0);
-#else
-    UpdatePartColors(parti, 1);
+#ifndef pp_HIST
+  parti->hist_update=1;
 #endif
+  if(cache_part_data==0){
+    UpdatePartColors(parti, 0);
   }
   UNLOCK_PART_LOAD;
   if(cache_part_data==0){
@@ -2205,7 +2092,11 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
     }
   }
   else{
-    if(parti->finalize==1)FinalizePartLoad(parti);
+    if(parti->finalize == 1){
+      INIT_PRINT_TIMER(finalize_part);
+      FinalizePartLoad(parti);
+      PRINT_TIMER(finalize_part, "finalize particle time");
+    }
     STOP_TIMER(load_time_local);
     if(file_size_local>1000000000){
       PRINTF(" - %.1f GB/%.1f s\n", (float)file_size_local/1000000000., load_time_local);

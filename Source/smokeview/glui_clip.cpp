@@ -1,6 +1,7 @@
 #define CPP
 #include "options.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include GLUT_H
@@ -62,9 +63,9 @@ GLUI_Button *BUTTON_clip_2=NULL;
 #define SAVE_SETTINGS_CLIP 98
 #define CLIP_MESH 80
 
-/* ------------------ UpdateShowRotationCenter2 ------------------------ */
+/* ------------------ GLUIUpdateShowRotationCenter2 ------------------------ */
 
-extern "C" void UpdateShowRotationCenter2(void){
+extern "C" void GLUIUpdateShowRotationCenter2(void){
   if(CHECKBOX_clip_show_rotation_center2!=NULL)CHECKBOX_clip_show_rotation_center2->set_int_val(show_rotation_center);
 }
 
@@ -75,18 +76,14 @@ void ClipCB(int var){
   switch(var){
   case CLIP_ROTATE:
     if(clip_rotate==0){
-#ifdef pp_CLIP_FIX
       UpdateGluiRotateAbout(ROTATE_ABOUT_FDS_CENTER);
-#else
-      UpdateGluiRotateAbout(nmeshes);
-#endif
     }
     else{
       UpdateGluiRotateAbout(ROTATE_ABOUT_CLIPPING_CENTER);
     }
     break;
   case CLIP_SHOW_ROTATE2:
-    UpdateShowRotationCenter();
+    GLUIUpdateShowRotationCenter();
     break;
   case CLIP_MESH:
     if(clip_mesh == 0){
@@ -100,7 +97,7 @@ void ClipCB(int var){
     WriteIni(LOCAL_INI, NULL);
     break;
   case CLIP_CLOSE:
-    HideGluiClip();
+    GLUIHideClip();
     break;
   case CLIP_xlower:
     if(clipinfo.clip_xmin == 0)SPINNER_clip_xmin->disable();
@@ -177,7 +174,7 @@ void ClipCB(int var){
     updatefacelists = 1;
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   switch(var){
@@ -212,15 +209,10 @@ void ClipCB(int var){
   case CLIP_SHOW_ROTATE2:
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
-  if(glui_rotation_index==ROTATE_ABOUT_CLIPPING_CENTER)UpdateRotationIndex(ROTATE_ABOUT_CLIPPING_CENTER);
-#ifndef pp_CLIP_FIX
-  if(var >= CLIP_xlower&&var <= CLIP_zupper){
-    Clip2Cam(camera_current);
-  }
-#endif
+  if(glui_rotation_index==ROTATE_ABOUT_CLIPPING_CENTER)GLUIUpdateRotationIndex(ROTATE_ABOUT_CLIPPING_CENTER);
 }
 
 /* ------------------ SetClipControls ------------------------ */
@@ -270,9 +262,9 @@ void SetClipControls(int val){
   SPINNER_clip_zmax->set_float_val(clipinfo.zmax);
 }
 
-/* ------------------ GluiClipSetup ------------------------ */
+/* ------------------ GLUIClipSetup ------------------------ */
 
-extern "C" void GluiClipSetup(int main_window){
+extern "C" void GLUIClipSetup(int main_window){
   if(glui_clip!=NULL){
     glui_clip->close();
     glui_clip=NULL;
@@ -302,7 +294,7 @@ extern "C" void GluiClipSetup(int main_window){
   RADIOBUTTON_clip_1b=glui_clip->add_radiobutton_to_group(radio_clip,_("Clip blockages and data"));
   RADIOBUTTON_clip_1c=glui_clip->add_radiobutton_to_group(radio_clip,_("Clip blockages"));
   RADIOBUTTON_clip_1c=glui_clip->add_radiobutton_to_group(radio_clip,_("Clip data"));
-  ASSERT(CLIP_MAX==3);
+  assert(CLIP_MAX==3);
 
   PANEL_rotation_center = glui_clip->add_panel_to_panel(PANEL_clip,"rotation center");
   CHECKBOX_clip_rotate = glui_clip->add_checkbox_to_panel(PANEL_rotation_center,"center of clipping planes", &clip_rotate, CLIP_ROTATE, ClipCB);
@@ -386,21 +378,21 @@ extern "C" void GluiClipSetup(int main_window){
   glui_clip->set_main_gfx_window( main_window );
 }
 
-/* ------------------ HideGluiClip ------------------------ */
+/* ------------------ GLUIHideClip ------------------------ */
 
-extern "C" void HideGluiClip(void){
-  CloseRollouts(glui_clip);
+extern "C" void GLUIHideClip(void){
+  GLUICloseRollouts(glui_clip);
 }
 
-/* ------------------ ShowGluiClip ------------------------ */
+/* ------------------ GLUIShowClip ------------------------ */
 
-extern "C" void ShowGluiClip(void){
+extern "C" void GLUIShowClip(void){
   if(glui_clip!=NULL)glui_clip->show();
 }
 
-/* ------------------ UpdateGluiClip ------------------------ */
+/* ------------------ GLUIUpdateClip ------------------------ */
 
-extern "C" void UpdateGluiClip(void){
+extern "C" void GLUIUpdateClip(void){
   if(CHECKBOX_clip_xmin!=NULL&&CHECKBOX_clip_ymin!=NULL&&CHECKBOX_clip_zmin!=NULL&&
      CHECKBOX_clip_xmax!=NULL&&CHECKBOX_clip_ymax!=NULL&&CHECKBOX_clip_zmax!=NULL){
 
@@ -427,9 +419,9 @@ extern "C" void UpdateGluiClip(void){
   }
 }
 
-/* ------------------ UpdateClipAll ------------------------ */
+/* ------------------ GLUIUpdateClipAll ------------------------ */
 
-extern "C" void UpdateClipAll(void){
+extern "C" void GLUIUpdateClipAll(void){
   ClipCB(CLIP_all);
   radio_clip->set_int_val(clip_mode);
 }

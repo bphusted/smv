@@ -10,6 +10,7 @@ set SMV_PROFILEFLAG=
 set SMV_PROFILESTRING=
 set setglut=
 set stopscript=0
+set SANITIZE=0
 
 :: parse command line arguments
 
@@ -58,6 +59,10 @@ goto eof
    set valid=1
    set inc=inc
  )
+ if /I "%1" EQU "-sanitize" (
+   set valid=1
+   set SANITIZE=1
+ )
  if /I "%1" EQU "-profile" (
    set valid=1
    set SMV_PROFILEFLAG=-pg
@@ -96,6 +101,8 @@ echo -help     - display this message
 echo -icon     - ceate an icon
 echo -inc      - incremental build
 echo -release  - release version
+echo -sanitize - build using sanitize options for debugging
+echo             (-fsanitize=address -fsanitize=undefined -fsanitize=memory)
 echo -test     - build a test version of smokeview
 exit /b 0
 

@@ -1,5 +1,6 @@
 #define IN_UPDATE
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -49,14 +50,13 @@ void UpdateFrameNumber(int changetime){
       for(imesh=0;imesh<nmeshes;imesh++){
         meshdata *meshi;
         volrenderdata *vr;
-        slicedata *fireslice, *smokeslice, *lightslice;
+        slicedata *fireslice, *smokeslice;
         int j;
 
         meshi = meshinfo + imesh;
-        vr = &(meshi->volrenderinfo);
+        vr = meshi->volrenderinfo;
         fireslice=vr->fireslice;
         smokeslice=vr->smokeslice;
-        lightslice=vr->lightslice;
         if(fireslice==NULL||smokeslice==NULL)continue;
         if(vr->loaded==0||vr->display==0)continue;
         vr->itime = vr->timeslist[itimes];
@@ -105,27 +105,6 @@ void UpdateFrameNumber(int changetime){
           }
           CheckMemory;
         }
-
-        if(lightslice!=NULL&&vr->itime>=0){
-          if(vr->is_compressed==1||load_volcompressed==1){
-            unsigned char *c_lightdata_compressed;
-            uLongf framesize;
-            float timeval;
-
-            c_lightdata_compressed = vr->lightdataptrs[vr->itime];
-            framesize = lightslice->nslicei*lightslice->nslicej*lightslice->nslicek;
-            UnCompressVolSliceFrame(c_lightdata_compressed,
-                           vr->lightdata_view, framesize, &timeval,
-                           vr->c_lightdata_view);
-
-            vr->lightdataptr = vr->lightdata_view;
-            CheckMemory;
-          }
-          else{
-            if(runscript==0)vr->lightdataptr = vr->lightdataptrs[vr->itime];
-          }
-          CheckMemory;
-        }
       }
     }
     for(i=0;i<ngeominfoptrs;i++){
@@ -149,17 +128,17 @@ void UpdateFrameNumber(int changetime){
           patchi = sd->patchgeom;
           if(patchi->geom_timeslist == NULL)continue;
           if(patchi->structured == YES || patchi->boundary == 1 || patchi->geom_times == NULL || patchi->geom_timeslist == NULL)continue;
-          if(current_script_command!=NULL && current_script_command->command == SCRIPT_LOADSLICERENDER){
+          if(current_script_command!=NULL && IS_LOADRENDER){
             patchi->geom_itime = 0; // only one frame loaded at a time when using LOADSLICERNDER
           }
           else{
             patchi->geom_itime = patchi->geom_timeslist[itimes];
           }
-          patchi->geom_val_static   = patchi->geom_vals_static[patchi->geom_itime];
-          patchi->geom_ival_static  = patchi->geom_ivals_static[patchi->geom_itime];
-          patchi->geom_ival_dynamic = patchi->geom_ivals_dynamic[patchi->geom_itime];
-          patchi->geom_val_static   = patchi->geom_vals_static[patchi->geom_itime];
-          patchi->geom_val_dynamic  = patchi->geom_vals_dynamic[patchi->geom_itime];
+          patchi->geom_val_static   = patchi->geom_vals  + patchi->geom_vals_static_offset[patchi->geom_itime];
+          patchi->geom_ival_static  = patchi->geom_ivals + patchi->geom_ivals_static_offset[patchi->geom_itime];
+          patchi->geom_ival_dynamic = patchi->geom_ivals + patchi->geom_ivals_dynamic_offset[patchi->geom_itime];
+          patchi->geom_val_static   = patchi->geom_vals  + patchi->geom_vals_static_offset[patchi->geom_itime];
+          patchi->geom_val_dynamic  = patchi->geom_vals  + patchi->geom_vals_dynamic_offset[patchi->geom_itime];
           patchi->geom_nval_static  = patchi->geom_nstatics[patchi->geom_itime];
           patchi->geom_nval_dynamic = patchi->geom_ndynamics[patchi->geom_itime];
           sd->itime                 = patchi->geom_timeslist[itimes];
@@ -177,23 +156,16 @@ void UpdateFrameNumber(int changetime){
         patchi = patchinfo + i;
         if(patchi->structured == YES || patchi->boundary == 1 || patchi->geom_times == NULL || patchi->geom_timeslist == NULL)continue;
         patchi->geom_itime = patchi->geom_timeslist[itimes];
-        patchi->geom_ival_static = patchi->geom_ivals_static[patchi->geom_itime];
-        patchi->geom_ival_dynamic = patchi->geom_ivals_dynamic[patchi->geom_itime];
-#ifdef pp_SLICEBOUNDVAL
-        patchi->geom_val_static  = patchi->geom_vals_static[patchi->geom_itime];
-        patchi->geom_val_dynamic = patchi->geom_vals_dynamic[patchi->geom_itime];
-#endif
-        patchi->geom_nval_static = patchi->geom_nstatics[patchi->geom_itime];
+        patchi->geom_ival_static  = patchi->geom_ivals + patchi->geom_ivals_static_offset[patchi->geom_itime];
+        patchi->geom_ival_dynamic = patchi->geom_ivals + patchi->geom_ivals_dynamic_offset[patchi->geom_itime];
+        patchi->geom_val_static   = patchi->geom_vals  + patchi->geom_vals_static_offset[patchi->geom_itime];
+        patchi->geom_val_dynamic  = patchi->geom_vals  + patchi->geom_vals_dynamic_offset[patchi->geom_itime];
+        patchi->geom_nval_static  = patchi->geom_nstatics[patchi->geom_itime];
         patchi->geom_nval_dynamic = patchi->geom_ndynamics[patchi->geom_itime];
       }
     }
     if(show3dsmoke==1){
       if(nsmoke3dinfo > 0){
-#ifdef pp_SMOKE3DSTREAM
-        int display_smoke_frame;
-
-        display_smoke_frame = 0;
-#endif
         for(i = 0;i < nsmoke3dinfo;i++){
           smoke3ddata *smoke3di;
 
@@ -201,21 +173,13 @@ void UpdateFrameNumber(int changetime){
           if(smoke3di->loaded == 0 || smoke3di->display == 0)continue;
           smoke3di->ismoke3d_time = smoke3di->timeslist[itimes];
           if(IsSmokeComponentPresent(smoke3di) == 0)continue;
-#ifdef pp_SMOKE3DSTREAM
-          smoke3di->lastiframe = smoke3di->ismoke3d_time;
-          if(UpdateSmoke3D(smoke3di)==1)display_smoke_frame=1;
-#else
           if(smoke3di->ismoke3d_time != smoke3di->lastiframe){
             smoke3di->lastiframe = smoke3di->ismoke3d_time;
-            UpdateSmoke3D(smoke3di);;
+            UpdateSmoke3D(smoke3di);
           }
-#endif
         }
         MergeSmoke3D(NULL);
         PrintMemoryInfo;
-#ifdef pp_SMOKE3DSTREAM
-        if(display_smoke_frame==0)Keyboard('0', FROM_SMOKEVIEW);
-#endif
       }
     }
     if(showpatch==1){
@@ -225,10 +189,13 @@ void UpdateFrameNumber(int changetime){
         patchi = patchinfo + i;
         if(patchi->structured == YES||patchi->boundary==0||patchi->geom_times==NULL||patchi->geom_timeslist==NULL)continue;
         patchi->geom_itime=patchi->geom_timeslist[itimes];
-        patchi->geom_ival_static = patchi->geom_ivals_static[patchi->geom_itime];
-        patchi->geom_ival_dynamic = patchi->geom_ivals_dynamic[patchi->geom_itime];
-        patchi->geom_nval_static = patchi->geom_nstatics[patchi->geom_itime];
+        if(patchi->geom_ivals != NULL){
+          patchi->geom_ival_static = patchi->geom_ivals + patchi->geom_ivals_static_offset[patchi->geom_itime];
+          patchi->geom_ival_dynamic = patchi->geom_ivals + patchi->geom_ivals_dynamic_offset[patchi->geom_itime];
+        }
+        patchi->geom_nval_static  = patchi->geom_nstatics[patchi->geom_itime];
         patchi->geom_nval_dynamic = patchi->geom_ndynamics[patchi->geom_itime];
+        if(patchi->is_compressed==1)UncompressBoundaryDataGEOM(patchi, patchi->geom_itime);
       }
       for(i=0;i<nmeshes;i++){
         patchdata *patchi;
@@ -244,7 +211,7 @@ void UpdateFrameNumber(int changetime){
           meshi->patchval_iframe  = meshi->patchval+meshi->patch_itime*meshi->npatchsize;
         }
         else{
-          UncompressBoundaryDataFrame(meshi,meshi->patch_itime);
+          UncompressBoundaryDataBNDF(meshi, meshi->patch_itime);
         }
       }
     }
@@ -333,7 +300,7 @@ void UpdateFileLoad(void){
     volrenderdata *vr;
 
     meshi = meshinfo+i;
-    vr = &(meshi->volrenderinfo);
+    vr = meshi->volrenderinfo;
     if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
     if(vr->loaded==1)nvolsmoke3dloaded++;
   }
@@ -357,26 +324,28 @@ void UpdateShow(void){
   int shooter_flag;
   int showhrrflag;
   int plot2dflag;
+  int showhvacflag;
 
   UpdateFileLoad();
-  showtime=0;
-  showtime2=0;
-  showplot3d=0;
-  showpatch=0;
-  showslice=0;
-  showvslice=0;
-  showsmoke=0;
-  showzone=0;
-  showiso=0;
-  showvolrender=0;
-  have_extreme_mindata=0;
-  have_extreme_maxdata=0;
-  showshooter=0;
-  show3dsmoke=0;
-  smoke3dflag=0;
-  showtours=0;
-  showdeviceflag = 0;
-  showhrrflag = 0;
+  showtime             = 0;
+  showtime2            = 0;
+  showplot3d           = 0;
+  showpatch            = 0;
+  showslice            = 0;
+  showvslice           = 0;
+  showsmoke            = 0;
+  showzone             = 0;
+  showiso              = 0;
+  showvolrender        = 0;
+  have_extreme_mindata = 0;
+  have_extreme_maxdata = 0;
+  showshooter          = 0;
+  show3dsmoke          = 0;
+  smoke3dflag          = 0;
+  showtours            = 0;
+  showdeviceflag       = 0;
+  showhrrflag          = 0;
+  showhvacflag         = 0;
   visTimeParticles=1; visTimeSlice=1; visTimeBoundary=1; visTimeZone=1; visTimeIso=1;
 
   drawing_boundary_files = 0;
@@ -385,12 +354,16 @@ void UpdateShow(void){
 
   if(vis_hrr_plot==1&&hrrptr!=NULL)showhrrflag = 1;
 
+  if(hvacductvar_index >= 0 || hvacnodevar_index >= 0){
+    showhvacflag = 1;
+  }
+
   if(showdevice_val==1||vis_device_plot!=DEVICE_PLOT_HIDDEN){
     for(i = 0; i<ndeviceinfo; i++){
       devicedata *devicei;
 
       devicei = deviceinfo+i;
-      if(devicei->type2==devicetypes_index&&devicei->object->visible==1){
+      if(devicei->type2==devicetypes_index&&devicei->object->visible==1&&devicei->show==1){
         showdeviceflag = 1;
         break;
       }
@@ -429,7 +402,7 @@ void UpdateShow(void){
       volrenderdata *vr;
 
       meshi = meshinfo + i;
-      vr = &(meshi->volrenderinfo);
+      vr = meshi->volrenderinfo;
       if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
       if(vr->loaded==0||vr->display==0)continue;
       showvolrender=1;
@@ -460,14 +433,11 @@ void UpdateShow(void){
       updatemenu=1;
     }
     for(ii=0;ii<nslice_loaded;ii++){
-      meshdata *slicemesh;
       slicedata *sd;
 
       i=slice_loaded_list[ii];
       sd = sliceinfo+i;
-      slicemesh = meshinfo + sd->blocknumber;
       if(sd->display==0||sd->slicefile_labelindex!=slicefile_labelindex)continue;
-      if(sd->constant_color==NULL&&slicemesh->mesh_type!=0)continue;
       if(sd->constant_color!=NULL)continue;
       if(sd->ntimes>0){
         slicecolorbarflag=1;
@@ -500,11 +470,11 @@ void UpdateShow(void){
         }
       }
     }
-    for(ii=0;ii<npatch_loaded;ii++){
+    for(i=0;i<npatchinfo;i++){
       patchdata *patchi;
 
-      i = patch_loaded_list[ii];
       patchi=patchinfo+i;
+      if(patchi->loaded == 0)continue;
       if(patchi->boundary == 0 && patchi->display == 1 && patchi->shortlabel_index == slicefile_labelindex){
         sliceflag = 1;
         slicecolorbarflag = 1;
@@ -551,16 +521,13 @@ void UpdateShow(void){
       break;
     }
     for(i=0;i<nvsliceinfo;i++){
-      meshdata *slicemesh;
       slicedata *sd;
       vslicedata *vd;
 
       vd = vsliceinfo+i;
       sd = sliceinfo + vd->ival;
-      slicemesh = meshinfo + sd->blocknumber;
       if(vd->loaded==0||vd->display==0)continue;
       if(sliceinfo[vd->ival].slicefile_labelindex!=slicefile_labelindex)continue;
-      if(sd->constant_color==NULL&&slicemesh->mesh_type!=0)continue;
       if(sd->constant_color!=NULL)continue;
       vslicecolorbarflag=1;
       break;
@@ -569,8 +536,6 @@ void UpdateShow(void){
 
   patchflag=0;
   if(visTimeBoundary==1){
-    int ii;
-
     for (i = 0; i < ngeominfo; i++) {
       geomdata *geomi;
 
@@ -578,11 +543,11 @@ void UpdateShow(void){
       geomi->patchactive = 0;
     }
     wall_cell_color_flag=0;
-    for(ii=0;ii<npatch_loaded;ii++){
+    for(i=0;i<npatchinfo;i++){
       patchdata *patchi;
 
-      i = patch_loaded_list[ii];
       patchi=patchinfo+i;
+      if(patchi->loaded == 0)continue;
       if(patchi->boundary == 1 && patchi->display == 1 && patchi->shortlabel_index == iboundarytype){
         if (strcmp(patchi->label.shortlabel, "wc") == 0)wall_cell_color_flag = 1;
         patchflag = 1;
@@ -612,7 +577,7 @@ void UpdateShow(void){
   ReadPartFile = partflag;
 
   plot2dflag = 0;
-  if(GenDevShow() == 1 || GenHrrShow() == 1)plot2dflag = 1;
+  if(HavePlot2D(NULL,NULL)==1)plot2dflag = 1;
 
   shooter_flag=0;
   if(visShooter!=0&&shooter_active==1){
@@ -621,8 +586,7 @@ void UpdateShow(void){
 
   if( plotstate==DYNAMIC_PLOTS &&
     ( showdeviceflag==1 || showhrrflag==1 || sliceflag==1 || vsliceflag==1 || partflag==1 || patchflag==1 ||
-    shooter_flag==1|| smoke3dflag==1 || showtours==1 ||
-    plot2dflag == 1 ||
+    shooter_flag==1|| smoke3dflag==1 || showtours==1 || showhvacflag == 1 || plot2dflag == 1 ||
     (ReadZoneFile==1&&visZone==1&&visTimeZone==1)||showvolrender==1
     )
     )showtime=1;
@@ -695,6 +659,9 @@ void UpdateShow(void){
     if(slicecolorbarflag==1||vslicecolorbarflag==1)num_colorbars++;
     if(patchflag==1&&wall_cell_color_flag==0)num_colorbars++;
     if(ReadZoneFile==1)num_colorbars++;
+    if(hvacductvar_index >= 0)num_colorbars++;
+    if(hvacnodevar_index >= 0)num_colorbars++;
+
     if(tisoflag==1&&1==0){ // disable isosurface colorbar label for now
       showiso_colorbar = 1;
       num_colorbars++;
@@ -859,7 +826,7 @@ void SynchTimes(void){
         meshdata *meshi;
 
         meshi=meshinfo+igrid;
-        vr = &meshi->volrenderinfo;
+        vr = meshi->volrenderinfo;
         if(vr->smokeslice==NULL)continue;
         if(vr->loaded==0||vr->display==0)continue;
         if(vr->times==NULL)continue;
@@ -1038,6 +1005,45 @@ float GetTime(void){
 
   /* ------------------ MergeGlobalTimes ------------------------ */
 
+void MergeGlobalTimes(float *t, int n);
+
+void TruncateGlobalTimes(void){
+  int i, ibeg, iend;
+
+  if(use_tload_begin == 0 && use_tload_end == 0)return;
+  if(nglobal_times==0 || global_times==NULL)return;
+  ibeg = 0;
+  iend = nglobal_times - 1;
+  if(use_tload_begin==1){
+    for(i=0;i<nglobal_times;i++){
+      if(tload_begin<global_times[i]){
+        ibeg = i;
+        break;
+      }
+    }
+  }
+  if(use_tload_end==1){
+    for(i=nglobal_times-1;i>=0;i--){
+      if(global_times[i]<tload_end){
+        iend = i;
+        break;
+      }
+    }
+  }
+  for(i=ibeg;i<=iend;i++){
+    global_times[i-ibeg] = global_times[i];
+  }
+  nglobal_times = iend + 1 - ibeg;
+  if(use_tload_begin==1){
+    MergeGlobalTimes(&tload_begin, 1);
+  }
+  if(use_tload_end==1){
+    MergeGlobalTimes(&tload_end, 1);
+  }
+}
+
+  /* ------------------ MergeGlobalTimes ------------------------ */
+
 void MergeGlobalTimes(float *time_in, int ntimes_in){
   int left, right, nbuffer, i;
   float dt_eps;
@@ -1053,7 +1059,7 @@ void MergeGlobalTimes(float *time_in, int ntimes_in){
     float dt;
 
     dt = time_in[i]-time_in[i-1];
- //   ASSERT(dt>=0.0);
+ //   assert(dt>=0.0);
     dt_eps = MIN(dt_eps, ABS(dt)/2.0);
   }
   if(nglobal_times>1){
@@ -1061,7 +1067,7 @@ void MergeGlobalTimes(float *time_in, int ntimes_in){
       float dt;
 
       dt = global_times[i]-global_times[i-1];
-  //    ASSERT(dt>=0.0);
+  //    assert(dt>=0.0);
       dt_eps = MIN(dt_eps, ABS(dt)/2.0);
     }
   }
@@ -1140,7 +1146,7 @@ void UpdateTimes(void){
 
   // determine min time, max time and number of times
 
-  if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+  if(current_script_command!=NULL&& IS_LOADRENDER){
     scriptdata *ss;
 
     ss = current_script_command;
@@ -1154,7 +1160,12 @@ void UpdateTimes(void){
       MergeGlobalTimes(stimes, 2);
     }
   }
-
+  if(hvacductvar_index >= 0){
+    MergeGlobalTimes(hvacductvalsinfo->times, hvacductvalsinfo->ntimes);
+  }
+  if(hvacnodevar_index >= 0){
+    MergeGlobalTimes(hvacnodevalsinfo->times, hvacnodevalsinfo->ntimes);
+  }
   if(use_tload_begin==1){
     MergeGlobalTimes(&tload_begin, 1);
   }
@@ -1165,11 +1176,13 @@ void UpdateTimes(void){
   if(vis_hrr_plot==1&&hrrptr!=NULL){
     MergeGlobalTimes(timeptr->vals, timeptr->nvals);
   }
-  if(GenDevShow()==1){
-    MergeGlobalTimes(deviceinfo->times, deviceinfo->nvals);
-  }
-  if(GenHrrShow()==1){
-    MergeGlobalTimes(hrrinfo->vals, hrrinfo->nvals);
+  {
+    float *times = NULL;
+    int ntimes = 0;
+
+    if(HavePlot2D(&times, &ntimes)==1){
+      MergeGlobalTimes(times, ntimes);
+    }
   }
   if(showdevice_val==1||vis_device_plot!=DEVICE_PLOT_HIDDEN){
     for(i = 0; i<ndeviceinfo; i++){
@@ -1177,6 +1190,7 @@ void UpdateTimes(void){
 
       devicei = deviceinfo+i;
       if(devicei->object->visible==0||devicei->nvals==0)continue;
+      if(devicei->show == 0)continue;
       if(devicei->type2==devicetypes_index){
         MergeGlobalTimes(devicei->times, devicei->nvals);
       }
@@ -1261,7 +1275,7 @@ void UpdateTimes(void){
       meshdata *meshi;
 
       meshi=meshinfo+i;
-      vr = &meshi->volrenderinfo;
+      vr = meshi->volrenderinfo;
       if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
       if(vr->loaded==0||vr->display==0)continue;
       MergeGlobalTimes(vr->times, vr->ntimes);
@@ -1286,6 +1300,10 @@ void UpdateTimes(void){
     if(touri->display==0)continue;
     MergeGlobalTimes(touri->path_times, touri->ntimes);
   }
+
+  TruncateGlobalTimes();
+
+  //--------------------------------------------------------------
 
   CheckMemory;
 
@@ -1342,7 +1360,7 @@ void UpdateTimes(void){
       volrenderdata *vr;
 
       meshi = meshinfo + i;
-      vr = &(meshi->volrenderinfo);
+      vr = meshi->volrenderinfo;
       if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
       if(vr->loaded==0||vr->display==0)continue;
       FREEMEMORY(vr->timeslist);
@@ -1486,7 +1504,7 @@ void UpdateTimes(void){
     devicedata *devicei;
 
     devicei = deviceinfo + i;
-    if(devicei->object->visible==0)continue;
+    if(devicei->object->visible == 0 || devicei->show == 0)continue;
     if(devicei->nstate_changes==0)continue;
     FREEMEMORY(devicei->showstatelist);
     if(nglobal_times>0){
@@ -1564,7 +1582,7 @@ void UpdateTimes(void){
   updatefaces=1;
   if(nglobal_times>0){
     UpdateTimeLabels();
-    UpdateGluiTimeBounds(global_times[0],global_times[nglobal_times-1]);
+    GLUIUpdateTimeBounds(global_times[0],global_times[nglobal_times-1]);
   }
   CheckMemory;
 }
@@ -1596,12 +1614,15 @@ int GetPlotStateSub(int choice){
       break;
     case DYNAMIC_PLOTS:
     case DYNAMIC_PLOTS_NORECURSE:
-      if(vis_hrr_plot==1&&hrrptr!=NULL){
-
+      if(hvacductvar_index>=0||hvacnodevar_index>=0){
         stept = 1;
         return DYNAMIC_PLOTS;
       }
-      if(GenDevShow() == 1 || GenHrrShow() == 1){
+      if(vis_hrr_plot==1&&hrrptr!=NULL){
+        stept = 1;
+        return DYNAMIC_PLOTS;
+      }
+      if(HavePlot2D(NULL,NULL)==1){
         stept = 1;
         return DYNAMIC_PLOTS;
       }
@@ -1610,7 +1631,7 @@ int GetPlotStateSub(int choice){
           devicedata *devicei;
 
           devicei = deviceinfo+i;
-          if(devicei->object->visible==0)continue;
+          if(devicei->object->visible == 0 || devicei->show == 0)continue;
           if(devicei->type2==devicetypes_index){
             stept = 1;
             return DYNAMIC_PLOTS;
@@ -1633,10 +1654,11 @@ int GetPlotStateSub(int choice){
         if(vslicei->display==0||vslicei->vslicefile_labelindex!=slicefile_labelindex)continue;
         return DYNAMIC_PLOTS;
       }
-      for(i=0;i<npatch_loaded;i++){
+      for(i=0;i<npatchinfo;i++){
         patchdata *patchi;
 
-        patchi = patchinfo + patch_loaded_list[i];
+        patchi = patchinfo + i;
+        if(patchi->loaded == 0)continue;
         if (patchi->display == 1) {
           if(patchi->boundary == 1 && patchi->shortlabel_index == iboundarytype)return DYNAMIC_PLOTS;
           if(patchi->boundary == 0 && patchi->shortlabel_index == slicefile_labelindex)return DYNAMIC_PLOTS;
@@ -1684,7 +1706,7 @@ int GetPlotStateSub(int choice){
           volrenderdata *vr;
 
           meshi = meshinfo + i;
-          vr = &(meshi->volrenderinfo);
+          vr = meshi->volrenderinfo;
           if(vr->fireslice==NULL||vr->smokeslice==NULL)continue;
           if(vr->loaded==0||vr->display==0)continue;
           return DYNAMIC_PLOTS;
@@ -1696,7 +1718,7 @@ int GetPlotStateSub(int choice){
       if(choice!=DYNAMIC_PLOTS_NORECURSE)return GetPlotState(STATIC_PLOTS_NORECURSE);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   stept = 0;
@@ -1826,7 +1848,7 @@ void UpdateColorTable(colortabledata *ctableinfo, int nctableinfo){
     strcpy(newentryi->label, fromi->label);
   }
   ResizeMemory((void **)&colortableinfo, ncolortableinfo*sizeof(colortabledata));
-  UpdateColorTableList(ncolortableinfo_old);
+  GLUIUpdateColorTableList(ncolortableinfo_old);
 }
 
 /* ------------------ HaveFire ------------------------ */
@@ -1855,7 +1877,7 @@ int HaveSootLoaded(void) {
     smoke3ddata *smoke3di;
 
     smoke3di = smoke3dinfo+i;
-    if(smoke3di->loaded==1&&smoke3di->extinct>0.0)return GetSmoke3DType(smoke3di->label.shortlabel);;
+    if(smoke3di->loaded==1&&smoke3di->extinct>0.0)return GetSmoke3DType(smoke3di->label.shortlabel);
   }
   return NO_SMOKE;
 }
@@ -1865,6 +1887,35 @@ int HaveSootLoaded(void) {
 void UpdateShowScene(void){
   have_fire  = HaveFireLoaded();
   have_smoke = HaveSootLoaded();
+
+  if(update_csv_load == 1){
+    InitializeDeviceCsvData(LOAD);
+    update_csv_load = 0;
+  }
+  if(update_terrain_type == 1){
+    update_terrain_type = 0;
+    GLUIUpdateTerrain();
+  }
+  if(check_colorbar == 1){
+    CheckLab();
+    check_colorbar++;
+  }
+  if(update_colorbar_orig == 1){
+    UpdateColorbarOrig();
+    update_colorbar_orig = 0;
+  }
+  if(update_loadall_textures == 1){
+    update_loadall_textures = 0;
+    TextureShowMenu(MENU_TEXTURE_SHOWALL2);
+  }
+  if(update_plot2dini == 1){
+    update_plot2dini = 0;
+    GLUIUpdatePlot2DINI();
+  }
+  if(update_device_timeaverage == 1){
+    update_device_timeaverage = 0;
+    GLUIDeviceCB(DEVICE_TIMEAVERAGE);
+  }
   if(update_smoke_alphas==1){
     update_smoke_alphas = 0;
     UpdateSmokeAlphas();
@@ -1876,48 +1927,56 @@ void UpdateShowScene(void){
   }
   if(update_slicexyz==1){
     update_slicexyz = 0;
-    UpdateSliceXYZ();
+    GLUIUpdateSliceXYZ();
+  }
+  if(update_vectorskip == 1){
+    update_vectorskip = 0;
+    UpdateVectorSkip(vectorskip);
+  }
+  if(update_plot_label == 1){
+    update_plot_label = 0;
+    GLUIUpdatePlotLabel();
   }
   if(open_movie_dialog==1){
     open_movie_dialog = 0;
     if(have_slurm==1&&nmovie_queues>0){
-      ShowGluiMotion(DIALOG_MOVIE_BATCH);
+      GLUIShowMotion(DIALOG_MOVIE_BATCH);
     }
     else{
-      ShowGluiMotion(DIALOG_MOVIE);
+      GLUIShowMotion(DIALOG_MOVIE);
     }
   }
   if(terrain_update_normals==1&&ngeominfo>0){
-    int sizeof_vertices, sizeof_indices;
-
     terrain_update_normals = 0;
     UpdateAllGeomTriangles();
     if(auto_terrain==1){
-      GenerateTerrainGeom(&terrain_vertices, &sizeof_vertices, &terrain_indices, &sizeof_indices, &terrain_nindices);
+      GenerateTerrainGeom(&terrain_vertices, &terrain_indices, &terrain_nindices);
     }
   }
   if(update_smokefire_colors==1){
     update_smokefire_colors = 0;
-    Smoke3dCB(UPDATE_SMOKEFIRE_COLORS);
-    Smoke3dCB(UPDATE_SMOKEFIRE_COLORS2);
-    Smoke3dCB(USE_OPACITY_DEPTH);
+    GLUISmoke3dCB(UPDATE_SMOKEFIRE_COLORS);
+    GLUISmoke3dCB(UPDATE_SMOKEFIRE_COLORS2);
+    GLUISmoke3dCB(USE_OPACITY_DEPTH);
   }
   if(update_splitcolorbar==1){
-    SplitCB(SPLIT_COLORBAR);
+    GLUISplitCB(SPLIT_COLORBAR);
     update_splitcolorbar = 0;
   }
+#ifdef pp_HIST
   if(update_generate_part_histograms==1){
     update_generate_part_histograms = 0;
     GeneratePartHistogramsMT();
     update_generate_part_histograms = -1;
   }
+#endif
   if(update_stept==1){
     update_stept = 0;
     SetTimeVal(time_paused);
   }
   if(update_movie_parms==1){
     update_movie_parms = 0;
-    UpdateMovieParms();
+    GLUIUpdateMovieParms();
   }
 #ifdef pp_REFRESH
   if(update_refresh==1){
@@ -1927,7 +1986,7 @@ void UpdateShowScene(void){
 #endif
   if(update_glui_devices==1){
     update_glui_devices = 0;
-    UpdateGluiDevices();
+    GLUIUpdateDevices();
   }
   if(update_times==1){
     update_times = 0;
@@ -1944,9 +2003,6 @@ void UpdateShowScene(void){
     ColorbarMenu(USE_LIGHTING);
     update_use_lighting = 0;
   }
-  if(update_opacity_map==1){
-    UpdateOpacityMap();
-  }
   if(update_playmovie==1){
     EnableDisablePlayMovie();
     update_playmovie = 0;
@@ -1962,33 +2018,42 @@ void UpdateShowScene(void){
     LoadFiles();
   }
   if(update_startup_view>0){
-    SetCurrentViewPoint(viewpoint_label_startup);
+    GLUISetCurrentViewPoint(viewpoint_label_startup);
     update_rotation_center = 0;
     update_rotation_center_ini = 0;
     update_startup_view--;
   }
   if(update_saving_viewpoint>0){
-    SetCurrentViewPoint(viewpoint_label_saved);
+    GLUISetCurrentViewPoint(viewpoint_label_saved);
     update_saving_viewpoint--;
   }
+#ifdef pp_HIST
+#ifdef pp_PATCH_HIST
+  if(update_boundary_hist==1){
+    //UpdateAllBoundaryBounds();
+    UpdateAllBoundaryBounds();
+    update_boundary_hist = 0;
+  }
+#endif
+#endif
   if(update_viewpoint_script>0){
-    SetCurrentViewPoint(viewpoint_script);
+    GLUISetCurrentViewPoint(viewpoint_script);
     update_viewpoint_script--;
   }
   if(update_tour_list == 1){
-    UpdateTourList();
+    GLUIUpdateTourList();
   }
   if(update_gslice == 1){
-    UpdateGsliceParms();
+    GLUIUpdateGsliceParms();
   }
   if(update_rotation_center == 1){
     camera_current->rotation_index = glui_rotation_index;
-    SceneMotionCB(ROTATE_ABOUT);
+    GLUISceneMotionCB(ROTATE_ABOUT);
     update_rotation_center = 0;
   }
   if(update_rotation_center_ini == 1){
     camera_current->rotation_index = glui_rotation_index_ini;
-    SceneMotionCB(ROTATE_ABOUT);
+    GLUISceneMotionCB(ROTATE_ABOUT);
     update_rotation_center_ini = 0;
   }
   if(camera_current->dirty == 1){
@@ -1996,11 +2061,11 @@ void UpdateShowScene(void){
   }
   if(updateclipvals == 1){
     Clip2Cam(camera_current);
-    UpdateClipAll();
+    GLUIUpdateClipAll();
     updateclipvals = 0;
   }
   if(update_selectedtour_index == 1){
-    UpdateTourIndex();
+    GLUIUpdateTourIndex();
   }
   if(trainer_mode == 1 && fontindex != LARGE_FONT)FontMenu(LARGE_FONT);
   if(updateindexcolors == 1){
@@ -2024,10 +2089,12 @@ void UpdateShowScene(void){
   if(global_times!=NULL&&updateUpdateFrameRateMenu==1)FrameRateMenu(frameratevalue);
   if(updatefaces==1)UpdateFaces();
   if(updatefacelists==1)UpdateFaceLists();
+#ifdef pp_HIST
   if(update_draw_hist==1){
     update_draw_hist = 0;
     SetPercentileDrawOff();
   }
+#endif
 }
 
 /* ------------------ UpdateFlippedColorbar ------------------------ */
@@ -2348,14 +2415,48 @@ void OutputBounds(void){
   printf("\n");
 }
 
+/* ------------------ HandleMakeMovie ------------------------ */
+
+void HandleMakeMovie(void){
+  LOCK_SETUP_FFMPEG
+  if(have_ffmpeg == 0){
+    PRINTF("*** Error: The movie generating program ffmpeg is not available\n");
+    UNLOCK_SETUP_FFMPEG
+    return;
+  }
+  GLUIEnableDisableMakeMovieCPP(OFF);
+  update_makemovie = 1;
+  UNLOCK_SETUP_FFMPEG
+}
+
+/* ------------------ EnableDisableMakeMovie ------------------------ */
+
+void EnableDisableMakeMovie(int onoff){
+  LOCK_SETUP_FFMPEG
+  GLUIEnableDisableMakeMovieCPP(onoff);
+  UNLOCK_SETUP_FFMPEG
+}
+
+/* ------------------ EnableDisablePlayMovie ------------------------ */
+
+void EnableDisablePlayMovie(void){
+  LOCK_SETUP_FFMPEG
+  GLUIEnableDisablePlayMovieCPP();
+  UNLOCK_SETUP_FFMPEG
+}
+
 /* ------------------ UpdateDisplay ------------------------ */
 
 void UpdateDisplay(void){
   SNIFF_ERRORS("UpdateDisplay: start");
-  LOCK_IBLANK;
-  if(update_adjust_y>0){
-    AdjustY(camera_current);
-    update_adjust_y--;
+  if(sortslices == 1&&nsliceloaded>0){
+    SortSlices();
+  }
+  LOCK_IBLANK
+  if(csv_loaded == 0){
+    if(vis_hrr_plot == 1 || viswindrose == 1 || vis_device_plot != DEVICE_PLOT_HIDDEN || showdevice_val == 1){
+      InitializeDeviceCsvData(LOAD);
+    }
   }
   if(update_ini_boundary_type==1){
     update_ini_boundary_type = 0;
@@ -2363,7 +2464,7 @@ void UpdateDisplay(void){
   }
   if(update_fire_alpha==1){
     update_fire_alpha=0;
-    UpdateFireAlpha();
+    GLUIUpdateFireAlpha();
   }
   if(update_texturebar==1){
     update_texturebar = 0;
@@ -2373,24 +2474,39 @@ void UpdateDisplay(void){
     SetVentDirs();
     update_setvents=0;
   }
-  UNLOCK_IBLANK;
+  UNLOCK_IBLANK
+  LOCK_SETUP_FFMPEG
+  if(update_ff == 1){
+    update_ff = 0;
+    if(have_ffmpeg == 1){
+      GLUIEnableDisableMakeMovieCPP(ON);
+    }
+    else{
+      GLUIEnableDisableMakeMovieCPP(OFF);
+    }
+  }
+  UNLOCK_SETUP_FFMPEG
   if(update_ini==1){
     update_ini = 0;
     ReadIni(NULL);
 
     update_glui_bounds = 0;
-    UpdateGluiBounds();
+    GLUIUpdateBounds();
+  }
+  if(update_colorbar_list == 1){
+    GLUIUpdateColorbarList();
+    update_colorbar_list = 0;
   }
   if(update_glui_bounds==1){
     update_glui_bounds = 0;
-    UpdateGluiBounds();
+    GLUIUpdateBounds();
   }
   if(update_cache_data==1){
     update_cache_data = 0;
-    SetCacheFlag(BOUND_PLOT3D, cache_plot3d_data);
-    SetCacheFlag(BOUND_PART, cache_part_data);
-    SetCacheFlag(BOUND_PATCH, cache_boundary_data);
-    SetCacheFlag(BOUND_SLICE, cache_slice_data);
+    GLUISetCacheFlag(BOUND_PLOT3D, cache_plot3d_data);
+    GLUISetCacheFlag(BOUND_PART, cache_part_data);
+    GLUISetCacheFlag(BOUND_PATCH, cache_boundary_data);
+    GLUISetCacheFlag(BOUND_SLICE, cache_slice_data);
   }
   if(update_chop_colors==1){
     update_chop_colors = 0;
@@ -2398,7 +2514,7 @@ void UpdateDisplay(void){
   }
   if(update_zaxis_custom == 1){
     update_zaxis_custom = 0;
-    UpdateZAxisCustom();
+    GLUIUpdateZAxisCustom();
   }
   if(update_flipped_colorbar == 1){
     update_flipped_colorbar = 0;
@@ -2408,15 +2524,32 @@ void UpdateDisplay(void){
     update_smokecolorbar = 0;
     SmokeColorbarMenu(fire_colorbar_index);
   }
+  if(update_colorbar_dialog == 1){
+    UpdateNodeLabel(colorbarinfo + colorbartype);
+    update_colorbar_dialog = 0;
+  }
   if(update_colorbartype == 1){
     colorbardata *cb;
 
     cb = GetColorbar(colorbarname);
     if(cb != NULL){
       colorbartype = cb - colorbarinfo;
+      colorbartype_default = colorbartype;
+      if(cb->can_adjust == 1){
+        cb->interp = INTERP_LAB;
+      }
+      else{
+        cb->interp = INTERP_RGB;
+      }
+      RemapColorbar(cb);
+      memcpy(cb->node_rgb_orig, cb->node_rgb, 3*cb->nnodes*sizeof(unsigned char));
       UpdateCurrentColorbar(cb);
       if(colorbartype != colorbartype_default){
         colorbartype_ini = colorbartype;
+      }
+      if(colorbarinfo != NULL){
+        colorbartype = colorbartype_default;
+        UpdateColorbarDialogs();
       }
     }
     update_colorbartype = 0;
@@ -2432,7 +2565,7 @@ void UpdateDisplay(void){
   }
   if(update_screensize == 1){
     update_screensize = 0;
-    UpdateWindowSizeList();
+    GLUIUpdateWindowSizeList();
 #ifdef pp_OSX_HIGHRES
     if(double_scale==1){
       screenWidthINI  /= 2;
@@ -2443,13 +2576,15 @@ void UpdateDisplay(void){
   }
   if(updatemenu == 1 && usemenu == 1 && menustatus == GLUT_MENU_NOT_IN_USE){
     glutDetachMenu(GLUT_RIGHT_BUTTON);
-    InitMenus(LOAD);
+    LOCK_CHECKFILES;
+    InitMenus();
+    UNLOCK_CHECKFILES;
     glutAttachMenu(GLUT_RIGHT_BUTTON);
     updatemenu = 0;
   }
   if(update_patch_bounds!=-1||update_slice_bounds!=-1||update_part_bounds!=-1||update_plot3d_bounds!=-1){
 
-    if(current_script_command==NULL||current_script_command->command!=SCRIPT_LOADSLICERENDER){
+    if(current_script_command==NULL|| NOT_LOADRENDER){
       OutputBounds();
     }
     update_patch_bounds = -1;
@@ -2459,48 +2594,48 @@ void UpdateDisplay(void){
   }
   if(update_fire_colorbar_index == 1){
     SmokeColorbarMenu(fire_colorbar_index_ini);
-    UpdateFireColorbarList();
+    GLUIUpdateFireColorbarList();
     update_fire_colorbar_index = 0;
   }
   if(update_co2_colorbar_index==1){
-    UpdateCO2ColorbarList(co2_colorbar_index_ini);
+    GLUIUpdateCO2ColorbarList(co2_colorbar_index_ini);
     update_co2_colorbar_index = 0;
   }
   if(update_colorbar_select_index == 1 && colorbar_select_index >= 0 && colorbar_select_index <= 255){
     update_colorbar_select_index = 0;
     UpdateRGBColors(colorbar_select_index);
   }
+#ifdef pp_HIST
   if(histograms_defined==0&&update_slice_hists == 1){
     update_slice_hists = 0;
     UpdateSliceHist();
   }
-  if(update_vol_lights==1){
-    update_vol_lights = 0;
-    InitAllLightFractions(xyz_light_global, light_type_global);
-  }
+#endif
   if(update_windrose_showhide==1){
-    UpdateWindRoseDevices(UPDATE_WINDROSE_DEVICE);
+    GLUIUpdateWindRoseDevices(UPDATE_WINDROSE_DEVICE);
   }
   if(update_research_mode == 1){
     update_research_mode = 0;
-    UpdateResearchMode();
+    GLUIUpdateResearchMode();
   }
+#ifdef pp_HIST
   if(update_percentile_mode==1){
     update_percentile_mode = 0;
     SetPercentileMode(percentile_mode);
   }
+#endif
   if(update_colorbar_digits==1){
     update_colorbar_digits = 0;
-    SetColorbarDigitsCPP(ncolorlabel_digits);
-    SetColorbarDigits();
+    GLUISetColorbarDigitsCPP(ncolorlabel_digits);
+    GLUISetColorbarDigits();
   }
   if(update_visColorbars==1){
     update_visColorbars = 0;
     visColorbarVertical = visColorbarVertical_val;
     visColorbarHorizontal = visColorbarHorizontal_val;
     vis_colorbar = GetColorbarState();
-    UpdateColorbarControls();
-    UpdateColorbarControls2();
+    GLUIUpdateColorbarControls();
+    GLUIUpdateColorbarControls2();
     updatemenu = 1;
   }
   if(update_windrose==1){
@@ -2510,7 +2645,7 @@ void UpdateDisplay(void){
 #ifdef pp_REFRESH
   if(refresh_glui_dialogs>=-1){
     refresh_glui_dialogs--;
-    RefreshGluiDialogs();
+    GLUIRefreshDialogs();
   }
 #endif
 }
@@ -2558,4 +2693,3 @@ void PauseTime(float pause_time){
     if(delta_time > pause_time || delta_time > 60.0)return;
     }
   }
-

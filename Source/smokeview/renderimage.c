@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -206,7 +207,7 @@ void Render(int view_mode){
       RenderFrame(view_mode);
     }
     else{
-      ASSERT(render_skip>0);
+      assert(render_skip>0);
       RenderState(RENDER_OFF);
     }
   }
@@ -250,7 +251,8 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     if(
       ( command == SCRIPT_RENDERONCE   || command == SCRIPT_RENDERALL         ||
         command == SCRIPT_RENDER360ALL || command == SCRIPT_VOLSMOKERENDERALL ||
-        command == SCRIPT_ISORENDERALL || command == SCRIPT_LOADSLICERENDER
+        command == SCRIPT_ISORENDERALL || command == SCRIPT_LOADSLICERENDER   || command == SCRIPT_LOADSMOKERENDER ||
+        command == SCRIPT_RENDERDOUBLEONCE
         ) &&
       current_script_command->cval2 != NULL
       ){
@@ -294,7 +296,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     (current_script_command->command == SCRIPT_RENDERALL ||
       current_script_command->command == SCRIPT_RENDER360ALL ||
       current_script_command->command == SCRIPT_VOLSMOKERENDERALL ||
-      current_script_command->command == SCRIPT_LOADSLICERENDER ||
+      current_script_command->command == SCRIPT_LOADSLICERENDER || current_script_command->command == SCRIPT_LOADSMOKERENDER ||
       current_script_command->command == SCRIPT_ISORENDERALL
       ))){
     int image_num;
@@ -307,7 +309,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     else{
       image_num = itimes;
     }
-    if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+    if(current_script_command!=NULL && IS_LOADRENDER){
       int time_current = current_script_command->ival4;
       image_num = time_current;
     }
@@ -316,7 +318,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
       int code;
       int do_time=0;
 
-      if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER)do_time = 1;
+      if(current_script_command!=NULL && IS_LOADRENDER)do_time = 1;
       if(RenderTime!=0)do_time=1;
 
       if(do_time == 1){
@@ -355,7 +357,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
     case VIEW_LEFT:
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
     strcat(renderfile_suffix, suffix);
@@ -457,7 +459,7 @@ void OutputSliceData(void){
       }
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
     fclose(fileout);
@@ -626,7 +628,7 @@ int MergeRenderScreenBuffers(int nfactor, GLubyte **screenbuffers){
     gdImageJpeg(RENDERimage,RENDERfile,-1);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   fclose(RENDERfile);
@@ -641,7 +643,7 @@ int MergeRenderScreenBuffers(int nfactor, GLubyte **screenbuffers){
     OutputSliceData();
   }
   PRINTF(" Completed\n");
-  if(current_script_command!=NULL&&current_script_command->command==SCRIPT_LOADSLICERENDER){
+  if(current_script_command!=NULL && IS_LOADRENDER){
     char timer_render_label[20];
 
     STOP_TIMER(timer_render);
@@ -1077,7 +1079,7 @@ int MergeRenderScreenBuffers360(void){
     gdImageJpeg(RENDERimage, RENDERfile, -1);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   fclose(RENDERfile);
@@ -1107,7 +1109,7 @@ void SetSmokeSensor(gdImagePtr RENDERimage, int width, int height){
 
       devicei = deviceinfo + idev;
 
-      if(devicei->object->visible == 0)continue;
+      if(devicei->object->visible == 0 || devicei->show == 0)continue;
       if(strcmp(devicei->object->label, "smokesensor") != 0)continue;
       idev_row = devicei->screenijk[0];
       idev_col = devicei->screenijk[1];
@@ -1208,7 +1210,7 @@ int SmokeviewImage2File(char *directory, char *RENDERfilename, int rendertype, i
     gdImageJpeg(RENDERimage,RENDERfile,-1);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
 
@@ -1280,7 +1282,7 @@ int SVimage2var(int rendertype,
 
       devicei = deviceinfo + idev;
 
-      if(devicei->object->visible==0)continue;
+      if(devicei->object->visible == 0 || devicei->show == 0)continue;
       if(strcmp(devicei->object->label,"smokesensor")!=0)continue;
       idev_row = devicei->screenijk[0];
       idev_col = devicei->screenijk[1];

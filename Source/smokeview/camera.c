@@ -1,8 +1,10 @@
 #include "options.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
 
 #include "smokeviewvars.h"
 
@@ -79,20 +81,19 @@ void UpdateCameraYpos(cameradata *ci, int option){
   float width=1.0, height=1.0, asp=1.0, offset=0.0;
   float dx, dy, dz;
 
-
-  if(update_saving_viewpoint>0||update_viewpoint_script>0)return;
+  if(update_saving_viewpoint>0)return;
   local_aperture_default = Zoom2Aperture(1.0);
   if(VP_scene.width==0||VP_scene.height==0)GetViewportInfo();
   if(VP_scene.height!=0)asp = (float)VP_scene.width/(float)VP_scene.height;
 
 
   if(use_geom_factors==1&&have_geom_factors==1){
-    dx = NORMALIZE_X(geom_xmax) - NORMALIZE_X(geom_xmin);
-    dy = NORMALIZE_Y(geom_ymax) - NORMALIZE_Y(geom_ymin);
-    dz = NORMALIZE_Z(geom_zmax) - NORMALIZE_Z(geom_zmin);
-    ci->xcen = NORMALIZE_X((geom_xmin+geom_xmax)/2.0);
-    ci->ycen = NORMALIZE_Y((geom_ymin+geom_ymax)/2.0);
-    ci->zcen = NORMALIZE_Z((geom_zmin+geom_zmax)/2.0);
+    dx = FDS2SMV_X(geom_xmax) - FDS2SMV_X(geom_xmin);
+    dy = FDS2SMV_Y(geom_ymax) - FDS2SMV_Y(geom_ymin);
+    dz = FDS2SMV_Z(geom_zmax) - FDS2SMV_Z(geom_zmin);
+    ci->xcen = FDS2SMV_X((geom_xmin+geom_xmax)/2.0);
+    ci->ycen = FDS2SMV_Y((geom_ymin+geom_ymax)/2.0);
+    ci->zcen = FDS2SMV_Z((geom_zmin+geom_zmax)/2.0);
   }
   else{
     dx = xbar;
@@ -136,7 +137,7 @@ void UpdateCameraYpos(cameradata *ci, int option){
       offset = (dz-dy)/2.0;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   eyeyfactor = -(width/2.0)/tan(local_aperture_default*DEG2RAD/2.0) - offset;
@@ -183,7 +184,7 @@ void SetCameraViewPersp(cameradata *ca, int option){
       elev = 90.0;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   ca->az_elev[0] = az;
@@ -207,7 +208,7 @@ void SetCameraViewPersp(cameradata *ca, int option){
       UpdateCameraYpos(ca, 3);
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
 }
@@ -311,9 +312,29 @@ void InitCamera(cameradata *ci,char *name){
     clipinfo.xmax = cam->xmax;
     clipinfo.ymax = cam->ymax;
     clipinfo.zmax = cam->zmax;
-    UpdateGluiClip();
+    GLUIUpdateClip();
 
   }
+
+/* ------------------ CopyViewCamera ------------------------ */
+
+void CopyViewCamera(cameradata *to, cameradata *from){
+
+  memcpy(to,from,sizeof(cameradata));
+  if(to==camera_current){
+    zoom=camera_current->zoom;
+    GLUIUpdateZoom();
+  }
+  to->dirty=1;
+
+  Cam2Clip(to);
+  if(to==camera_current&&to->quat_defined==1){
+    quat_general[0]=to->quaternion[0];
+    quat_general[1]=to->quaternion[1];
+    quat_general[2]=to->quaternion[2];
+    quat_general[3]=to->quaternion[3];
+  }
+}
 
 /* ------------------ CopyCamera ------------------------ */
 
@@ -322,11 +343,11 @@ void CopyCamera(cameradata *to, cameradata *from){
   memcpy(to,from,sizeof(cameradata));
   if(to==camera_current){
     zoom=camera_current->zoom;
-    UpdateGluiZoom();
+    GLUIUpdateZoom();
   }
   to->dirty=1;
   if(to == camera_current && updateclipvals == 0){
-    if(clip_mode==0)Cam2Clip(camera_current);
+    if(clip_mode==CLIP_OFF)Cam2Clip(camera_current);
   }
   if(to==camera_current&&to->quat_defined==1){
     quat_general[0]=to->quaternion[0];
@@ -349,8 +370,8 @@ void UpdateCamera(cameradata *ca){
     }
     highlight_mesh = current_mesh-meshinfo;
     HandleRotationType(EYE_CENTERED);
-    UpdateMeshList1(ca->rotation_index);
-    UpdateTrainerMoves();
+    GLUIUpdateMeshList1(ca->rotation_index);
+    GLUIUpdateTrainerMoves();
 
     ca->clip_mode=clip_mode;
     ca->clip_xmin=clipinfo.clip_xmin;
@@ -365,7 +386,7 @@ void UpdateCamera(cameradata *ca){
     ca->ymax=clipinfo.ymax;
     ca->zmax=clipinfo.zmax;
   }
-  UpdateGluiSetViewXYZ(ca->eye);
+  GLUIUpdateSetViewXYZ(ca->eye);
   ca->dirty=0;
 }
 
@@ -454,7 +475,7 @@ cameradata *InsertCamera(cameradata *cb,cameradata *source, char *name){
     cam->view_id = camera_max_id;
     camera_max_id++;
   }
-  UpdateGluiViewpointList();
+  GLUIUpdateViewpointList();
   updatemenu=1;
   return cam;
 }

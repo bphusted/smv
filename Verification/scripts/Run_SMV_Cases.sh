@@ -11,12 +11,21 @@ nthreads=1
 RUN_SMV=1
 RUN_WUI=1
 STOPFDS=
-CFASTREPO=~/cfastgitclean
 COMPILER="intel"
 WAIT=0
 INTEL=
 INTEL2=
 QFDS_COUNT=/tmp/qfds_count_`whoami`
+
+CUR=`pwd`
+SCRIPTDIR=`dirname $0`
+cd $SCRIPTDIR/..
+VDIR=`pwd`
+
+cd $SCRIPTDIR/../../../cfast
+CFASTREPO=`pwd`
+
+cd $CUR
 
 wait_cases_end()
 {
@@ -42,10 +51,12 @@ echo "Runs Smokeview verification suite"
 echo ""
 echo "Options"
 echo "-c - cfast repo directory"
+echo "-C - use gnu compiled version of fds"
 echo "-d - use debug version of FDS"
 echo "-h - display this message"
 echo "-j p - specify a job prefix"
 echo "-J - use Intel MPI version of FDS"
+echo "-L - run cases in lite mode, run a subset of the full set of cases"
 echo "-m max_iterations - stop FDS runs after a specifed number of iterations (delayed stop)"
 echo "     example: an option of 10 would cause FDS to stop after 10 iterations"
 echo "-o nthreads - run OpenMP version of FDS with a specified number of threads [default: $nthreads]"
@@ -82,11 +93,15 @@ SVNROOT=`pwd`
 cd $CURDIR/..
 
 use_installed="0"
-while getopts 'c:dhj:Jm:o:q:rsS:uWwY' OPTION
+while getopts 'c:Cdhj:Jm:o:q:rsS:uWwY' OPTION
 do
 case $OPTION in
   c)
    CFASTREPO="$OPTARG"
+   ;;
+  C)
+   COMPILER=gnu
+   INTEL=o
    ;;
   d)
    DEBUG=_db
@@ -145,36 +160,37 @@ fi
 OS=`uname`
 if [ "$OS" == "Darwin" ]; then
   PLATFORM=osx_64
+  FDSPLATFORM=osx
 else
   PLATFORM=linux_64
+  FDSPLATFORM=linux
 fi
 
 if [ "$use_installed" == "1" ] ; then
   export WIND2FDS=wind2fds
-  export BACKGROUND_PROG=background
 else
   export WIND2FDS=$SVNROOT/smv/Build/wind2fds/${COMPILER}_$PLATFORM/wind2fds_$PLATFORM
-  export BACKGROUND_PROG=$SVNROOT/smv/Build/background/${COMPILER}_$PLATFORM/background_$PLATFORM
 fi
-export FDSEXE=$SVNROOT/fds/Build/${INTEL}mpi_${COMPILER}_$PLATFORM$DEBUG/fds_${INTEL}mpi_${COMPILER}_$PLATFORM$DEBUG
+export FDSEXE=$SVNROOT/fds/Build/${INTEL}mpi_${COMPILER}_$FDSPLATFORM$DEBUG/fds_${INTEL}mpi_${COMPILER}_$FDSPLATFORM$DEBUG
 export FDS=$FDSEXE
-export FDSMPI=$SVNROOT/fds/Build/${INTEL}mpi_${COMPILER}_$PLATFORM$DEBUG/fds_${INTEL}mpi_${COMPILER}_$PLATFORM$DEBUG
+export FDSMPI=$SVNROOT/fds/Build/${INTEL}mpi_${COMPILER}_$FDSPLATFORM$DEBUG/fds_${INTEL}mpi_${COMPILER}_$FDSPLATFORM$DEBUG
 export CFAST=$CFASTREPO/Build/CFAST/${COMPILER}_$PLATFORM/cfast7_$PLATFORM
 
 QFDSSH="$SVNROOT/fds/Utilities/Scripts/qfds.sh -j $JOBPREFIX"
 if [ "$DEBUG" != "" ]; then
   QFDSSH="$QFDSSH -T db "
 fi
+if [ "$QUEUE" == "none" ]; then
+  QFDSSH="$SVNROOT/smv/Utilities/Scripts/background.sh -I -s"
+fi
 FDSPARM=
 
 # Set queue to submit cases to
 
 if [ "$QUEUE" != "" ]; then
-   if [ "$QUEUE" == "none" ]; then
-      is_file_installed $BACKGROUND_PROG
-      echo 0 > $QFDS_COUNT
+   if [ "$QUEUE" != "none" ]; then
+     QUEUE="-q $QUEUE"
    fi
-   QUEUE="-q $QUEUE"
 fi
 
 export BASEDIR=`pwd`
@@ -182,8 +198,8 @@ export BASEDIR=`pwd`
 # Remove output files (unless stop option is used)
 if [[ ! $stop_cases ]] ; then
   echo "Removing FDS/CFAST output files"
-  export RUNCFAST="$SVNROOT/smv/Verification/scripts/Remove_CFAST_Files.sh"
-  export QFDS="$SVNROOT/fds/Verification/scripts/Remove_FDS_Files.sh"
+  export RUNCFAST="$VDIR/scripts/Remove_CFAST_Files.sh"
+  export QFDS="$VDIR/scripts/Remove_FDS_Files.sh"
   scripts/SMV_Cases.sh
   scripts/WUI_Cases.sh
   echo "FDS/CFAST output files removed"
@@ -191,8 +207,15 @@ fi
 
 # run cases    
 
-export  RUNCFAST="$QFDSSH $INTEL2 -e $CFAST $QUEUE $STOPFDS"
-export      QFDS="$QFDSSH $INTEL2 $FDSPARM $OPENMPOPTS $QUEUE $STOPFDS"
+if [ "$QUEUE" == "none" ]; then
+  export  RUNCFAST="$QFDSSH -e $CFAST $STOPFDS"
+  export      QFDS="$QFDSSH -e $FDS $STOPFDS"
+else
+  export  RUNCFAST="$QFDSSH $INTEL2 -e $CFAST $QUEUE $STOPFDS"
+  export      QFDS="$QFDSSH $INTEL2 $FDSPARM $OPENMPOPTS $QUEUE $STOPFDS"
+fi
+echo QFDS=$QFDS
+echo "*************************************************"
 
 echo "" | $FDSEXE 2> $SVNROOT/smv/Manuals/SMV_User_Guide/SCRIPT_FIGURES/fds.version
 
@@ -200,19 +223,19 @@ if [[ ! $stop_cases ]] ; then
   if [ "$FDS_DEBUG" == "0" ] ; then
     if [ "$RUN_WUI" == "1" ] ; then
       is_file_installed $WIND2FDS
-      cd $SVNROOT/smv/Verification/WUI
+      cd $VDIR/WUI
       echo Converting wind data
-      $WIND2FDS -prefix sd11 -offset " 100.0  100.0 0.0" wind_data1a.csv
+      $WIND2FDS -prefix sd11 -offset " 100.0  100.0 0.0" wind_data1a.csv wind_test1_exp.csv
     fi
   fi
 fi
 
 if [ "$RUN_SMV" == "1" ] ; then
-  cd $SVNROOT/smv/Verification
+  cd $VDIR
   scripts/SMV_Cases.sh
 fi
 if [ "$RUN_WUI" == "1" ] ; then
-  cd $SVNROOT/smv/Verification
+  cd $VDIR
   scripts/WUI_Cases.sh
 fi
 if [ "$WAIT" == "1" ] ; then

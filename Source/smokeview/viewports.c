@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -51,7 +52,7 @@ int GetStringWidth(char *string){
       length *= (283.0/402.0)*scale_2d_x;
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
   }
   return length;
@@ -137,6 +138,7 @@ void GetColorbarLabelWidth(int show_slice_colorbar_local, int showcfast_local,
     int i, max_width;
     char sample_label[32];
     int show_slice_colorbar_local, showcfast_local, slice_label_width, boundary_label_width, part_label_width, plot3d_label_width, zone_label_width;
+    int show_hvacduct_colorbar_local, show_hvacnode_colorbar_local;
 
     strcpy(sample_label, "");
     for(i=0;i<MAX(5,ncolorlabel_digits+nextra);i++){
@@ -144,7 +146,8 @@ void GetColorbarLabelWidth(int show_slice_colorbar_local, int showcfast_local,
     }
     max_width = GetStringWidth(sample_label);
 
-    UpdateShowSliceColorbar(&showcfast_local, &show_slice_colorbar_local);
+    UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
+      &show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
     GetColorbarLabelWidth(show_slice_colorbar_local, showcfast_local,
                           &slice_label_width, &boundary_label_width, &part_label_width, &plot3d_label_width, &zone_label_width);
     max_width = MAX(max_width, slice_label_width);
@@ -296,14 +299,15 @@ void GetViewportInfo(void){
   }
   VP_slice_plot.down += text_height;
   VP_slice_plot.top         = VP_slice_plot.down + v_space + plot_width  + 4*GetFontHeight();
-  VP_slice_plot.doit        = vis_slice_plot;
   VP_slice_plot.text_height = text_height;
   VP_slice_plot.text_width  = text_width;
-  if(vis_slice_plot==1){
+  if(vis_slice_plot==1||vis_colorbar_dists_plot==1){
+    VP_slice_plot.doit   = 1;
     VP_slice_plot.width  = VP_slice_plot.right-VP_slice_plot.left;
     VP_slice_plot.height = VP_slice_plot.top-VP_slice_plot.down;
   }
   else{
+    VP_slice_plot.doit   = 0;
     VP_slice_plot.width  = 0;
     VP_slice_plot.height = 0;
   }
@@ -319,10 +323,14 @@ void GetViewportInfo(void){
     if(doit==0&&visFramerate==1)doit=1;
     if(doit==0&&vis_slice_average==1&&show_slice_average&&slice_average_flag==1)doit=1;
   }
-  if(show_horizontal_colorbar == 1||visAvailmemory==1)doit=1;
+  if(show_horizontal_colorbar == 1
+#ifdef pp_memstatus
+    ||visAvailmemory==1
+#endif
+    )doit=1;
 
   VP_timebar.left = titlesafe_offset;
-  if(vis_hrr_plot==1 || vis_slice_plot==1)VP_timebar.left = VP_hrr_plot.right;
+  if(vis_hrr_plot==1 || vis_slice_plot==1||vis_colorbar_dists_plot==1)VP_timebar.left = VP_hrr_plot.right;
   VP_timebar.down = titlesafe_offset;
   VP_timebar.doit=doit;
   VP_timebar.text_height = text_height;
@@ -339,9 +347,13 @@ void GetViewportInfo(void){
   }
 #endif
     VP_timebar.width  = screenWidth-VP_info.width-2*titlesafe_offset;
-    if(vis_hrr_plot==1 || vis_slice_plot==1)VP_timebar.width -= (VP_hrr_plot.right - titlesafe_offset);
+    if(vis_hrr_plot==1 || vis_slice_plot==1||vis_colorbar_dists_plot==1)VP_timebar.width -= (VP_hrr_plot.right - titlesafe_offset);
     temp_height = text_height + v_space;
-    if(visFramelabel==1||vis_hrr_label==1||visAvailmemory==1)temp_height += (text_height+v_space);
+    if(visFramelabel==1||vis_hrr_label==1
+#ifdef  pp_memstatus
+      ||visAvailmemory==1
+#endif
+      )temp_height += (text_height+v_space);
     VP_timebar.height = MAX(timebar_height + 2*v_space, temp_height);
     if(show_horizontal_colorbar==1)VP_timebar.height += hbar_height;
   }
@@ -360,11 +372,13 @@ void GetViewportInfo(void){
   // ------------------------------------ vertical colorbar viewport dimensions -----------------------------------------------------
 
   doit=1;
+#ifdef pp_HIST
   if(showslice==1||(showvslice==1&&vslicecolorbarflag==1)){
     if(histogram_show_graph == 1 || histogram_show_numbers == 1){
       if(hists12_slice!=NULL)dohist=1;
     }
   }
+#endif
 
   if(show_vertical_colorbar==0||num_colorbars==0)doit=0;
   vis_colorbar = GetColorbarState();
@@ -552,7 +566,7 @@ int SubPortOrtho(int quad,
     gluOrtho2D(subportx_left,subportx_right,subportx_down,subportx_top);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return 1;
@@ -563,7 +577,7 @@ int SubPortOrtho(int quad,
 #define WINDOW_MARGIN 0
 int SubPortOrtho2Custom( portdata *p, GLint screen_left, GLint screen_down, int left_percen, int down_percen, int length_percen){
 
-  GLint x0, y0;;
+  GLint x0, y0;
   GLsizei dxy;
   float df;
 
@@ -677,7 +691,7 @@ int SubPortOrtho2(int quad,
     gluOrtho2D(subportx_left,subportx_right,subportx_down,subportx_top);
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return 1;
@@ -774,7 +788,7 @@ int SubPortFrustum(int quad,
     }
     return 1;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return 1;
@@ -837,13 +851,13 @@ void GetClipLabel(char *buffer, int flag){
         Float2String(buffer1, clipinfo.xmin, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer1, DENORMALIZE_X(plotx_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer1, SMV2FDS_X(plotx_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       if(clipinfo.clip_xmax==1){
         Float2String(buffer2, clipinfo.xmax, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer2, DENORMALIZE_X(plotx_all[nplotx_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer2, SMV2FDS_X(plotx_all[nplotx_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       strcpy(buffer, "x: ");
       break;
@@ -852,13 +866,13 @@ void GetClipLabel(char *buffer, int flag){
         Float2String(buffer1, clipinfo.ymin, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer1, DENORMALIZE_Y(ploty_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer1, SMV2FDS_Y(ploty_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       if(clipinfo.clip_ymax==1){
         Float2String(buffer2, clipinfo.ymax, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer2, DENORMALIZE_Y(ploty_all[nploty_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer2, SMV2FDS_Y(ploty_all[nploty_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       strcpy(buffer, "y: ");
       break;
@@ -867,13 +881,13 @@ void GetClipLabel(char *buffer, int flag){
         Float2String(buffer1, clipinfo.zmin, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer1, DENORMALIZE_Z(plotz_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer1, SMV2FDS_Z(plotz_all[0]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       if(clipinfo.clip_zmax==1){
         Float2String(buffer2, clipinfo.zmax, ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       else{
-        Float2String(buffer2, DENORMALIZE_Z(plotz_all[nplotz_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
+        Float2String(buffer2, SMV2FDS_Z(plotz_all[nplotz_all-1]), ngridloc_digits, FORCE_FIXEDPOINT_YES);
       }
       strcpy(buffer, "z: ");
       break;
@@ -904,9 +918,9 @@ void ViewportInfo(int quad, GLint screen_left, GLint screen_down){
      ((showplot3d==1||visGrid!=NOGRID_NOPROBE)&&(visx_all==1||visy_all==1||visz_all==1))||
      visGrid==GRID_PROBE||
      visGrid==NOGRID_PROBE){
-    xyz[0]=DENORMALIZE_X(plotx_all[iplotx_all]);
-    xyz[1]=DENORMALIZE_Y(ploty_all[iploty_all]);
-    xyz[2]=DENORMALIZE_Z(plotz_all[iplotz_all]);
+    xyz[0]=SMV2FDS_X(plotx_all[iplotx_all]);
+    xyz[1]=SMV2FDS_Y(ploty_all[iploty_all]);
+    xyz[2]=SMV2FDS_Z(plotz_all[iplotz_all]);
     mesh_xyz= GetMeshNoFail(xyz);
   }
   if(clip_commandline==1||
@@ -996,168 +1010,9 @@ void ViewportInfo(int quad, GLint screen_left, GLint screen_down){
   }
 }
 
-  /* ------------------ DrawPlot2D ------------------------ */
-void DrawPlot2D(int option, float *x, float *z, float *z2, int n,
-                float highlight_x, float highlight_y, float highlight_y2, int valid, int position,
-                float global_valmin, float global_valmax, char *quantity, char *quantity2, char *unit,
-                float left, float right, float down, float top){
-  float xmin, xmax, zmin, zmax, dx;
-  float zmax_display;
-  int i;
-  char cvalmin[20], cvalmax[20], cval[20];
-  char tvalmin[20], tvalmax[20];
-  int ndigits = 3;
-
-  float dfont = (float)GetFontHeight();
-
-  xmin = x[0];
-  xmax = xmin;
-  zmin = z[0];
-  zmax = zmin;
-  for(i = 1; i<n; i++){
-    xmin = MIN(xmin, x[i]);
-    xmax = MAX(xmax, x[i]);
-    zmin = MIN(zmin, z[i]);
-    zmax = MAX(zmax, z[i]);
-  }
-  if(xmax==xmin)xmax = xmin+1.0;
-
-  if(global_valmin<global_valmax){
-    zmin = global_valmin;
-    zmax = global_valmax;
-  }
-  zmax_display = zmax;
-  if(zmax==zmin)zmax = zmin+1.0;
-
-  Float2String(tvalmin, global_times[0], ndigits, force_fixedpoint);
-  Float2String(tvalmax, global_times[nglobal_times-1], ndigits, force_fixedpoint);
-  Float2String(cvalmin, zmin, ndigits, force_fixedpoint);
-  Float2String(cvalmax, zmax_display, ndigits, force_fixedpoint);
-  Float2String(cval, highlight_y, ndigits, force_fixedpoint);
-
-  dx = (xmax-xmin)/20.0;
-
-  glPushMatrix();
-
-  int plot_width = MAX(75, plot2d_size_factor*screenWidth);
-
-#define HSCALE2D(x) (5+(left) + plot_width*((x)-(xmin))/((xmax)-(xmin)))
-#define HSCALE2DLABEL(x) (10 + HSCALE2D(x))
-#define VSCALE2D(z) (dfont +(down) + plot_width*((z)-(zmin))/((zmax)-(zmin)))
-  glColor3fv(foregroundcolor);
-  glLineWidth(plot2d_line_width);
-  glBegin(GL_LINES);
-  for(i = 0; i<n-1; i++){
-    float val, val2;
-
-    val  = CLAMP(z[i],     zmin, zmax);
-    val2 = CLAMP(z[i + 1], zmin, zmax);
-    glVertex2f(HSCALE2D(x[i]),   VSCALE2D(val));
-    glVertex2f(HSCALE2D(x[i+1]), VSCALE2D(val2));
-  }
-  if(z2!=NULL){
-    glColor3f(1.0, 0.0, 0.0);
-    for(i = 0; i<n-1; i++){
-      float val, val2;
-
-      val  = CLAMP(z[i],     zmin, zmax);
-      val2 = CLAMP(z[i + 1], zmin, zmax);
-      glVertex2f(HSCALE2D(x[i]), VSCALE2D(val));
-      glVertex2f(HSCALE2D(x[i+1]), VSCALE2D(val2));
-    }
-    glColor3fv(foregroundcolor);
-  }
-  if(option==PLOT_ALL){
-    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmin));
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
-
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
-
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
-    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmax));
-
-    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmax));
-    glVertex2f(HSCALE2D(xmin), VSCALE2D(zmin));
-
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmax));
-    glVertex2f(HSCALE2D(xmax+dx), VSCALE2D(zmax));
-
-    glVertex2f(HSCALE2D(xmax), VSCALE2D(zmin));
-    glVertex2f(HSCALE2D(xmax+dx), VSCALE2D(zmin));
-  }
-  glEnd();
-
-  if(option==PLOT_ALL&&show_plot2d_title==1){
-    float dy;
-
-#define DFONTY dfont/2.0
-    if(z2!=NULL){
-      dy = VSCALE2D(zmax)+DFONTY;
-      OutputTextColor(redcolor, HSCALE2DLABEL(xmin), dy, quantity2);
-      dy += 1.1*dfont;
-      OutputTextColor(foregroundcolor, HSCALE2DLABEL(xmin), dy, quantity);
-    }
-    else{
-      dy = VSCALE2D(zmax)+DFONTY;
-      OutputText(HSCALE2DLABEL(xmin), dy, quantity);
-    }
-  }
-
-  if(option==PLOT_ALL&&show_plot2d_ylabels==1){
-    float dy;
-
-    dy = VSCALE2D(zmax)-1.5*dfont+DFONTY;
-    OutputText(HSCALE2DLABEL(xmax), dy, cvalmax);
-    dy -= 1.1*dfont;
-    OutputText(HSCALE2DLABEL(xmax), dy, unit);
-    if(z2==NULL){
-      dy -= 1.1*dfont*(position+1);
-      OutputText(HSCALE2DLABEL(xmax), dy, cval);
-    }
-    else{
-      char cval2[255];
-
-      dy -= 1.1*dfont;
-      OutputText(HSCALE2DLABEL(xmax), dy, cval);
-      Float2String(cval2, highlight_y2, ndigits, force_fixedpoint);
-      dy -= 1.1*dfont;
-      OutputTextColor(redcolor, HSCALE2DLABEL(xmax), dy, cval2);
-    }
-    OutputText(HSCALE2DLABEL(xmax), VSCALE2D(zmin), cvalmin);
-  }
-  if(option==PLOT_ALL&&show_plot2d_xlabels==1){
-    OutputText(HSCALE2DLABEL(xmin)-GetStringWidth("X"), VSCALE2D(zmin)-dfont, tvalmin);
-    OutputText(HSCALE2DLABEL(xmax)-GetStringWidth("X"), VSCALE2D(zmin)-dfont, tvalmax);
-  }
-
-  if(valid==1){
-    glPointSize(plot2d_point_size);
-
-    float val, val2;
-
-    val  = CLAMP(highlight_y,  zmin, zmax);
-    val2 = CLAMP(highlight_y2, zmin, zmax);
-    glBegin(GL_POINTS);
-    if(z2==NULL){
-      glColor3f(1.0, 0.0, 0.0);
-      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val));
-    }
-    else{
-      glColor3fv(foregroundcolor);
-      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val));
-      glColor3f(1.0, 0.0, 0.0);
-      glVertex2f(HSCALE2D(highlight_x), VSCALE2D(val2));
-    }
-    glColor3fv(foregroundcolor);
-    glEnd();
-  }
-  glPopMatrix();
-}
-
 /* ------------------------ ViewportHrrPlot ------------------------- */
 
-void ViewportHrrPlot(int quad, GLint screen_left, GLint screen_down) {
+void ViewportHrrPlot(int quad, GLint screen_left, GLint screen_down){
   if(SubPortOrtho2(quad, &VP_hrr_plot, screen_left, screen_down)==0)return;
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
@@ -1207,15 +1062,122 @@ void ViewportHrrPlot(int quad, GLint screen_left, GLint screen_down) {
 
 }
 
+/* ------------------------ OutputSlicePlot ------------------------- */
+
+void OutputSlicePlot(char *file){
+  int i, ntimes,first=1;
+  FILE *stream = NULL;
+
+  if(file == NULL||strlen(file)==0)return;
+  stream = fopen(file, "w");
+  if(stream == NULL){
+    printf("***error: %s not able to be opened for writing\n", file);
+    return;
+  }
+
+  for(i = 0; i < nsliceinfo; i++){
+    slicedata *slicei;
+    devicedata *devicei;
+
+    slicei = sliceinfo + i;
+    devicei = &(slicei->vals2d);
+    if(slicei->loaded == 0 || devicei->valid == 0)continue;
+    if(first == 1){
+      first = 0;
+      ntimes = devicei->nvals;
+    }
+    else{
+      ntimes = MIN(ntimes, devicei->nvals);
+    }
+  }
+  int j;
+
+  for(j = -3;j < ntimes;j++){
+    first = 1;
+    for(i = 0; i < nsliceinfo; i++){
+      slicedata *slicei;
+      devicedata *devicei;
+
+      slicei = sliceinfo + i;
+      devicei = &(slicei->vals2d);
+      if(slicei->loaded == 0 || devicei->valid == 0)continue;
+      if(j == -3){
+        char label[30];
+
+        fprintf(stream, ",");
+        sprintf(label, "%f", devicei->xyz[0]);
+        TrimZeros(label);
+        fprintf(stream, "X=%s", label);
+
+        sprintf(label, "%f", devicei->xyz[1]);
+        TrimZeros(label);
+        fprintf(stream, ";Y=%s", label);
+
+        sprintf(label, "%f", devicei->xyz[2]);
+        TrimZeros(label);
+        fprintf(stream, ";Z=%s", label);
+      }
+      if(j == -2){
+        if(first == 1){
+          fprintf(stream, "time");
+          first = 0;
+        }
+        fprintf(stream, ",%s", slicei->label.shortlabel);
+      }
+      if(j == -1){
+        if(first == 1){
+          fprintf(stream, "s");
+          first = 0;
+        }
+        fprintf(stream, ",%s", slicei->label.unit);
+      }
+      if(j >= 0){
+        if(first == 1){
+          fprintf(stream, "%f", devicei->times[j]);
+          first = 0;
+        }
+        fprintf(stream, ",%f", devicei->vals[j]);
+      }
+    }
+    fprintf(stream, "\n");
+  }
+  fclose(stream);
+
+}
+
 /* ------------------------ ViewportSlicePlot ------------------------- */
 
-void ViewportSlicePlot(int quad, GLint screen_left, GLint screen_down) {
+void ViewportSlicePlot(int quad, GLint screen_left, GLint screen_down){
   if(SubPortOrtho2(quad, &VP_slice_plot, screen_left, screen_down)==0)return;
-  SNIFF_ERRORS("111");
   glMatrixMode(GL_MODELVIEW);
-  SNIFF_ERRORS("222");
   glLoadIdentity();
-  SNIFF_ERRORS("333");
+  assert(vis_colorbar_dists_plot ==0||vis_slice_plot==0);
+  if(vis_colorbar_dists_plot == 1){
+    float valmin, valmax;
+    float xvals[255];
+    int i;
+    colorbardata *cbi;
+    int position;
+    char label[1024];
+
+    position = 0;
+
+    cbi = colorbarinfo + colorbartype;
+    strcpy(label, cbi->menu_label);
+    strcat(label, "/CIELab delta");
+
+    for(i=0;i<255;i++){
+      xvals[i] = (float)i;
+    }
+
+    void GetColorDist(colorbardata *cbi, int option, float *min, float *max);
+    GetColorDist(colorbarinfo + colorbartype, 1, &valmin, &valmax);
+    DrawPlot2D(PLOT_ALL, xvals, cbi->colorbar_dist_delta, NULL, 254,
+      0.0, cbi->colorbar_dist_delta[0], 0.0, 1, position, valmin, valmax,
+      label, NULL, "",
+      VP_slice_plot.left, VP_slice_plot.right, VP_slice_plot.down, VP_slice_plot.top);
+    SNIFF_ERRORS("2D colorbar dist plots");
+  }
   if(vis_slice_plot==1&&global_times!=NULL){
     int i, position;
 
@@ -1244,7 +1206,11 @@ void ViewportSlicePlot(int quad, GLint screen_left, GLint screen_down) {
         valmax = sb->dev_max;
       }
       if(update_avg==1){
-        TimeAveragePlot2DData(devicei->times, devicei->vals_orig, devicei->vals, devicei->nvals, plot2d_time_average);
+        float time_average;
+
+        time_average = plot2d_time_average;
+        if(average_plot2d_slice_region == 0)time_average = 0.0;
+        TimeAveragePlot2DData(devicei->times, devicei->vals_orig, devicei->vals, devicei->nvals, time_average);
         update_avg = 0;
       }
       DrawPlot2D(PLOT_ALL, devicei->times, devicei->vals, NULL, devicei->nvals,
@@ -1252,14 +1218,19 @@ void ViewportSlicePlot(int quad, GLint screen_left, GLint screen_down) {
                slicei->label.shortlabel, NULL, slicei->label.unit,
                VP_slice_plot.left, VP_slice_plot.right, VP_slice_plot.down, VP_slice_plot.top);
       position++;
-      SNIFF_ERRORS("444");
+      SNIFF_ERRORS("2D slice plots");
     }
+    if(slice_plot_csv==1){
+      OutputSlicePlot(slice_plot_filename);
+      slice_plot_csv = 0;
+    }
+
   }
 }
 
 /* ------------------------ ViewportTimebar ------------------------- */
 
-void ViewportTimebar(int quad, GLint screen_left, GLint screen_down) {
+void ViewportTimebar(int quad, GLint screen_left, GLint screen_down){
 #ifdef pp_memstatus
   unsigned int availmemory;
   char percen[] = "%";
@@ -1276,12 +1247,14 @@ void ViewportTimebar(int quad, GLint screen_left, GLint screen_down) {
   }
 #endif
 
-  if (SubPortOrtho2(quad, &VP_timebar, screen_left, screen_down) == 0)return;
+  if(SubPortOrtho2(quad, &VP_timebar, screen_left, screen_down) == 0)return;
 
   timebar_right_width = 0;
   if(visFramerate==1&&showtime==1)framerate_width = GetStringWidth("Frame rate: 99.99");
   if(visUsagememory == 1)memavail_width = GetStringWidth("9999 MBx");
+#ifdef pp_memstatus
   if(visAvailmemory == 1)memusage_width = GetStringWidth("Mem Load: 100%x");
+#endif
   timebar_right_width = MAX(MAX(framerate_width, memavail_width), memusage_width);
   timebar_right_width = MAX(timebar_right_width, delta);
 
@@ -1304,7 +1277,7 @@ void ViewportTimebar(int quad, GLint screen_left, GLint screen_down) {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
-  if (visColorbarHorizontal == 1 && num_colorbars > 0 && (showtime == 1 || showplot3d == 1)){
+  if(visColorbarHorizontal == 1 && num_colorbars > 0 && (showtime == 1 || showplot3d == 1)){
     DrawHorizontalColorbarRegLabels();
     DrawHorizontalColorbars();
   }
@@ -1367,10 +1340,10 @@ void ViewportTimebar(int quad, GLint screen_left, GLint screen_down) {
       float *colors;
       int icolor;
 
-      if(strcmp(fire_colorbar->label, "fire") == 0){
+      if(strcmp(fire_colorbar->menu_label, "fire") == 0){
         icolor = 192;
       }
-      else if(strcmp(fire_colorbar->label, "fire 2") == 0){
+      else if(strcmp(fire_colorbar->menu_label, "fire 2") == 0){
         icolor = 128 + 127*(global_hrrpuv_cutoff - global_hrrpuv_min) / (global_hrrpuv_max - global_hrrpuv_min);
         icolor = CLAMP((icolor + 1), 0, 255);
       }
@@ -1378,7 +1351,7 @@ void ViewportTimebar(int quad, GLint screen_left, GLint screen_down) {
         icolor = 255*(global_hrrpuv_cutoff-global_hrrpuv_min)/(global_hrrpuv_max-global_hrrpuv_min);
         icolor = CLAMP((icolor + 1), 0, 255);
       }
-      colors = fire_colorbar->colorbar;
+      colors = fire_colorbar->colorbar_rgb;
       f_red = colors[3*icolor + 0];
       f_green = colors[3*icolor + 1];
       f_blue = colors[3*icolor + 2];
@@ -1458,7 +1431,7 @@ void ViewportTitle(int quad, GLint screen_left, GLint screen_down){
 }
 
     /* -------------------------- ViewportHistogram -------------------------- */
-
+#ifdef pp_HIST
 void ViewportHistogram(int quad, GLint screen_left, GLint screen_down){
   if(SubPortOrtho2Custom(&VP_scene, screen_left, screen_down, hist_left_percen, hist_down_percen, hist_length_percen)==0)return;
 
@@ -1467,6 +1440,7 @@ void ViewportHistogram(int quad, GLint screen_left, GLint screen_down){
 
   DrawHistogram(histogram_draw, xmin_draw, xmax_draw, gmin_draw, gmax_draw, ncolorlabel_digits);
 }
+#endif
 
 /* ----------------------- CompareMeshes ----------------------------- */
 
@@ -1552,7 +1526,7 @@ int CompareMeshes(const void *arg1, const void *arg2){
     }
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return returnval;
@@ -1591,7 +1565,7 @@ void GetEyePos(float *mm){
   smv_eyepos[0] = -(mm[0]*mm[12] + mm[1]*mm[13] +  mm[2]*mm[14])/mscale[0];
   smv_eyepos[1] = -(mm[4]*mm[12] + mm[5]*mm[13] +  mm[6]*mm[14])/mscale[1];
   smv_eyepos[2] = -(mm[8]*mm[12] + mm[9]*mm[13] + mm[10]*mm[14])/mscale[2];
-  DENORMALIZE_XYZ(fds_eyepos, smv_eyepos);
+  SMV2FDS_XYZ(fds_eyepos, smv_eyepos);
 
   for(i = 0; i<nmeshes; i++){
     meshdata *meshi;
@@ -1664,9 +1638,9 @@ void GetVolSmokeDir(float *mm){
 
   if(freeze_volsmoke == 1)return;
 
-  eye_position_fds[0] = -DOT3(mm + 0, mm + 12) / mscale[0];
-  eye_position_fds[1] = -DOT3(mm + 4, mm + 12) / mscale[1];
-  eye_position_fds[2] = -DOT3(mm + 8, mm + 12) / mscale[2];
+  eye_position_smv[0] = -DOT3(mm + 0, mm + 12) / mscale[0];
+  eye_position_smv[1] = -DOT3(mm + 4, mm + 12) / mscale[1];
+  eye_position_smv[2] = -DOT3(mm + 8, mm + 12) / mscale[2];
 
   for(j = 0;j<nmeshes;j++){
     meshdata *meshj;
@@ -1692,9 +1666,9 @@ void GetVolSmokeDir(float *mm){
 
     *inside = 0;
     if(
-      eye_position_fds[0]> x0&&eye_position_fds[0]<x1&&
-      eye_position_fds[1]>yy0&&eye_position_fds[1]<yy1&&
-      eye_position_fds[2]> z0&&eye_position_fds[2]<z1
+      eye_position_smv[0]> x0&&eye_position_smv[0]<x1&&
+      eye_position_smv[1]>yy0&&eye_position_smv[1]<yy1&&
+      eye_position_smv[2]> z0&&eye_position_smv[2]<z1
       ){
       for(i = -3;i <= 3;i++){
         if(i == 0)continue;
@@ -1748,10 +1722,10 @@ void GetVolSmokeDir(float *mm){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
-      VEC3DIFF(eyedir, eye_position_fds, eyedir);
+      VEC3DIFF(eyedir, eye_position_smv, eyedir);
       Normalize(eyedir, 3);
       cosdir = CLAMP(DOT3(eyedir, norm), -1.0, 1.0);
       cosdir = acos(cosdir)*RAD2DEG;
@@ -1816,7 +1790,7 @@ void GetVolSmokeDir(float *mm){
 
     drawsides = meshi->drawsides;
 
-    vr = &(meshi->volrenderinfo);
+    vr = meshi->volrenderinfo;
     if(vr->firedataptr == NULL&&vr->smokedataptr == NULL)continue;
     if(vr->loaded == 0 || vr->display == 0)continue;
     for(j = -3;j <= 3;j++){
@@ -1829,9 +1803,9 @@ void GetVolSmokeDir(float *mm){
       vi->iwall = j;
       xyz = meshi->face_centers + facemap[j + 3];
 
-      dx = xyz[0] - eye_position_fds[0];
-      dy = xyz[1] - eye_position_fds[1];
-      dz = xyz[2] - eye_position_fds[2];
+      dx = xyz[0] - eye_position_smv[0];
+      dy = xyz[1] - eye_position_smv[1];
+      dz = xyz[2] - eye_position_smv[2];
       vi->dist2 = dx*dx + dy*dy + dz*dz;
       vi->xyz = xyz;
       vi++;
@@ -1855,45 +1829,52 @@ void GetSmokeDir(float *mm){
   ( m2 m6 m10 m14 ) (z)  = (0)
   ( m3 m7 m11 m15 ) (1)    (1)
 
-  ( m0 m4  m8 )      (m12)
+      ( m0 m4  m8 )      (m12)
   Q=  ( m1 m5  m9 )  u = (m13)
-  ( m2 m6 m10 )      (m14)
+      ( m2 m6 m10 )      (m14)
 
   (Q   u) (x)     (0)
   (v^T 1) (y)   = (1)
 
-  m3=m7=m11=0, v^T=0, y=1   Qx+u=0 => x=-Q^Tu
+  m3=m7=m11=0, v^T=0, y=1   Q^TQ=I (Q is orthogonal), Qx+u=0 => x=-Q^Tu
   */
-  int i, ii, j;
-  meshdata *meshj;
-  float norm[3], scalednorm[3];
-  float normdir[3];
-  float absangle, cosangle, minangle;
-  int iminangle;
+  int j;
   float dx, dy, dz;
-  float factor;
 
-  eye_position_fds[0] = -DOT3(mm + 0, mm + 12) / mscale[0];
-  eye_position_fds[1] = -DOT3(mm + 4, mm + 12) / mscale[1];
-  eye_position_fds[2] = -DOT3(mm + 8, mm + 12) / mscale[2];
-
-  for(j = 0;j<nmeshes;j++){
-    meshdata  *meshi;
-
-    meshi = meshinfo + j;
-    dx = meshi->boxmiddle_scaled[0] - eye_position_fds[0];
-    dy = meshi->boxmiddle_scaled[1] - eye_position_fds[1];
-    dz = meshi->boxmiddle_scaled[2] - eye_position_fds[2];
-    meshi->eyedist = sqrt(dx*dx + dy*dy + dz*dz);
-  }
+  eye_position_smv[0] = -DOT3(mm + 0, mm + 12) / mscale[0];
+  eye_position_smv[1] = -DOT3(mm + 4, mm + 12) / mscale[1];
+  eye_position_smv[2] = -DOT3(mm + 8, mm + 12) / mscale[2];
 
   for(j = 0;j<nmeshes;j++){
+    meshdata  *meshj;
+    int i;
+    float absangle, cosangle, minangle, mincosangle;
+    int iminangle, alphadir, minalphadir;
+
     meshj = meshinfo + j;
+    dx = meshj->boxmiddle_scaled[0] - eye_position_smv[0];
+    dy = meshj->boxmiddle_scaled[1] - eye_position_smv[1];
+    dz = meshj->boxmiddle_scaled[2] - eye_position_smv[2];
+    meshj->eyedist = sqrt(dx*dx + dy*dy + dz*dz);
 
+    minalphadir = ALPHA_X;
+    mincosangle = 2.0;
     minangle = 1000.0;
     iminangle = -10;
+    int ibeg, iend;
 
-    for(i = -9;i <= 9;i++){
+    if(smoke_offaxis==1){
+      ibeg = -9;
+      iend =  9;
+    }
+    else{
+      ibeg = -3;
+      iend =  3;
+    }
+    for(i = ibeg;i <= iend;i++){
+      float scalednorm[3], norm[3], normdir[3], factor;
+      int ii;
+
       if(i == 0)continue;
       ii = ABS(i);
       norm[0] = 0.0;
@@ -1901,18 +1882,22 @@ void GetSmokeDir(float *mm){
       norm[2] = 0.0;
       switch(ii){
       case XDIR:
+        alphadir = ALPHA_X;
         if(i<0)norm[0] = -1.0;
         if(i>0)norm[0] = 1.0;
         break;
       case YDIR:
+        alphadir = ALPHA_Y;
         if(i<0)norm[1] = -1.0;
         if(i>0)norm[1] = 1.0;
         break;
       case ZDIR:
+        alphadir = ALPHA_Z;
         if(i<0)norm[2] = -1.0;
         if(i>0)norm[2] = 1.0;
         break;
       case 4:
+        alphadir = ALPHA_XY;
         dx = meshj->xplt_orig[1] - meshj->xplt_orig[0];
         dy = meshj->yplt_orig[1] - meshj->yplt_orig[0];
         factor = dx*dx + dy*dy;
@@ -1932,6 +1917,7 @@ void GetSmokeDir(float *mm){
         }
         break;
       case 5:
+        alphadir = ALPHA_XY;
         dx = meshj->xplt_orig[1] - meshj->xplt_orig[0];
         dy = meshj->yplt_orig[1] - meshj->yplt_orig[0];
         factor = dx*dx + dy*dy;
@@ -1951,6 +1937,7 @@ void GetSmokeDir(float *mm){
         }
         break;
       case 6:
+        alphadir = ALPHA_YZ;
         dy = meshj->yplt_orig[1] - meshj->yplt_orig[0];
         dz = meshj->zplt_orig[1] - meshj->zplt_orig[0];
         factor = dz*dz + dy*dy;
@@ -1970,6 +1957,7 @@ void GetSmokeDir(float *mm){
         }
         break;
       case 7:
+        alphadir = ALPHA_YZ;
         dy = meshj->yplt_orig[1] - meshj->yplt_orig[0];
         dz = meshj->zplt_orig[1] - meshj->zplt_orig[0];
         factor = dz*dz + dy*dy;
@@ -1989,6 +1977,7 @@ void GetSmokeDir(float *mm){
         }
         break;
       case 8:
+        alphadir = ALPHA_XZ;
         dx = meshj->xplt_orig[1] - meshj->xplt_orig[0];
         dz = meshj->zplt_orig[1] - meshj->zplt_orig[0];
         factor = dz*dz + dx*dx;
@@ -2008,6 +1997,7 @@ void GetSmokeDir(float *mm){
         }
         break;
       case 9:
+        alphadir = ALPHA_XZ;
         dx = meshj->xplt_orig[1] - meshj->xplt_orig[0];
         dz = meshj->zplt_orig[1] - meshj->zplt_orig[0];
         factor = dx*dx + dz*dz;
@@ -2027,30 +2017,46 @@ void GetSmokeDir(float *mm){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
       scalednorm[0] = norm[0] * mscale[0];
       scalednorm[1] = norm[1] * mscale[1];
       scalednorm[2] = norm[2] * mscale[2];
 
-      normdir[0] = DOT3SKIP(mm, 4, scalednorm, 1);
+      normdir[0] = DOT3SKIP(mm,     4, scalednorm, 1);
       normdir[1] = DOT3SKIP(mm + 1, 4, scalednorm, 1);
       normdir[2] = DOT3SKIP(mm + 2, 4, scalednorm, 1);
 
       cosangle = normdir[2] / NORM3(normdir);
       cosangle = CLAMP(cosangle, -1.0, 1.0);
-      absangle = acos(cosangle)*RAD2DEG;
-      if(absangle<0.0)absangle = -absangle;
+      absangle = ABS(acos(cosangle)*RAD2DEG);
       if(absangle<minangle){
+        minalphadir = alphadir;
         iminangle = i;
         minangle = absangle;
+        mincosangle = ABS(cosangle);
         meshj->norm[0] = norm[0];
         meshj->norm[1] = norm[1];
         meshj->norm[2] = norm[2];
       }
     }
     meshj->smokedir = iminangle;
+
+    if(meshj->smoke3d_soot != NULL){
+      smoke3ddata *soot;
+      float smoke_dist;
+
+      soot = meshj->smoke3d_soot;
+      if(smoke_adjust == 1){
+        smoke_dist = meshj->smoke_dist[minalphadir]/mincosangle;
+      }
+      else{
+        smoke_dist = meshj->smoke_dist[minalphadir];
+      }
+      InitAlphas(soot->alphas_dir[minalphadir], soot->extinct, glui_smoke3d_extinct,
+        meshj->dxyz_orig[0], smoke_dist);
+    }
     if(demo_mode != 0){
       meshj->smokedir = 1;
     }
@@ -2081,9 +2087,9 @@ void GetZoneSmokeDir(float *mm){
   float cosdir;
   float angles[7];
 
-  eye_position_fds[0] = -(mm[0] * mm[12] + mm[1] * mm[13] + mm[2] * mm[14]) / mscale[0];
-  eye_position_fds[1] = -(mm[4] * mm[12] + mm[5] * mm[13] + mm[6] * mm[14]) / mscale[1];
-  eye_position_fds[2] = -(mm[8] * mm[12] + mm[9] * mm[13] + mm[10] * mm[14]) / mscale[2];
+  eye_position_smv[0] = -(mm[0] * mm[12] + mm[1] * mm[13] + mm[2] * mm[14]) / mscale[0];
+  eye_position_smv[1] = -(mm[4] * mm[12] + mm[5] * mm[13] + mm[6] * mm[14]) / mscale[1];
+  eye_position_smv[2] = -(mm[8] * mm[12] + mm[9] * mm[13] + mm[10] * mm[14]) / mscale[2];
 
   for(j = 0;j<nrooms;j++){
     roomdata *roomj;
@@ -2092,9 +2098,9 @@ void GetZoneSmokeDir(float *mm){
 
     roomj->zoneinside = 0;
     if(
-      eye_position_fds[0]>roomj->x0&&eye_position_fds[0]<roomj->x1&&
-      eye_position_fds[1]>roomj->y0&&eye_position_fds[1]<roomj->y1&&
-      eye_position_fds[2]>roomj->z0&&eye_position_fds[2]<roomj->z1
+      eye_position_smv[0]>roomj->x0&&eye_position_smv[0]<roomj->x1&&
+      eye_position_smv[1]>roomj->y0&&eye_position_smv[1]<roomj->y1&&
+      eye_position_smv[2]>roomj->z0&&eye_position_smv[2]<roomj->z1
       ){
       for(i = -3;i <= 3;i++){
         if(i == 0)continue;
@@ -2148,12 +2154,12 @@ void GetZoneSmokeDir(float *mm){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
-      eyedir[0] = eye_position_fds[0] - eyedir[0];
-      eyedir[1] = eye_position_fds[1] - eyedir[1];
-      eyedir[2] = eye_position_fds[2] - eyedir[2];
+      eyedir[0] = eye_position_smv[0] - eyedir[0];
+      eyedir[1] = eye_position_smv[1] - eyedir[1];
+      eyedir[2] = eye_position_smv[2] - eyedir[2];
       Normalize(eyedir, 3);
       cosdir = (eyedir[0] * norm[0] + eyedir[1] * norm[1] + eyedir[2] * norm[2]);
       if(cosdir>1.0)cosdir = 1.0;
@@ -2179,9 +2185,9 @@ void GetZoneSmokeDir(float *mm){
 float DistPtXYZ(float *pt, float x, float y, float z){
   float dx, dy, dz;
 
-  dx = pt[0] - x;
-  dy = pt[1] - y;
-  dz = pt[2] - z;
+  dx = (pt[0] - x)*mscale[0];
+  dy = (pt[1] - y)*mscale[1];
+  dz = (pt[2] - z)*mscale[2];
   return sqrt(dx*dx + dy*dy + dz*dz);
 }
 
@@ -2262,7 +2268,7 @@ void DistPointBox(float *point, float corners[8][3], float *mindist, float *maxd
         float dist;
 
         xyz[0] = xmin+i*dx;
-     //   if(PointInFrustum(xyz)==0)continue;
+     //   if(SMVPointInFrustum(xyz)==0)continue;
         dist   = DistPtXYZ(point, xyz[0], xyz[1], xyz[2]);
         if(minval>maxval){
           minval = dist;
@@ -2380,9 +2386,9 @@ void GetMinMaxDepth(float *min_depth, float *max_depth){
       for(keyj = (touri->first_frame).next; keyj->next!=NULL; keyj = keyj->next){
         float dist, dx, dy, dz;
 
-        dx = NORMALIZE_X(keyj->xyz_fds[0])-smv_eyepos[0];
-        dy = NORMALIZE_Y(keyj->xyz_fds[1])-smv_eyepos[1];
-        dz = NORMALIZE_Z(keyj->xyz_fds[2])-smv_eyepos[2];
+        dx = (FDS2SMV_X(keyj->xyz_fds[0]) - smv_eyepos[0])*mscale[0];
+        dy = (FDS2SMV_Y(keyj->xyz_fds[1]) - smv_eyepos[1])*mscale[1];
+        dz = (FDS2SMV_Z(keyj->xyz_fds[2]) - smv_eyepos[2])*mscale[2];
         dist = sqrt(dx*dx+dy*dy+dz*dz);
         *min_depth = MIN(*min_depth, dist);
         *max_depth = MAX(*max_depth, dist);
@@ -2404,7 +2410,7 @@ void ViewportScene(int quad, int view_mode, GLint screen_left, GLint screen_down
 #ifdef pp_REFRESH
   if(refresh_glui_dialogs==1){
     refresh_glui_dialogs=0;
-    RefreshGluiDialogs();
+    GLUIRefreshDialogs();
   }
 #endif
 

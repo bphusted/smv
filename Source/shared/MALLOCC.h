@@ -12,7 +12,6 @@
 #ifndef pp_OSX
 #include <malloc.h>
 #endif
-#include "smv_assert.h"
 #define memGarbage 0xA3
 
 typedef int mallocflag;
@@ -30,28 +29,21 @@ typedef char bbyte;
 #define MMEXTERN extern MMCCC
 #endif
 
-#ifdef pp_MEMDEBUG
 #define MMsize unsigned long long
-#endif
 
 typedef struct {
   unsigned char marker;
   void *prev, *next;
   int memory_id;
-#ifdef pp_MEMPRINT
   size_t size;
-#endif
-
 } MMdata;
 
 MMEXTERN MMdata MMfirst, MMlast;
 MMEXTERN MMdata *MMfirstptr, *MMlastptr;
-#ifdef pp_MEMDEBUG
 MMEXTERN MMsize MMtotalmemory,MMmaxmemory;
-#endif
 
-#define debugByte 0xE1
-#define markerByte 0xE1
+#define DEBUG_BYTE 0xE1
+#define MARKER_BYTE 0xE1
 #ifdef pp_MEMDEBUG
   #define sizeofDebugByte 1
 #else
@@ -115,7 +107,11 @@ void _memorystatus(unsigned int size,unsigned int *availmem, unsigned int *memus
 
 #ifdef pp_MEMDEBUG
 void getMemusage(MMsize totalmemory,char *MEMlabel);
+#ifdef CPP
+extern "C" void _CheckMemory(void);
+#else
 void _CheckMemory(void);
+#endif
 void _CheckMemoryNOTHREAD(void);
 void _CheckMemoryOn(void);
 void _CheckMemoryOff(void);
@@ -170,8 +166,7 @@ MMEXTERN mallocflag _ResizeMemoryNOTHREAD(void **ppv, size_t sizeNew, int memory
 MMEXTERN mallocflag _NewMemoryNOTHREAD(void **ppv, size_t size, int memory_id);
 MMEXTERN void FreeMemoryNOTHREAD(void *pv);
 MMEXTERN int memusage(void);
-MMEXTERN void set_memcheck(int index);
-
+MMEXTERN void SetMemCheck(float memGB);
 void initMALLOC(void);
 void FreeAllMemory(int memory_id);
 mallocflag _ValidPointer(void *pv, size_t size);

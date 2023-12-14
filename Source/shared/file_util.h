@@ -46,6 +46,9 @@ typedef struct {
 #define REPLACE_FILE 0
 #define APPEND_FILE 1
 
+#define FILE_MODE 0
+#define DIR_MODE  1
+
 #define NOT_FORCE_IN_DIR 0
 #define FORCE_IN_DIR 1
 
@@ -95,6 +98,7 @@ int FileExistsOrig(char *filename);
 #include "string_util.h"
 
 // vvvvvvvvvvvvvvvvvvvvvvvv headers vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+EXTERNCPP void GetProgFullPath(char *progexe, int maxlen_progexe);
 EXTERNCPP FILE *fopen_indir(char *dir, char *file, char *mode);
 EXTERNCPP void TestWrite(char *scratchdir, char **fileptr);
 EXTERNCPP int FFLUSH(void);
@@ -122,13 +126,17 @@ EXTERNCPP int Writable(char *dir);
 EXTERNCPP   int FileExists(char *filename, filelistdata *filelist, int nfiles, filelistdata *filelist2, int nfiles2);
 EXTERNCPP filelistdata *FileInList(char *file, filelistdata *filelist, int nfiles, filelistdata *filelist2, int nfiles2);
 EXTERNCPP void FreeFileList(filelistdata *filelist, int *nfilelist);
-EXTERNCPP int GetFileListSize(const char *path, char *filter) ;
-EXTERNCPP int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, filelistdata **filelist);
+#define FILE_MODE 0
+#define DIR_MODE  1
+EXTERNCPP int GetFileListSize(const char *path, char *filter, int mode) ;
+EXTERNCPP int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, filelistdata **filelist, int mode);
 EXTERNCPP char *Which(char *progname);
 EXTERNCPP FILE_SIZE GetFileSizeSMV(const char *filename);
 EXTERNCPP time_t FileModtime(char *filename);
 EXTERNCPP int IsFileNewer(char *file1, char *file2);
 EXTERNCPP char *GetProgDir(char *progname, char **svpath);
+
+EXTERNCPP int IsSootFile(char *shortlabel, char *longlabel);
 
 #ifdef pp_LUA
 EXTERNCPP char *getprogdirabs(char *progname, char **svpath);

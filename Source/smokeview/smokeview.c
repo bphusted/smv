@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -146,7 +147,7 @@ void SetViewPoint(int option){
     }
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   if(rotation_type==ROTATION_3AXIS){
@@ -179,7 +180,7 @@ void SetViewPoint(int option){
   }
   if(option==RESTORE_EXTERIOR_VIEW_ZOOM)camera_current->zoom=zooms[zoomindex];
   zoom=camera_current->zoom;
-  UpdateGluiZoom();
+  GLUIUpdateZoom();
 }
 
 /* ------------------ InitVolrenderScript ------------------------ */
@@ -219,30 +220,10 @@ void InitVolrenderScript(char *prefix, char *tour_label, int startframe, int ski
 
 void DisplayVersionInfo(char *progname){
   PRINTVERSION(progname,prog_fullpath);
-  PRINTF("\n");
   if(fds_version!=NULL){
     PRINTF("FDS Build        : %s\n",fds_githash);
   }
-  if(smokeviewpath!=NULL){
-#ifdef WIN32
-    PRINTF("Smokeview        : %s\n",smokeviewpath);
-#else
-    {
-      char *smv2, smokeviewpath_copy[256];
-
-      strcpy(smokeviewpath_copy, smokeviewpath);
-      smv2 = strstr(smokeviewpath_copy, "Build");
-      if(smv2==NULL){
-        PRINTF("Smokeview        : %s\n", smokeviewpath);
-      }
-      else{
-        smv2[-1] = 0;
-        PRINTF("Smokeview        : %s/\n", smokeviewpath_copy);
-        PRINTF("                   %s\n", smv2);
-      }
-    }
-#endif
-  }
+  PRINTF("Smokeview path   : %s\n",smokeview_progname);
 #ifdef pp_COMPRESS
   if(smokezippath!=NULL){
     if(verbose_output==1)PRINTF("Smokezip         : %s\n",smokezippath);
@@ -251,5 +232,28 @@ void DisplayVersionInfo(char *progname){
   if(texturedir!=NULL){
     if(verbose_output==1)PRINTF("Texture directory: %s\n",texturedir);
   }
+  if(smokeview_bindir != NULL){
+    PRINTF("Bin directory    : %s\n", smokeview_bindir);
+  }
 }
 
+/* ------------------ SMV_EXIT ------------------------ */
+
+void SMV_EXIT(int code){
+#ifdef _DEBUG_VS
+  char buffer[255];
+
+  printf("smokeview exiting\n");
+  fgets(buffer, 255, stdin);
+#endif
+  exit(code);
+}
+
+/* ------------------ StartTimer ------------------------ */
+
+void StartTimer(float *timerptr){
+  float timer;
+
+  START_TIMER(timer);
+  *timerptr = timer;
+}

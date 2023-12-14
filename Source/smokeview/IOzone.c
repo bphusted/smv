@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -842,7 +843,7 @@ void GetSliceTempBounds(void){
 
     slicei = sliceinfo + i;
     if(strcmp(slicei->label.shortlabel, "TEMP")!=0)continue;
-    GetSliceSizes(slicei, slicei->file, ALL_FRAMES, &slicei->nslicei, &slicei->nslicej, &slicei->nslicek, &slicei->ntimes, tload_step, &error,
+    GetSliceSizes(slicei->file, ALL_FRAMES, &slicei->nslicei, &slicei->nslicej, &slicei->nslicek, &slicei->ntimes, tload_step, &error,
                   use_tload_begin, use_tload_end, tload_begin, tload_end, &headersize, &framesize);
     return_val = NewResizeMemory(slicei->qslicedata, sizeof(float)*(slicei->nslicei+1)*(slicei->nslicej+1)*(slicei->nslicek+1)*slicei->ntimes);
     if(return_val!=0)return_val = NewResizeMemory(slicei->times, sizeof(float)*slicei->ntimes);
@@ -886,7 +887,7 @@ void ReadZone(int ifile, int flag, int *errorcode){
 
   *errorcode=0;
 
-  ASSERT(ifile>=0&&ifile<nzoneinfo);
+  assert(ifile>=0&&ifile<nzoneinfo);
   zonei = zoneinfo + ifile;
   file = zonei->file;
   if(zonei->loaded==0&&flag==UNLOAD)return;
@@ -1189,7 +1190,7 @@ void ReadZone(int ifile, int flag, int *errorcode){
   if(setzonemax==GLOBAL_MAX)zonemax = zoneglobalmax;
   if(setzonemin==SET_MIN)zonemin = zoneusermin;
   if(setzonemax==SET_MAX)zonemax = zoneusermax;
-  UpdateGluiZoneBounds();
+  GLUIUpdateZoneBounds();
   GetZoneColors(zonetu, ntotal_rooms, izonetu, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonelevels256);
   GetZoneColors(zonetl, ntotal_rooms, izonetl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonelevels256);
   if(have_zonefl==1)GetZoneColors(zonefl, ntotal_rooms, izonefl, zonemin, zonemax, nrgb, nrgb_full, colorlabelzone, colorvalueszone, zonelevels256);
@@ -1400,10 +1401,10 @@ void DrawZoneRoomGeom(void){
 
         glPushMatrix();
         if(zvi->wall==TOP_WALL){
-          glTranslatef(NORMALIZE_X(zvi->xcen), NORMALIZE_Y(zvi->ycen), z2);
+          glTranslatef(FDS2SMV_X(zvi->xcen), FDS2SMV_Y(zvi->ycen), z2);
 	}
 	else{
-          glTranslatef(NORMALIZE_X(zvi->xcen), NORMALIZE_Y(zvi->ycen), z1);
+          glTranslatef(FDS2SMV_X(zvi->xcen), FDS2SMV_Y(zvi->ycen), z1);
 	}
         uc_color[0] = zvi->color[0]*255;
         uc_color[1] = zvi->color[1]*255;
@@ -1469,7 +1470,7 @@ void DrawZoneRoomGeom(void){
           break;
 
         default:
-          ASSERT(FFALSE);
+          assert(FFALSE);
           break;
         }
         DrawZoneVent(zvi->area_fraction, XB[0], XB[1], XB[2], XB[3], XB[4], XB[5]);
@@ -1495,6 +1496,7 @@ void DrawZoneVentDataProfile(void){
     float zelev[NELEV_ZONE];
 
     zvi = zventinfo + i;
+    assert(zvi->z0 <= zvi->z1);
     if(zvi->vent_type==VFLOW_VENT||zvi->vent_type==MFLOW_VENT)continue;
     for(j=0;j<NELEV_ZONE;j++){
       zelev[j]=(zvi->z0*(NELEV_ZONE-1-j)+zvi->z1*j)/(float)(NELEV_ZONE-1);
@@ -1536,8 +1538,8 @@ void DrawZoneVentDataProfile(void){
         ywall = zvi->y1;
         break;
       default:
-	ASSERT(FFALSE);
-	break;
+	    assert(FFALSE);
+	    break;
       }
       dvent1 = factor*zvi->area_fraction*zvi->vdata[j];
       dvent2 = factor*zvi->area_fraction*zvi->vdata[j+1];
@@ -1607,7 +1609,7 @@ void DrawZoneVentDataProfile(void){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
     }
@@ -1644,8 +1646,8 @@ void DrawZoneVentDataSlab(void){
       int itslab;
       float dvent;
 
-      slab_bot = NORMALIZE_Z(zvi->slab_bot[islab]);
-      slab_top = NORMALIZE_Z(zvi->slab_top[islab]);
+      slab_bot = FDS2SMV_Z(zvi->slab_bot[islab]);
+      slab_top = FDS2SMV_Z(zvi->slab_top[islab]);
       tslab = zvi->slab_temp[islab];
       itslab = GetZoneColor(K2C(tslab), zonemin, zonemax, nrgb_full);
       tcolor = rgb_full[itslab];
@@ -1696,7 +1698,7 @@ void DrawZoneVentDataSlab(void){
         glVertex3f(zvi->x0, ymid, zvi->z1 + dvent);
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
       }
     }
@@ -1850,9 +1852,9 @@ float GetZoneThick(int dir, roomdata *roomi, float xyz[3]){
   alpha_min = 100000.0;
   ylay = roomi->z0 + roomi->ylay;
 
-  dx = xyz[0] - eye_position_fds[0];
-  dy = xyz[1] - eye_position_fds[1];
-  dz = xyz[2] - eye_position_fds[2];
+  dx = xyz[0] - eye_position_smv[0];
+  dy = xyz[1] - eye_position_smv[1];
+  dz = xyz[2] - eye_position_smv[2];
   L = sqrt(dx*dx+dy*dy+dz*dz);
 
   alpha_ylay = (ylay - xyz[2])/dz;
@@ -1899,7 +1901,7 @@ float GetZoneThick(int dir, roomdata *roomi, float xyz[3]){
         }
       }
     }
-    if(eye_position_fds[2]>ylay&&xyz[2]>ylay){
+    if(eye_position_smv[2]>ylay&&xyz[2]>ylay){
       if(alpha_ylay>0.0&&alpha_ylay<alpha_min){
         factor_U=alpha_ylay/odu;
         factor_L=(alpha_min-alpha_ylay)/odl;
@@ -1909,15 +1911,15 @@ float GetZoneThick(int dir, roomdata *roomi, float xyz[3]){
         factor_L=0.0;
       }
     }
-    if(eye_position_fds[2]>ylay&&xyz[2]<=ylay){
+    if(eye_position_smv[2]>ylay&&xyz[2]<=ylay){
       factor_U=0.0;
       factor_L=alpha_min/odl;
     }
-    if(eye_position_fds[2]<=ylay&&xyz[2]>ylay){
+    if(eye_position_smv[2]<=ylay&&xyz[2]>ylay){
       factor_U=alpha_min/odu;
       factor_L=0.0;
     }
-    if(eye_position_fds[2]<=ylay&&xyz[2]<=ylay){
+    if(eye_position_smv[2]<=ylay&&xyz[2]<=ylay){
       if(alpha_ylay>0.0&&alpha_ylay<alpha_min){
         factor_U=(alpha_min-alpha_ylay)/odu;
         factor_L=alpha_ylay/odl;
@@ -1929,19 +1931,19 @@ float GetZoneThick(int dir, roomdata *roomi, float xyz[3]){
     }
   }
   else{
-    if(eye_position_fds[2]>ylay&&xyz[2]>ylay){
+    if(eye_position_smv[2]>ylay&&xyz[2]>ylay){
       factor_U=1.0/odu;
       factor_L=0.0;
     }
-    if(eye_position_fds[2]>ylay&&xyz[2]<=ylay){
+    if(eye_position_smv[2]>ylay&&xyz[2]<=ylay){
       factor_U=(1.0+alpha_ylay)/odu;
       factor_L=-alpha_ylay/odl;
     }
-    if(eye_position_fds[2]<=ylay&&xyz[2]>ylay){
+    if(eye_position_smv[2]<=ylay&&xyz[2]>ylay){
       factor_U=-alpha_ylay/odu;
       factor_L=(1.0+alpha_ylay)/odl;
     }
-    if(eye_position_fds[2]<=ylay&&xyz[2]<=ylay){
+    if(eye_position_smv[2]<=ylay&&xyz[2]<=ylay){
       factor_U=0.0;
       factor_L=1.0/odl;
     }
@@ -1961,7 +1963,7 @@ void DrawZoneSmokeGpu(roomdata *roomi){
   int iwall;
   float dx, dy, dz;
 
-  glUniform3f(GPUzone_eyepos,eye_position_fds[0],eye_position_fds[1],eye_position_fds[2]);
+  glUniform3f(GPUzone_eyepos,eye_position_smv[0],eye_position_smv[1],eye_position_smv[2]);
   glUniform1i(GPUzone_zoneinside,roomi->zoneinside);
   glUniform1f(GPUzone_xyzmaxdiff,xyzmaxdiff);
   glUniform3f(GPUzone_boxmin,roomi->x0,roomi->y0,roomi->z0);
@@ -2084,7 +2086,7 @@ void DrawZoneSmokeGpu(roomdata *roomi){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
     glEnd();
@@ -2174,7 +2176,7 @@ void DrawZoneSmoke(roomdata *roomi){
         }
         break;
       default:
-        ASSERT(FFALSE);
+        assert(FFALSE);
         break;
     }
 
@@ -2258,12 +2260,12 @@ void DrawZoneFireData(void){
           deltaz = SCALE2SMV(zonefbasebase[i]);
           maxheight=roomi->z1-roomi->z0-deltaz;
           flameheight = SCALE2SMV(zonefheightbase[i]);
-          SetClipPlanes(&(meshi->box_clipinfo),CLIP_ON);
+          SetClipPlanes(meshi->box_clipinfo,CLIP_ON);
           glPushMatrix();
           glTranslatef(firei->absx,firei->absy,roomi->z0+deltaz);
           DrawZoneFirePlume(diameter,flameheight,maxheight);
           glPopMatrix();
-          SetClipPlanes(&(meshi->box_clipinfo),CLIP_OFF);
+          SetClipPlanes(meshi->box_clipinfo,CLIP_OFF);
         }
       }
       else{
@@ -2279,12 +2281,12 @@ void DrawZoneFireData(void){
           maxheight=roomi->z1-firei->absz;
           flameheight = SCALE2SMV((0.23f*pow((double)qdot,(double)0.4)/(1.0f+2.0f*0.268f)));
           diameter = 2.0*flameheight*0.268f;
-          SetClipPlanes(&(meshi->box_clipinfo),CLIP_ON);
+          SetClipPlanes(meshi->box_clipinfo,CLIP_ON);
           glPushMatrix();
           glTranslatef(firei->absx,firei->absy,firei->absz);
           DrawZoneFirePlume(diameter,flameheight,maxheight);
           glPopMatrix();
-          SetClipPlanes(&(meshi->box_clipinfo),CLIP_OFF);
+          SetClipPlanes(meshi->box_clipinfo,CLIP_OFF);
         }
       }
     }
@@ -2454,4 +2456,3 @@ void DrawZoneFirePlume(float diameter, float height, float maxheight){
     glPopMatrix();
   }
 }
-

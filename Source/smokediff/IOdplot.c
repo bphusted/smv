@@ -7,7 +7,7 @@
 #include "MALLOCC.h"
 #include "datadefs.h"
 #include "file_util.h"
-#include "../smokeview/getdata.h"
+#include "getdata.h"
 
 /* ------------------ SetupPlot3D ------------------------ */
 
@@ -79,7 +79,7 @@ plot3d *GetPlot3D(plot3d *plot3din, casedata *case2){
 
 /* ------------------ diff_plot3ds ------------------------ */
 
-void diff_plot3ds(FILE *stream_out){
+void DiffPlot3Ds(FILE *stream_out){
   int j;
   char *file1, *file2;
   char fullfile1[1024], fullfile2[1024], outfile[1024], outfile2[1024];

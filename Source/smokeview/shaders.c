@@ -165,12 +165,12 @@ int SetZoneSmokeShaders(){
   vert_shader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vert_shader,1, VertexShaderSource,NULL);
   glCompileShader(vert_shader);
-  if(ShaderCompileStatus(vert_shader,"zone vertex shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(vert_shader,"zone vertex shader")==GL_FALSE)return 0;
 
   frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(frag_shader, 1, FragmentShaderSource,NULL);
   glCompileShader(frag_shader);
-  if(ShaderCompileStatus(frag_shader,"zone fragment shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(frag_shader,"zone fragment shader")==GL_FALSE)return 0;
 
   p_zonesmoke = glCreateProgram();
   glAttachShader(p_zonesmoke,vert_shader);
@@ -230,12 +230,12 @@ int Set3DSliceShaders(void){
   vert_shader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vert_shader,1, VertexShaderSource,NULL);
   glCompileShader(vert_shader);
-  if(ShaderCompileStatus(vert_shader,"3D slice vertex shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(vert_shader,"3D slice vertex shader")==GL_FALSE)return 0;
 
   frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(frag_shader, 1, FragmentShaderSource,NULL);
   glCompileShader(frag_shader);
-  if(ShaderCompileStatus(frag_shader,"3D slice fragment shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(frag_shader,"3D slice fragment shader")==GL_FALSE)return 0;
 
   p_3dslice = glCreateProgram();
   glAttachShader(p_3dslice,vert_shader);
@@ -263,16 +263,14 @@ int SetVolSmokeShaders(){
   const GLchar *FragmentShaderSource[] = {
     "#version 120\n"
     "uniform sampler1D smokecolormap;"
-    "uniform sampler3D soot_density_texture,fire_texture,light_texture,blockage_texture;"
-    "uniform vec3 eyepos,boxmin,boxmax,dcell3,light_color,light_position;"
+    "uniform sampler3D soot_density_texture,fire_texture,blockage_texture;"
+    "uniform vec3 eyepos,boxmin,boxmax,dcell3;"
     "varying vec3 fragpos;"
     "uniform float xyzmaxdiff,dcell,fire_opacity_factor,gpu_vol_factor;"
     "uniform float temperature_min,temperature_cutoff,temperature_max;"
-    "uniform float voltemp_factor, voltemp_offset;"
-    "uniform float mass_extinct, light_intensity, scatter_param;"
-    "uniform int inside,havefire,volbw,slicetype,block_volsmoke,use_light;"
+    "uniform float mass_extinct;"
+    "uniform int inside,havefire,volbw,slicetype,block_volsmoke;"
     "uniform int drawsides[7];"
-    "uniform int scatter_type,light_type,vol_adaptive;"
 
     "float color2bw(vec3 color){"
     " return 0.299*color.r+0.587*color.g+0.114*color.b;"
@@ -286,13 +284,10 @@ int SetVolSmokeShaders(){
     "  float colorindex,last_tempval,tempval,gray;"
     "  float taui, alphai;"
     "  float taun, alphan;"
-    "  float light_fraction, light_factor, scatter_fraction;"
     "  float dstep;"
-    "  float cos_angle,fourpi;"
     "  int i,n_iter;"
     "  int side,in_fire;"
     "  int in_block;"
-    "  float opacity_factor;"
     "  float maxcolor;"
 
     "  alpha_min=1000000.0;"
@@ -375,7 +370,7 @@ int SetVolSmokeShaders(){
     "      soot_val = texture3D(soot_density_texture,position2).x;"
     "    }"
     "    if(block_val<0.5)soot_val=0.0;"
-    "    opacity_factor = 1.0;"
+    "    in_fire=0;"
     "    if(havefire==1){"
     "      if(slicetype==1){"
     "        tempval = texture3D(fire_texture,position).x;"
@@ -383,19 +378,14 @@ int SetVolSmokeShaders(){
     "      else{"
     "        tempval = texture3D(fire_texture,position2).x;"
     "      }"
-    "      if(tempval>voltemp_factor){"
-    "        opacity_factor = (273.0+tempval)/(273.0+voltemp_factor);"
-    "        opacity_factor = opacity_factor*opacity_factor*opacity_factor*opacity_factor;"
-    "        opacity_factor =  1.0;"
-    "      }"
     "      colorindex = clamp((tempval-temperature_min)/(temperature_max-temperature_min),0.0,1.0);"
     "      color_val = texture1D(smokecolormap,colorindex).rgb;"
-    "      if(colorindex>0.5){"
+    "      if(tempval>temperature_cutoff){"
     "        soot_val *= fire_opacity_factor;"
     "        in_fire=1;"
-    "      };"
+    "      }"
     "    }"
-    "    else{"
+    "    if(in_fire==0){"
     "      color_val = vec3(0.0,0.0,0.0);"
     "    }"
     //  block_val  0.5  block_val2
@@ -409,54 +399,13 @@ int SetVolSmokeShaders(){
     "    alphai = 1.0 - taui;"
     "    taun *= taui;"
     "    alphan = 1.0-taun;"
-    "    color_total += alphai*taun*color_val*opacity_factor;"
-    "    cos_angle=0.0;"
-    "    if(use_light==1){"
-    "      fourpi=16.0*atan(1.0);"
-    "      uvec=eyepos-fragpos;"
-    "      if(light_type==0){"
-    "        vvec=light_position-fragpos;"
-    "      }"
-    "      else{"
-    "        vvec=light_position;"
-    "      }"
-    "      if(scatter_type!=0){"
-    "        cos_angle=dot(uvec,vvec)/(length(uvec)*length(vvec));"
-    "        cos_angle=clamp(cos_angle,-1.0,1.0);"
-    "      }"
-    "      if(scatter_type==0){"
-    "        scatter_fraction=1.0/fourpi;"
-    "      }"
-    "      else if(scatter_type==1){"
-    "        scatter_fraction=(1.0-scatter_param*scatter_param)/(pow(1.0+scatter_param*scatter_param-2.0*scatter_param*cos_angle,1.5)*fourpi);"
-    "      }"
-    "      else{"
-    "        scatter_fraction=(1.0-scatter_param*scatter_param)/(pow(1.0+scatter_param*cos_angle,2.0)*fourpi);"
-    "      }"
-    "      light_fraction = texture3D(light_texture,position).x;"
-    "      light_factor = alphai*light_intensity*light_fraction*scatter_fraction;"
-    "      color_total += alphai*taun*light_factor*light_color/255.0;"
-    "    }"
-    "    if(vol_adaptive==1&&factor>factor0){"
-    "      if(abs(tempval-last_tempval)>1.0&&dfactor>0.1/float(n_iter)){"
-    "        dfactor/= 2.0;"
-    "        dstep /= 2.0;"
-    "      }"
-    "      if(abs(tempval-last_tempval)<0.5&&dfactor+0.01<dfactor0){"
-    "        dfactor *= 2.0;"
-    "        dstep *= 2.0;"
-    "      }"
-    "    }"
+    "    color_total += alphai*taun*color_val;"
     "    factor+=dfactor;"
     "    if(block_val2<0.5)break;"
     "    if(in_block==1){"
     "      break;"
     "    }"
     "  }"
-    //"  maxcolor=max(max(color_total.r,color_total.g),color_total.b);"
-    //"  color_total/=maxcolor;"
-    //"  alphan*=maxcolor;"
-    //"  alphan=clamp(alphan,0.0,1.0);"
     "  if(volbw==1){"
     "    gray=color2bw(color_total);"
     "    color_total=vec3(gray,gray,gray);"
@@ -482,12 +431,12 @@ int SetVolSmokeShaders(){
   vert_shader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vert_shader,1, VertexShaderSource,NULL);
   glCompileShader(vert_shader);
-  if(ShaderCompileStatus(vert_shader,"volume vertex shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(vert_shader,"volume vertex shader")==GL_FALSE)return 0;
 
   frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(frag_shader, 1, FragmentShaderSource,NULL);
   glCompileShader(frag_shader);
-  if(ShaderCompileStatus(frag_shader,"volume fragment shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(frag_shader,"volume fragment shader")==GL_FALSE)return 0;
 
   p_volsmoke = glCreateProgram();
   glAttachShader(p_volsmoke,vert_shader);
@@ -498,15 +447,13 @@ int SetVolSmokeShaders(){
 
   GPUvol_inside = glGetUniformLocation(p_volsmoke,"inside");
   GPUvol_eyepos = glGetUniformLocation(p_volsmoke,"eyepos");
-  GPUvol_voltemp_offset = glGetUniformLocation(p_volsmoke, "voltemp_offset");
-  GPUvol_voltemp_factor = glGetUniformLocation(p_volsmoke, "voltemp_factor");
   GPUvol_block_volsmoke = glGetUniformLocation(p_volsmoke,"block_volsmoke");
   GPUvol_dcell = glGetUniformLocation(p_volsmoke,"dcell");
   GPUvol_dcell3 = glGetUniformLocation(p_volsmoke,"dcell3");
+  GPUvol_slicetype = glGetUniformLocation(p_volsmoke, "slicetype");
   GPUvol_xyzmaxdiff = glGetUniformLocation(p_volsmoke,"xyzmaxdiff");
   GPUvol_gpu_vol_factor = glGetUniformLocation(p_volsmoke,"gpu_vol_factor");
   GPUvol_fire_opacity_factor = glGetUniformLocation(p_volsmoke,"fire_opacity_factor");
-  GPUvol_vol_adaptive = glGetUniformLocation(p_volsmoke, "vol_adaptive");
   GPUvol_mass_extinct = glGetUniformLocation(p_volsmoke,"mass_extinct");
   GPUvol_volbw = glGetUniformLocation(p_volsmoke,"volbw");
   GPUvol_temperature_min = glGetUniformLocation(p_volsmoke,"temperature_min");
@@ -517,16 +464,6 @@ int SetVolSmokeShaders(){
   GPUvol_soot_density = glGetUniformLocation(p_volsmoke,"soot_density_texture");
   GPUvol_blockage = glGetUniformLocation(p_volsmoke,"blockage_texture");
   GPUvol_fire = glGetUniformLocation(p_volsmoke,"fire_texture");
-
-  GPUvol_use_light = glGetUniformLocation(p_volsmoke, "use_light");
-  GPUvol_light_color = glGetUniformLocation(p_volsmoke, "light_color");
-  GPUvol_light_intensity = glGetUniformLocation(p_volsmoke, "light_intensity");
-  GPUvol_scatter_param = glGetUniformLocation(p_volsmoke, "scatter_param");
-  GPUvol_light = glGetUniformLocation(p_volsmoke,"light_texture");
-  GPUvol_scatter_param = glGetUniformLocation(p_volsmoke, "scatter_param");
-  GPUvol_light_position = glGetUniformLocation(p_volsmoke, "light_position");
-  GPUvol_light_type = glGetUniformLocation(p_volsmoke, "light_type");
-  GPUvol_scatter_type_glui = glGetUniformLocation(p_volsmoke, "scatter_type");
 
   GPUvol_havefire = glGetUniformLocation(p_volsmoke,"havefire");
   GPUvol_smokecolormap = glGetUniformLocation(p_volsmoke,"smokecolormap");
@@ -596,12 +533,12 @@ int SetSmokeShaders(){
   vert_shader = glCreateShader(GL_VERTEX_SHADER);
   glShaderSource(vert_shader,1, VertexShaderSource,NULL);
   glCompileShader(vert_shader);
-  if(ShaderCompileStatus(vert_shader,"slice vertex shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(vert_shader,"slice vertex shader")==GL_FALSE)return 0;
 
   frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(frag_shader, 1, FragmentShaderSource,NULL);
   glCompileShader(frag_shader);
-  if(ShaderCompileStatus(frag_shader,"slice fragment shader")==GL_FALSE)return 0;;
+  if(ShaderCompileStatus(frag_shader,"slice fragment shader")==GL_FALSE)return 0;
 
   p_smoke = glCreateProgram();
   glAttachShader(p_smoke,vert_shader);

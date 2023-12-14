@@ -1,8 +1,14 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+
+#if defined(WIN32)
+#include <windows.h>
+#endif
+#include GLU_H
 
 #include "datadefs.h"
 #include "smokeviewvars.h"
@@ -222,7 +228,7 @@ float GetPoint2BoxDist(float boxmin[3], float boxmax[3], float p1[3], float p2or
       }
     }
   }
-  ASSERT(FFALSE);
+  assert(FFALSE);
   return Dist(p1, p2);
 }
 
@@ -276,7 +282,7 @@ void RGBTest(void){
   max_err = MAX(dr, dg);
   max_err = MAX(max_err, db);
   if(max_err<=rgb_test_delta){
-    printf("found color (%i,%i,%i) at (%f,%f,%f) - within error bounds\n",
+    printf("found color (%i,%i,%i) at (%f,%f,%f) - within bounds\n",
       rgbcolor[0], rgbcolor[1], rgbcolor[2],
       rgb_test_xyz[0], rgb_test_xyz[1], rgb_test_xyz[2]);
   }
@@ -371,7 +377,7 @@ void DrawDevicesVal(void){
   for(i=0;i<ndeviceinfo;i++){
     devicei = deviceinfo + i;
 
-    if(devicei->object->visible==0)continue;
+    if(devicei->object->visible==0||devicei->show == 0)continue;
     xyz = devicei->xyz;
     xyznorm = devicei->xyznorm;
     if(active_smokesensors==1&&show_smokesensors!=SMOKESENSORS_HIDDEN&&STRCMP(devicei->object->label,"smokesensor")==0){
@@ -414,7 +420,7 @@ void DrawDevicesVal(void){
           }
           break;
         default:
-          ASSERT(FFALSE);
+          assert(FFALSE);
           break;
       }
       if(devicei->visval>128){
@@ -551,8 +557,8 @@ unsigned char *GetDeviceColor(devicedata *devicei, unsigned char *colorval,float
   val= GetDeviceVal(global_times[itimes],devicei,&valid);
   if(valid!=1)return NULL;
   val = (val-valmin)/(valmax-valmin);
-  colorindex=CLAMP(255*val,1,254);
-  rgb_local=current_colorbar->colorbar+3*colorindex;
+  colorindex=CLAMP(255*val,0,255);
+  rgb_local=current_colorbar->colorbar_rgb+3*colorindex;
   colorval[0]=255*rgb_local[0];
   colorval[1]=255*rgb_local[1];
   colorval[2]=255*rgb_local[2];
@@ -807,7 +813,7 @@ void DrawTargetNorm(void){
 
       devicei = deviceinfo + i;
 
-      if(devicei->object->visible==0)continue;
+      if(devicei->object->visible == 0 || devicei->show == 0)continue;
       if(STRCMP(devicei->object->label,"sensor")==0&&visSensor==0)continue;
       if(isZoneFireModel==1&&STRCMP(devicei->object->label,"target")==0&&visSensor==0)continue;
       xyz = devicei->xyz;
@@ -3309,7 +3315,7 @@ void DrawDevices(int mode){
         float *xyz1, *xyz2, dxyz[3];
 
         devicei = deviceinfo+i;
-        if(devicei->object->visible==0)continue;
+        if(devicei->object->visible == 0 || devicei->show == 0)continue;
         xyz1 = devicei->xyz1;
         xyz2 = devicei->xyz2;
         dxyz[0] = xyz2[0]-xyz1[0];
@@ -3327,7 +3333,7 @@ void DrawDevices(int mode){
       devicedata *devicei;
 
       devicei = deviceinfo + i;
-      if(devicei->object->visible == 0)continue;
+      if(devicei->object->visible == 0 || devicei->show == 0)continue;
       if(devicei->in_zone_csv == 1)continue;
       if(devicei->plane_surface != NULL){
         int j;
@@ -3530,7 +3536,7 @@ void DrawDevices(int mode){
             glPopMatrix();
             break;
           default:
-            ASSERT(FFALSE);
+            assert(FFALSE);
             break;
           }
         }
@@ -3678,7 +3684,7 @@ void DrawDevices(int mode){
             glPopMatrix();
             break;
           default:
-            ASSERT(FFALSE);
+            assert(FFALSE);
             break;
           }
         }
@@ -3706,6 +3712,7 @@ void DrawDevices(int mode){
 
     if(devicei->object->visible == 0 || (devicei->prop != NULL&&devicei->prop->smv_object->visible == 0))continue;
     if(devicei->plane_surface != NULL)continue;
+    if(devicei->show == 0)continue;
     if(isZoneFireModel == 1 && STRCMP(devicei->object->label, "target") == 0 && visSensor == 0)continue;
     if(devicei->in_zone_csv == 1&&strcmp(devicei->deviceID,"TARGET")!=0)continue;
     if(isZoneFireModel == 1 && STRCMP(devicei->deviceID, "TIME") == 0)continue;
@@ -3901,7 +3908,7 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
   if(iframe_local > object->nframes - 1 || iframe_local < 0)iframe_local = 0;
   framei = object->obj_frames[iframe_local];
 
-  ASSERT(framei->error == 0 || framei->error == 1);
+  assert(framei->error == 0 || framei->error == 1);
 
   if(framei->error == 1){
     object = error_device;
@@ -3934,8 +3941,6 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
 
   if(prop != NULL){
     int i;
-
-    // copy time dependent evac data
 
     // copy static data from PROP line
 
@@ -4649,7 +4654,7 @@ void DrawSmvObject(sv_object *object_dev, int iframe_local, propdata *prop, int 
     case SV_ERR:
       break;
     default:
-      ASSERT(FFALSE);
+      assert(FFALSE);
       break;
     }
   }
@@ -5666,6 +5671,20 @@ devicedata *GetCSVDeviceFromLabel(char *label, int index){
   return NULL;
 }
 
+/* ----------------------- GetDeviceIndexFromLabel ----------------------------- */
+
+int GetDeviceIndexFromLabel(char *label){
+  int i;
+
+  for(i = 0;i < ndeviceinfo;i++){
+    devicedata *devicei;
+
+    devicei = deviceinfo + i;
+    if(STRCMP(devicei->deviceID, label) == 0)return i;
+  }
+  return -1;
+}
+
 /* ----------------------- GetDeviceFromLabel ----------------------------- */
 
 devicedata *GetDeviceFromLabel(char *label,int index){
@@ -5785,7 +5804,7 @@ int CompareV2Devices(const void *arg1, const void *arg2){
     if(xyzi[1] - xyzj[1]>+EPSDEV)return 1;
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return 0;
@@ -5832,7 +5851,7 @@ int CompareV3Devices( const void *arg1, const void *arg2 ){
     if(xyzi[2]-xyzj[2]>+EPSDEV)return 1;
     break;
   default:
-    ASSERT(FFALSE);
+    assert(FFALSE);
     break;
   }
   return 0;
@@ -6097,7 +6116,7 @@ void SetupZoneDevs(void){
 
 /* ----------------------- ReadDeviceData ----------------------------- */
 
-void ReadDeviceData(char *file, int filetype, int loadstatus){
+FILE_SIZE ReadDeviceData(char *file, int filetype, int loadstatus){
   FILE *stream;
   int nrows, ncols;
   int irow;
@@ -6139,22 +6158,26 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
         if(times_local==devicej->times)devicej->times=NULL;
       }
     }
-    return;
+    return 0;
   }
 
   // find number of rows and columns
 
   stream=fopen(file,"r");
-  if(stream==NULL)return;
+  if(stream==NULL)return 0;
   RewindDeviceFile(stream);
   buffer_len=GetRowCols(stream,&nrows,&ncols);
   buffer_len += (ncols+1);
   if(nrows<=0||ncols<=0||buffer_len<=0){
     fclose(stream);
-    return;
+    return 0;
   }
   buffer_len+=10;
   RewindDeviceFile(stream);
+
+  FILE_SIZE file_size;
+
+  file_size = GetFileSizeSMV(file);
 
   NewMemory((void **)&buffer,      buffer_len);
   NewMemory((void **)&buffer2,     buffer_len);
@@ -6231,6 +6254,7 @@ void ReadDeviceData(char *file, int filetype, int loadstatus){
   FREEMEMORY(devcunits);
   FREEMEMORY(devclabels)
   FREEMEMORY(devices);
+  return file_size;
 }
 
 
@@ -6427,7 +6451,7 @@ void DeviceData2WindRose(int nr, int ntheta){
             if(wdev!=NULL)vvals = wdev->vals;
             break;
           default:
-            ASSERT(FFALSE);
+            assert(FFALSE);
             break;
           }
           if(udev!=NULL)times = udev->times;
@@ -6563,7 +6587,8 @@ void SetupDeviceData(void){
   char **devcunits=NULL, **devclabels=NULL;
   int is_dup;
 
-  if(ndeviceinfo==0)return;
+  if(ndeviceinfo==0)return; // only setup device data once
+  devices_setup = 1;
   FREEMEMORY(vdeviceinfo);
   NewMemory((void **)&vdeviceinfo,ndeviceinfo*sizeof(vdevicedata));
   FREEMEMORY(vdevices_sorted);
@@ -6574,7 +6599,6 @@ void SetupDeviceData(void){
     devicedata *devi,*devj;
     float *xyzval;
 
-    if(ndeviceinfo>1000&&i%100==0)PRINTF("processing device %i of %i\n", i, ndeviceinfo);
     devi = deviceinfo+i;
     xyzval = devi->xyz;
     devi->vdevice = NULL;
@@ -6814,6 +6838,44 @@ void SetupDeviceData(void){
   FREEMEMORY(valids);
   FREEMEMORY(devcunits);
   FREEMEMORY(devclabels)
+}
+
+/* ------------------ InitializeDeviceCsvData ------------------------ */
+
+void InitializeDeviceCsvData(int flag){
+  int i;
+  FILE_SIZE file_size = 0;
+  float total_time;
+
+  if(flag == LOAD)printf("Loading CSV files");
+  START_TIMER(total_time);
+  INIT_PRINT_TIMER(device_timer);
+  ReadDeviceData(NULL, CSV_FDS, UNLOAD);
+  ReadDeviceData(NULL, CSV_EXP, UNLOAD);
+  for(i = 0; i < ncsvfileinfo; i++){
+    csvfiledata *csvi;
+
+    csvi = csvfileinfo + i;
+    if(strcmp(csvi->c_type, "devc") == 0)file_size += ReadDeviceData(csvi->file, CSV_FDS, flag);
+    if(strcmp(csvi->c_type, "ext") == 0)file_size += ReadDeviceData(csvi->file, CSV_EXP, flag);
+  }
+  PRINT_TIMER(device_timer, "ReadDeviceData");
+  INIT_PRINT_TIMER(setup_timer);
+  if(flag==LOAD)SetupDeviceData();
+  PRINT_TIMER(setup_timer, "SetupDeviceData");
+  INIT_PRINT_TIMER(csv_timer);
+  file_size += ReadAllCSVFiles(flag);
+  PRINT_TIMER(csv_timer, "ReadAllCSVFiles");
+  if(flag==LOAD){
+    csv_loaded = 1;
+    plot2d_show_plots = 1;
+    STOP_TIMER(total_time);
+    printf("\n");
+    PrintFileLoadTimes(2,file_size, total_time);
+    plotstate=GetPlotState(DYNAMIC_PLOTS);
+    UpdateTimes();
+    ForceIdle();
+  }
 }
 
 /* ----------------------- FreeObject ----------------------------- */
@@ -7230,18 +7292,44 @@ void InitObjectDefs(void){
 
   svofile_exists = 0;
 
+  // There are 5 places to retrieve object definitions from:
+  //
+  //   1. A file within the same directory as the smokeview executable named
+  //      "objects.svo".
+  //   2. A file in the current directory named "objects.svo".
+  //   3. A file in the current directory named "${fdsprefix}.svo".
+  //   4. A file pointed to by SMOKEVIEW_OBJECT_DEFS_PATH.
+  //   5. A file pointed to be envar SMOKEVIEW_OBJECT_DEFS.
+  //
+  // Last definition wins.
+
+  // Read "objects.svo" from bin dir
   if(smokeview_bindir!=NULL){
     strcpy(objectfile,smokeview_bindir);
     strcat(objectfile,"objects.svo");
     ReadObjectDefs(objectfile);
   }
 
+  // Read "objects.svo" from the current directory.
   strcpy(objectfile,"objects.svo");
   ReadObjectDefs(objectfile);
 
+  // Read "${fdsprefix}.svo" from the current directory
   strcpy(objectfile,fdsprefix);
   strcat(objectfile,".svo");
   ReadObjectDefs(objectfile);
+
+#ifdef SMOKEVIEW_OBJECT_DEFS_PATH
+  // Read objects file pointed to be macro SMOKEVIEW_OBJECT_DEFS_PATH. Useful
+  // when install paths differ per platform.
+  ReadObjectDefs(SMOKEVIEW_OBJECT_DEFS_PATH);
+#endif
+
+  // Read objects file from the envar SMOKEVIEW_OBJECT_DEFS
+  char *envar_object_path = getenv("SMOKEVIEW_OBJECT_DEFS");
+  if (envar_object_path != NULL) {
+    ReadObjectDefs(envar_object_path);
+  }
 
   InitAvatar();
 
@@ -7403,13 +7491,13 @@ void InitDevicePlane(devicedata *devicei){
     meshi = meshinfo + i;
 
     xx[0]=meshi->xyz_bar0[XXX];
-    xx[1]=DENORMALIZE_X(meshi->xyz_bar[XXX]);
+    xx[1]=SMV2FDS_X(meshi->xyz_bar[XXX]);
 
     yy[0]=meshi->xyz_bar0[YYY];
-    yy[1]=DENORMALIZE_Y(meshi->xyz_bar[YYY]);
+    yy[1]=SMV2FDS_Y(meshi->xyz_bar[YYY]);
 
     zz[0]=meshi->xyz_bar0[ZZZ];
-    zz[1]=DENORMALIZE_Z(meshi->xyz_bar[ZZZ]);
+    zz[1]=SMV2FDS_Z(meshi->xyz_bar[ZZZ]);
 
     for(j=0;j<8;j++){
       nodeindexes[j]=j;
@@ -7423,9 +7511,9 @@ void InitDevicePlane(devicedata *devicei){
     vals[6]= Dist2Plane(xx[1],yy[1],zz[1],devicei->xyz,devicei->xyznorm);
     vals[7]= Dist2Plane(xx[1],yy[0],zz[1],devicei->xyz,devicei->xyznorm);
 
-    xx[0]=NORMALIZE_X(meshi->xyz_bar0[XXX]);
-    yy[0]=NORMALIZE_Y(meshi->xyz_bar0[YYY]);
-    zz[0]=NORMALIZE_Z(meshi->xyz_bar0[ZZZ]);
+    xx[0]=FDS2SMV_X(meshi->xyz_bar0[XXX]);
+    yy[0]=FDS2SMV_Y(meshi->xyz_bar0[YYY]);
+    zz[0]=FDS2SMV_Z(meshi->xyz_bar0[ZZZ]);
     xx[1]=meshi->xyz_bar[XXX];
     yy[1]=meshi->xyz_bar[YYY];
     zz[1]=meshi->xyz_bar[ZZZ];
@@ -7459,34 +7547,6 @@ void GetIndepVarIndices(sv_object *smv_object,
     var = var_indep_strings[i];
     index[i]= GetTokenLoc(var,obj_frame);
   }
-}
-
-/* ----------------------- GetEvacIndices ----------------------------- */
-
-void GetEvacIndices(sv_object *smv_object,int *evac_index,int *nevac_index){
-
-  int n;
-
-  sv_object_frame *obj_frame;
-
-  obj_frame=smv_object->obj_frames[0];
-
-  n=0;
-
-  evac_index[n++]= GetTokenLoc("W",obj_frame);
-  evac_index[n++]= GetTokenLoc("D",obj_frame);
-  evac_index[n++]= GetTokenLoc("H1",obj_frame);
-  evac_index[n++]= GetTokenLoc("SX",obj_frame);
-  evac_index[n++]= GetTokenLoc("SY",obj_frame);
-  evac_index[n++]= GetTokenLoc("SZ",obj_frame);
-  evac_index[n++]= GetTokenLoc("R",obj_frame);
-  evac_index[n++]= GetTokenLoc("G",obj_frame);
-  evac_index[n++]= GetTokenLoc("B",obj_frame);
-  evac_index[n++]= GetTokenLoc("HX",obj_frame);
-  evac_index[n++]= GetTokenLoc("HY",obj_frame);
-  evac_index[n++]= GetTokenLoc("HZ",obj_frame);
-
-  *nevac_index=n;
 }
 
 /* ----------------------- UpdatePartClassDepend ----------------------------- */

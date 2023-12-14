@@ -1,4 +1,5 @@
 #include "options.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -112,7 +113,7 @@ void CopyFILE(char *destdir, char *file_in, char *file_out, int mode){
     streamout=fopen(full_file_out,"ab");
   }
   else{
-    ASSERT(0);
+    assert(0);
   }
 
   if(streamout==NULL){
@@ -518,20 +519,24 @@ void FreeFileList(filelistdata *filelist, int *nfilelist){
   *nfilelist=0;
 }
 
-  /* ------------------ get_nfilelist ------------------------ */
+/* ------------------ GetFileListSize ------------------------ */
 
-int GetFileListSize(const char *path, char *filter){
+int GetFileListSize(const char *path, char *filter, int mode){
   struct dirent *entry;
   DIR *dp;
   int maxfiles=0;
+  int d_type;
 
+  if(path == NULL||filter==NULL)return maxfiles;
   dp = opendir(path);
-  if(dp == NULL){
-    perror("opendir");
-    return 0;
-  }
+  if(dp == NULL)return 0;
+  d_type = DT_REG;
+  if(mode==DIR_MODE)d_type = DT_DIR;
   while( (entry = readdir(dp))!=NULL ){
-    if(((entry->d_type==DT_REG||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1))maxfiles++;
+    if(((entry->d_type==d_type||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1)){
+      if(strcmp(entry->d_name,".")==0||strcmp(entry->d_name,"..")==0)continue;
+      maxfiles++;
+    }
   }
   closedir(dp);
   return maxfiles;
@@ -573,7 +578,8 @@ int CompareFileList(const void *arg1, const void *arg2){
   return strcmp(x->file, y->file);
 }
 
-/* ------------------ getfile ------------------------ */
+/* ------------------ FileInList ------------------------ */
+
 filelistdata *FileInList(char *file, filelistdata *filelist, int nfiles, filelistdata *filelist2, int nfiles2){
   filelistdata *entry=NULL, fileitem;
 
@@ -592,34 +598,45 @@ filelistdata *FileInList(char *file, filelistdata *filelist, int nfiles, filelis
 
 /* ------------------ MakeFileList ------------------------ */
 
-int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, filelistdata **filelist){
+int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, filelistdata **filelist, int mode){
   struct dirent *entry;
   DIR *dp;
   int nfiles=0;
   filelistdata *flist;
+  int d_type;
 
   // DT_DIR - is a directory
   // DT_REG - is a regular file
 
-  if (maxfiles == 0) {
+  if (maxfiles == 0||path==NULL||filter==NULL) {
     *filelist = NULL;
     return 0;
   }
   dp = opendir(path);
-  if(dp == NULL){
-    perror("opendir");
-    *filelist=NULL;
-    return 0;
-  }
+  *filelist=NULL;
+  if(dp == NULL)return 0;
   NewMemory((void **)&flist,maxfiles*sizeof(filelistdata));
+  d_type = DT_REG;
+  if(mode==DIR_MODE)d_type = DT_DIR;
   while( (entry = readdir(dp))!=NULL&&nfiles<maxfiles ){
-    if((entry->d_type==DT_REG||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1){
+    if((entry->d_type==d_type||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1){
       char *file;
       filelistdata *flisti;
 
+      if(strcmp(entry->d_name,".")==0||strcmp(entry->d_name,"..")==0)continue;
       flisti = flist + nfiles;
-      NewMemory((void **)&file,strlen(entry->d_name)+1);
-      strcpy(file,entry->d_name);
+      if(mode == DIR_MODE){
+        NewMemory((void **)&file, strlen(path)+1+strlen(entry->d_name) + 1);
+      }
+      else{
+        NewMemory((void **)&file, strlen(entry->d_name) + 1);
+      }
+      strcpy(file, "");
+      if(mode == DIR_MODE){
+        strcat(file, path);
+        strcat(file, dirseparator);
+      }
+      strcat(file,entry->d_name);
       flisti->file=file;
       flisti->type=0;
       nfiles++;
@@ -760,11 +777,21 @@ char *GetProgDir(char *progname, char **svpath){
     strncpy(progpath,progname,lendir);
     progpath[lendir]=0;
     NewMemory((void **)&smokeviewpath2,(unsigned int)(strlen(progname)+1));
-    strcpy(smokeviewpath2,"");;
+    strcpy(smokeviewpath2,"");
   }
   strcat(smokeviewpath2,progname);
   *svpath=smokeviewpath2;
   return progpath;
+}
+
+/* ------------------ IsSootFile ------------------------ */
+
+int IsSootFile(char *shortlabel, char *longlabel){
+  if(STRCMP(shortlabel, "rho_C")==0)return 1;
+  if(STRCMP(shortlabel, "rho_Soot")==0)return 1;
+  if(STRCMP(shortlabel, "rho_C0.9H0.1")==0)return 1;
+  if(strlen(longlabel)>=12&&strncmp(longlabel, "SOOT DENSITY",12)==0)return 1;
+  return 0;
 }
 
 /* ------------------ getprogdirabs ------------------------ */
@@ -856,6 +883,38 @@ time_t FileModtime(char *filename){
   if(statfile!=0)return return_val;
   return_val = statbuffer.st_mtime;
   return return_val;
+}
+
+/* ------------------ GetProgFullPath ------------------------ */
+
+void GetProgFullPath(char *progexe, int maxlen_progexe){
+  char *end, savedir[1024], tempdir[1024], *tempexe;
+
+  strcpy(tempdir, progexe);
+  end = strrchr(tempdir, dirseparator[0]);
+  if(end == NULL){
+    char *progpath;
+
+    progpath = Which(progexe);
+    if(progpath != NULL){
+      char copy[1024];
+
+      strcpy(copy, progexe);
+      strcpy(progexe, progpath);
+      if(progexe[strlen(progexe) - 1] != dirseparator[0])strcat(progexe, dirseparator);
+      strcat(progexe, copy);
+    }
+  }
+  else{
+    end[0] = 0;
+    tempexe = end + 1;
+    GETCWD(savedir, 1024);
+    CHDIR(tempdir);
+    GETCWD(progexe, maxlen_progexe);
+    if(progexe[strlen(progexe) - 1] != dirseparator[0])strcat(progexe, dirseparator);
+    strcat(progexe, tempexe);
+    CHDIR(savedir);
+  }
 }
 
 /* ------------------ Which ------------------------ */

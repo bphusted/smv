@@ -111,31 +111,29 @@ void ParseCSV(char *buffer, char *buffer_temp, char **tokens, int *ntokens){
 //  copy comma delimited values from buffer into character array tokens
 //  returning number of values found in ntokens
 
-  int nt=0;
-  int i, ii;
-  char *tok;
+  int nt=0, i, in_quote, lenbuffer;
 
-  ii = 0;
+  in_quote = 0;
   TrimBack(buffer);
-  for(ii=0,i=0;i<strlen(buffer);i++){
-    if(buffer[i]==','){
-      buffer_temp[ii++] = ' ';
+  lenbuffer = strlen(buffer);
+  tokens[nt++] = buffer;
+  for(i=0;i<lenbuffer;i++){
+    if(buffer[i] == '"'){
+      in_quote = 1 - in_quote;
+      continue;
     }
-    buffer_temp[ii++] = buffer[i];
+    if(in_quote==1)continue;
+    if(buffer[i] == ','){
+      buffer[i] = 0;
+      tokens[nt++] = buffer + i + 1;
+    }
   }
-  if(buffer[strlen(buffer)-1]==','){
-    buffer_temp[ii++] = ' ';
-  }
-  buffer_temp[ii] = 0;
-  strcpy(buffer, buffer_temp);
+  for(i=0;i<nt;i++){
+    char *tok;
 
-  tok = strtok(buffer, ",");
-  tokens[nt++] = TrimQuotesFrontBack(tok);
-
-  for(;;){
-    tok = strtok(NULL, ",");
-    if(tok==NULL)break;
-    tokens[nt++] = TrimQuotesFrontBack(tok);
+    tok = tokens[i];
+    tok = TrimQuotesFrontBack(tok);
+    tokens[i] = tok;
   }
   *ntokens=nt;
 }
@@ -358,11 +356,18 @@ void TrimZeros(char *line){
 char *TrimFrontZeros(char *line){
   char *c;
 
+  if(line[0]=='-'){
+    char *trim;
+
+    trim = TrimFrontZeros(line+1);
+    trim[-1] = '-';
+    return trim-1;
+  }
   for(c = line; c<line+strlen(line); c++){
     if(c[0]!='0')return c;
     if(c[0]=='0'&&c[1]=='.')return c;
   }
-  return line;;
+  return line;
 }
 
 /* ------------------ TrimMZeros ------------------------ */
@@ -732,7 +737,7 @@ void Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixe
   if(exponential_labels==1)doit = 0;
 
   if(doit==1){
-    if(ABS(exp_offset)>=3){
+    if(ABS(exp_offset)>=4){
       sprintf(exp_offset_label, "*10^%i", exp_offset);
     }
     else{
@@ -1019,7 +1024,7 @@ char *GetStringPtr(char *buffer){
       break;
     }
   }
-  if(first<0)return NULL;;
+  if(first<0)return NULL;
 
   for(i=strlen(buffer)-1;i>=0;i--){
     if(buffer[i]!=' '){
@@ -1455,63 +1460,6 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
   }
   return return_val;
 }
-
-#ifdef pp_PLOT3D_STATIC
-/* ------------------ ReadPlotLabels ------------------------ */
-
-int ReadPlot3DLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label, char *labels_static){
-  char buffer2[255], *buffer;
-  size_t len;
-  int len_suffix_label = 0;
-  int len_skip_label = 10;  // add extra space to label in case there is an isosurface skip parameter
-  int return_val = LABEL_OK;
-
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"*");
-    return_val =  LABEL_ERR;
-  }
-
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
-  TrimBack(buffer);
-  len=strlen(buffer);
-  if(suffix_label!=NULL)len_suffix_label = strlen(suffix_label);
-  if(flowlabel!=NULL){
-    flowlabel->longlabel = labels_static;
-    STRCPY(flowlabel->longlabel, buffer);
-    if(suffix_label!=NULL&&strlen(suffix_label)>0)STRCAT(flowlabel->longlabel, suffix_label);
-  }
-
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"**");
-    return_val = LABEL_ERR;
-  }
-
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
-  TrimBack(buffer);
-  len=strlen(buffer);
-  if(flowlabel!=NULL){
-    flowlabel->shortlabel = labels_static + MAXPLOT3DLABELSIZE;
-    STRCPY(flowlabel->shortlabel, buffer);
-  }
-
-  if(FGETS(buffer2,255,stream)==NULL){
-    strcpy(buffer2,"***");
-    return_val = LABEL_ERR;
-  }
-
-  len=strlen(buffer2);
-  buffer=TrimFront(buffer2);
-  TrimBack(buffer);
-  len=strlen(buffer)+1;// allow room for deg C symbol in case it is present
-  if(flowlabel!=NULL){
-    flowlabel->unit = labels_static + 2*MAXPLOT3DLABELSIZE;
-    STRCPY(flowlabel->unit, buffer);
-  }
-  return return_val;
-}
-#endif
 
 /* ------------------ Date2Day ------------------------ */
 
@@ -2008,6 +1956,9 @@ void PRINTversion(char *progname){
 #define pp_COMPVER "unknown"
 #endif
   PRINTF("Compiler         : %s\n", pp_COMPVER);
+#ifdef pp_SANITIZE
+  PRINTF("Sanitize checks  : enabled\n");
+#endif
 
 #ifdef pp_HASH
   if(option==HASH_MD5||option==HASH_ALL){
