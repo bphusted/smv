@@ -1,6 +1,6 @@
 #!/bin/bash
 module purge
-module load compiler/iccifort/2020.4.304
+module load intel/fds
 source ../../scripts/setopts.sh $*
 
 # Exit immediately if any of the build steps fail
