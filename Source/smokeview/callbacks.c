@@ -1899,19 +1899,6 @@ void Keyboard(unsigned char key, int flag){
         break;
       case GLUT_ACTIVE_CTRL:
       default:
-#ifdef pp_HIST
-        if(histogram_show_graph == 1 || histogram_show_numbers == 1){
-          histogram_show_graph = 0;
-          histogram_show_numbers = 0;
-        }
-        else{
-          histogram_show_graph = 1;
-          histogram_show_numbers = 1;
-          visColorbarVertical = 1;
-          update_slice_hists = 1;
-        }
-        UpdateHistogramType();
-#endif
         break;
       }
       break;
@@ -2844,31 +2831,40 @@ void Keyboard(unsigned char key, int flag){
       partfast = 1 - partfast;
       if(current_script_command==NULL){
         if(npartinfo>1){
-          part_multithread = partfast;
+          use_partload_threads = partfast;
         }
         else{
-          part_multithread = 0;
+          use_partload_threads = 0;
         }
       }
-      if(part_multithread==1){
-        if(npartthread_ids>1)printf("parallel particle loading: on(%i threads)\n",npartthread_ids);
-        if(npartthread_ids==1)printf("parallel particle loading: on(1 thread)\n");
+      if(use_partload_threads==1){
+        if(n_partload_threads > 1)printf("parallel particle loading: on(%i threads)\n", n_partload_threads);
+        if(n_partload_threads == 1)printf("parallel particle loading: on(1 thread)\n");
       }
-      if(part_multithread==0)printf("parallel particle loading: off\n");
+      if(use_partload_threads==0)printf("parallel particle loading: off\n");
       GLUIUpdatePartFast();
       break;
     case '$':
-      trainer_active=1-trainer_active;
-      if(trainer_active==1){
-        PRINTF("Trainer mode active\n");
-        trainer_mode=1;
-        GLUIShowTrainer();
+      if(keystate == GLUT_ACTIVE_ALT){
+        trainer_active = 1 - trainer_active;
+        if(trainer_active == 1){
+          PRINTF("Trainer mode active\n");
+          trainer_mode = 1;
+          GLUIShowTrainer();
+        }
+        if(trainer_active == 0){
+          PRINTF("Trainer mode inactive\n");
+          trainer_mode = 0;
+          GLUIHideTrainer();
+        }
+        break;
       }
-      if(trainer_active==0){
-        PRINTF("Trainer mode inactive\n");
-        trainer_mode=0;
-        GLUIHideTrainer();
-      }
+      force_alpha_opaque = 1 - force_alpha_opaque;
+      if(force_alpha_opaque == 1)printf("force smoke/fire opaqueness: yes\n");
+      if(force_alpha_opaque == 0)printf("force smoke/fire opaqueness: no\n");
+      update_smoke_alphas = 1;
+      GLUIForceAlphaOpaque();
+      GLUTPOSTREDISPLAY;
       break;
     case '%':
       script_step=1-script_step;

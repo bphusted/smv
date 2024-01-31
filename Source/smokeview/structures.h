@@ -12,6 +12,17 @@
 
 /* --------------------------  circdata ------------------------------------ */
 
+typedef struct _sliceparmdata {
+  int nsliceinfo;
+  int nvsliceinfo;
+  int nmultisliceinfo;
+  int nmultivsliceinfo;
+  int nfedinfo;
+  int nfediso;
+} sliceparmdata;
+
+/* --------------------------  circdata ------------------------------------ */
+
 typedef struct _circdata {
   float *xcirc, *ycirc;
   int ncirc;
@@ -133,6 +144,7 @@ typedef struct _geomdata {
   int cache_defined;
   int memory_id, loaded, display;
   int is_terrain;
+  int block_number;
   int have_cface_normals, ncface_normals;
   float *cface_normals;
   float *float_vals;
@@ -167,9 +179,6 @@ typedef struct _screendata {
 /* --------------------------  bounddata ------------------------------------ */
 
 typedef struct _boundata {
-#ifdef pp_HIST
-  float percentile_min, percentile_max;
-#endif
   float global_min, global_max;
   int defined;
 } bounddata;
@@ -633,14 +642,10 @@ typedef struct _isodata {
   char menulabel[128];
   int *geom_nstatics, *geom_ndynamics;
   float *geom_times, *geom_vals;
+  unsigned char *times_map;
+  int have_restart;
   float geom_globalmin, geom_globalmax;
-#ifdef pp_HIST
-  float geom_percentilemin, geom_percentilemax;
-#endif
   int geom_nvals;
-#ifdef pp_HIST
-  histogramdata *histogram;
-#endif
 } isodata;
 
 /* --------------------------  volrenderdata ------------------------------------ */
@@ -739,15 +744,20 @@ typedef struct _meshdata {
   int *imap, *jmap, *kmap;
   int n_imap, n_jmap, n_kmap;
 
-  char *c_iblank_node0, *c_iblank_cell0, *c_iblank_x0, *c_iblank_y0, *c_iblank_z0;
+  char *c_iblank_node0,      *c_iblank_cell0,      *c_iblank_x0,      *c_iblank_y0,      *c_iblank_z0;
+  char *c_iblank_node0_temp, *c_iblank_cell0_temp, *c_iblank_x0_temp, *c_iblank_y0_temp, *c_iblank_z0_temp;
   char *c_iblank_node_html;
+  char *c_iblank_node_html_temp;
   float *f_iblank_cell0;
+  float *f_iblank_cell0_temp;
   char *c_iblank_embed0;
   float *block_zdist0;
   float *opacity_adjustments;
 
-  char *c_iblank_node, *c_iblank_cell, *c_iblank_x, *c_iblank_y, *c_iblank_z;
+  char *c_iblank_node,      *c_iblank_cell,      *c_iblank_x,      *c_iblank_y,      *c_iblank_z;
+  char *c_iblank_node_temp, *c_iblank_cell_temp, *c_iblank_x_temp, *c_iblank_y_temp, *c_iblank_z_temp;
   float *f_iblank_cell;
+  float *f_iblank_cell_temp;
   char *c_iblank_embed;
   float *block_zdist;
 
@@ -787,6 +797,7 @@ typedef struct _meshdata {
   int isomin_index, isomax_index;
   int niso_times;
   float *iso_times;
+  unsigned char *iso_times_map;
   int *iso_timeslist;
   int iso_itime;
   int smokedir,smokedir_old;
@@ -811,6 +822,7 @@ typedef struct _meshdata {
   unsigned char *cpatchval_zlib, *cpatchval_iframe_zlib;
   unsigned char *cpatchval, *cpatchval_iframe;
   float *patch_times, *patch_timesi, *patchval, *patchval_iframe;
+  unsigned char *patch_times_map;
   float **patchventcolors;
   float *thresholdtime;
   int *patchblank;
@@ -861,9 +873,19 @@ typedef struct _meshdata {
   struct _meshplanedata *smokeplaneinfo;
   int nsmokeplaneinfo;
   int s_offset[3];
+  int isliceinfo, nsliceinfo;
+  int use;
 } meshdata;
 
-  /* --------------------------  supermeshdata ------------------------------------ */
+/* --------------------------  cellmeshdata ------------------------------------ */
+
+typedef struct _cellmeshdata {
+  int nxyz[3];
+  float xyzminmax[6], dxyz[3];
+  meshdata **cellmeshes;
+} cellmeshdata;
+
+/* --------------------------  supermeshdata ------------------------------------ */
 
 typedef struct _supermeshdata {
 #ifdef pp_GPU
@@ -1190,18 +1212,11 @@ typedef struct _partpropdata {
   int imin, imax;
   float dlg_global_valmin, dlg_global_valmax;
   int set_global_bounds;
-#ifdef pp_HIST
-  float percentile_min, percentile_max;
-#endif
   float user_min, user_max;
   int setvalmin, setvalmax;
   float chopmin, chopmax;
   int setchopmin, setchopmax;
   int extreme_min, extreme_max;
-#ifdef pp_HIST
-  histogramdata histogram;
-  int *buckets;
-#endif
 } partpropdata;
 
 /* --------------------------  part5data ------------------------------------ */
@@ -1225,11 +1240,7 @@ typedef struct _part5data {
 typedef struct _partdata {
   FILE_m *stream;
 
-#ifdef pp_HIST
-  char *file, *size_file, *reg_file, *hist_file, *bound_file;
-#else
   char *file, *size_file, *reg_file, *bound_file;
-#endif
   int have_bound_file;
   int seq_id, autoload, loaded, skipload, request_load, display, reload, finalize;
   int loadstatus, boundstatus;
@@ -1240,6 +1251,8 @@ typedef struct _partdata {
   int npoints;
 
   float zoffset, *times;
+  unsigned char *times_map;
+  int have_restart;
   FILE_SIZE reg_file_size, file_size;
   LINT *filepos;
 
@@ -1249,9 +1262,7 @@ typedef struct _partdata {
   partclassdata **partclassptr;
   part5data *data5;
   histogramdata **histograms;
-#ifndef pp_HIST
   int hist_update;
-#endif
   int bounds_set;
   float *global_min, *global_max;
   float *valmin_fds, *valmax_fds;   // read in from .bnd files
@@ -1416,6 +1427,8 @@ typedef struct _slicedata {
   float diff_valmin,  diff_valmax;
   flowlabels label;
   float *qslicedata, *qsliceframe, *times, *qslice;
+  unsigned char *times_map;
+  int have_restart;
   unsigned char *qslicedata_compressed;
   unsigned char *slicecomplevel;
   unsigned char full_mesh;
@@ -1446,16 +1459,13 @@ typedef struct _slicedata {
   float sliceoffset;
   int nslicei, nslicej, nslicek;
   int nslicex, nslicey;
-  int ndirxyz[4];
   int nslicetotal;
   int slicefile_labelindex;
   int vloaded, uvw;
   int cell_center;
   float delta_orig, dplane_min, dplane_max;
   int extreme_min, extreme_max;
-#ifndef pp_HIST
   int hist_update;
-#endif
   int nhistograms;
   histogramdata *histograms;
   histogramdata *histogram;
@@ -1463,6 +1473,9 @@ typedef struct _slicedata {
   FILE_SIZE file_size;
   int *geom_offsets;
   devicedata vals2d;
+#ifdef pp_SLICE_BOUNDS
+  int boundstatus;
+#endif
 #ifdef pp_SLICE_MULTI
   int loadstatus;
 #endif
@@ -1479,7 +1492,6 @@ typedef struct _slicemenudata {
 typedef struct _multislicedata {
   int seq_id, autoload;
   int loaded, display;
-  int ndirxyz[4];
   int *islices, nslices;
   int slice_filetype;
   char menulabel[128];
@@ -1492,7 +1504,6 @@ typedef struct _multivslicedata {
   int seq_id, autoload;
   int loaded,display,mvslicefile_labelindex;
   int nvslices;
-  int ndirxyz[4];
   int *ivslices;
   char menulabel[128];
   char menulabel2[128];
@@ -1516,11 +1527,7 @@ typedef struct _cpp_boundsdata {
   float valmin[4], valmax[4], chopmin, chopmax;
   float glui_valmin, glui_valmax;
   int set_valtype, cache;
-#ifdef pp_HIST
   histogramdata *hist;
-#else
-  histogramdata *hist;
-#endif
 } cpp_boundsdata;
 /* --------------------------  boundsdata ------------------------------------ */
 
@@ -1541,6 +1548,16 @@ typedef struct _boundsdata {
   float levels256[256];
   flowlabels *label;
 } boundsdata;
+
+#ifdef pp_SLICE_BOUNDS
+/* --------------------------  globalboundsdata ------------------------------------ */
+
+typedef struct _globalboundsdata {
+  char *file;
+  int defined;
+  float valmin, valmax;
+} globalboundsdata;
+#endif
 
 /* --------------------------  vslicedata ------------------------------------ */
 
@@ -1598,10 +1615,10 @@ typedef struct _smoke3ddata {
   flowlabels label;
   char menulabel[128];
   float *times;
+  unsigned char *times_map;
+  int have_restart;
   int *use_smokeframe;
-#ifdef pp_SMOKE_SKIP
   int *smokeframe_loaded;
-#endif
   float extinct, valmin, valmax;
   char cextinct[32];
 #define ALPHA_X  0
@@ -1654,9 +1671,6 @@ typedef struct _patchdata {
   char *filetype_label;
   geomdata *geominfo;
   int *geom_offsets;
-#ifdef pp_BNDF
-  int have_geom;
-#endif
   int skip,dir;
   float xyz_min[3], xyz_max[3];
   int ntimes, ntimes_old;
@@ -1681,6 +1695,8 @@ typedef struct _patchdata {
   int blocknumber,loaded,loaded2,display;
   float *geom_times, *geom_vals;
   int *geom_timeslist,geom_itime;
+  unsigned char *geom_times_map;
+  int have_restart;
   unsigned char *geom_ivals;
   int *geom_ivals_static_offset, *geom_ivals_dynamic_offset;
   int *geom_vals_static_offset,  *geom_vals_dynamic_offset;
@@ -1696,12 +1712,7 @@ typedef struct _patchdata {
   int extreme_min, extreme_max;
   time_t modtime;
   int finalize;
-#ifdef pp_HIST
-  histogramdata *histogram;
-  int histogram_nframes;
-#else
   int hist_update;
-#endif
   bounddata bounds;
   boundsdata *bounds2;
 } patchdata;
@@ -1718,16 +1729,13 @@ typedef struct _plot3ddata {
   int u, v, w, nvars;
   float diff_valmin[MAXPLOT3DVARS], diff_valmax[MAXPLOT3DVARS];
   int extreme_min[MAXPLOT3DVARS], extreme_max[MAXPLOT3DVARS];
-  int blocknumber,loaded,display;
+  int blocknumber,loaded,display,loadnow;
   float valmin_fds[MAXPLOT3DVARS], valmax_fds[MAXPLOT3DVARS];   // read in from .bnd files
   float valmin_smv[MAXPLOT3DVARS], valmax_smv[MAXPLOT3DVARS];   // computed by smokeview
   flowlabels label[MAXPLOT3DVARS];
   char menulabel[256], longlabel[256], timelabel[256];
   histogramdata *histograms[MAXPLOT3DVARS];
-#ifndef pp_HIST
   int hist_update;
-#endif
-
 } plot3ddata;
 
 /* --------------------------  zonedata ------------------------------------ */
