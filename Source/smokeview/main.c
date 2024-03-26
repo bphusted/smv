@@ -115,6 +115,10 @@ void Usage(char *prog,int option){
     PRINTF("%s\n", _(" -update_slice  - calculate slice file parameters"));
     PRINTF("%s\n", _(" -update        - equivalent to -update_bounds and -update_slice"));
     PRINTF("%s\n", _(" -update_ini case.ini - update case.ini to the current format"));
+    PRINTF("%s\n", _(" -x0 val - horizontal screen coordinate in pixels where smokeview window is place at startup"));
+    PRINTF("%s\n", _(" -y0 val - vertical screen coordinate in pixels where smokeview window is place at startup"));
+    PRINTF("%s\n", _(" -X0 val - horizontal screen coordinate in pixels where dialog windows are placed when opened"));
+    PRINTF("%s\n", _(" -Y0 val - vertical screen coordinate in pixels where dialog windows are placed when opened"));
     PRINTF("%s\n", _(" -volrender     - generate images of volume rendered smoke and fire"));
     UsageCommon(HELP_ALL);
   }
@@ -181,6 +185,22 @@ char *ProcessCommandLine(CommandlineArgs *args) {
     }
     void SMV_EXIT(int error);
     SMV_EXIT(0);
+  }
+  if(args->have_x0){
+    use_commandline_origin = 1;
+    screenX0 = args->x0;
+  }
+  if(args->have_y0){
+    use_commandline_origin = 1;
+    screenY0 = args->y0;
+  }
+  if(args->have_X0){
+    dialogX0 = args->X0;
+    have_dialogX0 = 1;
+  }
+  if(args->have_Y0){
+    dialogY0 = args->Y0;
+    have_dialogY0 = 1;
   }
   if (args->csv) {
     update_csv_load = 1;
@@ -763,32 +783,6 @@ int CheckSMVFile(char *file, char *subdir){
 int main(int argc, char **argv){
   int return_code;
   char *progname;
-
-#ifdef pp_RESTART_DEBUG
-  float dtimes[20];
-  int dn;
-  unsigned char dtimes_map[20];
-
-  dn = 0;
-  dtimes[dn++] = 0.0;
-  dtimes[dn++] = 20.0;
-  dtimes[dn++] = 30;
-  dtimes[dn++] = 40.0;
-  dtimes[dn++] = 60.0;
-  dtimes[dn++] = 99.0;
-  dtimes[dn++] = 50.0;
-  dtimes[dn++] = 60.0;
-  dtimes[dn++] = 74.0;
-  dtimes[dn++] = 79.0;
-  dtimes[dn++] = 85.0;
-  dtimes[dn++] = 110.0;
-  dtimes[dn++] = 200.0;
-  dtimes[dn++] = 75.0;
-  dtimes[dn++] = 77.0;
-  dtimes[dn++] = 79.0;
-  dtimes[dn++] = 81.0;
-  MakeTimesMap(dtimes, dtimes_map, dn);
-#endif
 
   START_TIMER(timer_startup);
   // uncomment following block of code to test crash detection

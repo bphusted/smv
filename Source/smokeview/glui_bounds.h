@@ -48,6 +48,7 @@
 #define HIDEPATCHSURFACE 25
 #define DATA_transparent 26
 #define SET_GLOBAL_BOUNDS 27
+#define PARTSKIP 28
 #define UNLOAD_QDATA 203
 #define SET_TIME 204
 #define TBOUNDS 205
@@ -124,6 +125,7 @@
 #define FORCE_EXPONENTIAL 125
 #define SORTSLICES       126
 #define SORTSLICES_DEBUG 127
+#define SLICE_OPTION 131
 
 #define UPDATE_VECTOR          101
 #define UPDATE_VECTOR_FROM_SMV 102

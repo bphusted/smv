@@ -620,6 +620,7 @@ typedef struct _isodata {
   short *normaltable;
   int memory_id;
   int fds_skip;
+  int finalize;
   float fds_delta;
   int nnormaltable;
   char *file,*tfile;
@@ -627,15 +628,11 @@ typedef struct _isodata {
   int is_fed;
   feddata *fedptr;
   int type;
-  int setvalmin, setvalmax;
-  float valmin, valmax;
-  int firstshort;
+  int firstshort_iso;
   flowlabels surface_label, color_label;
   geomdata *geominfo;
   int blocknumber,display,loaded,loading;
   float tmin,tmax;
-  float valmin_data, valmax_data;
-  int extreme_min, extreme_max;
   int isoupdate_timestep;
   float *levels, **colorlevels;
   int nlevels;
@@ -643,8 +640,8 @@ typedef struct _isodata {
   int *geom_nstatics, *geom_ndynamics;
   float *geom_times, *geom_vals;
   unsigned char *times_map;
-  int have_restart;
-  float geom_globalmin, geom_globalmax;
+  unsigned char *geom_times_map;
+  float globalmin_iso, globalmax_iso;
   int geom_nvals;
 } isodata;
 
@@ -714,6 +711,7 @@ typedef struct _meshdata {
   float mesh_offset[3], *mesh_offset_ptr;
   int blockvis;
   float *xplt, *yplt, *zplt;
+  double *xpltd, *ypltd, *zpltd;
   int ivolbar, jvolbar, kvolbar;
   float *xvolplt, *yvolplt, *zvolplt;
   float *xplt_cen, *yplt_cen, *zplt_cen;
@@ -744,6 +742,9 @@ typedef struct _meshdata {
   int *imap, *jmap, *kmap;
   int n_imap, n_jmap, n_kmap;
 
+#ifdef pp_BOUNDS
+  unsigned char *boundary_mask;
+#endif
   char *c_iblank_node0,      *c_iblank_cell0,      *c_iblank_x0,      *c_iblank_y0,      *c_iblank_z0;
   char *c_iblank_node0_temp, *c_iblank_cell0_temp, *c_iblank_x0_temp, *c_iblank_y0_temp, *c_iblank_z0_temp;
   char *c_iblank_node_html;
@@ -1224,7 +1225,7 @@ typedef struct _partpropdata {
 typedef struct _part5data {
   partclassdata *partclassbase;
   float time;
-  int npoints,n_rtypes, n_itypes;
+  int npoints_file,npoints_loaded,n_rtypes, n_itypes;
   short *sx, *sy, *sz;
   float *dsx, *dsy, *dsz;
   float *avatar_angle, *avatar_width, *avatar_depth, *avatar_height;
@@ -1248,11 +1249,10 @@ typedef struct _partdata {
   int blocknumber;
   int *timeslist, ntimes, itime;
   FILE_SIZE bound_file_size;
-  int npoints;
+  int npoints_file, npoints_loaded;
 
   float zoffset, *times;
   unsigned char *times_map;
-  int have_restart;
   FILE_SIZE reg_file_size, file_size;
   LINT *filepos;
 
@@ -1264,9 +1264,7 @@ typedef struct _partdata {
   histogramdata **histograms;
   int hist_update;
   int bounds_set;
-  float *global_min, *global_max;
-  float *valmin_fds, *valmax_fds;   // read in from .bnd files
-  float *valmin_smv, *valmax_smv;   // computed by smokeview
+  float *valmin_part,    *valmax_part;
   int nfilebounds;
   unsigned char *vis_part;
   int *tags;
@@ -1353,7 +1351,6 @@ typedef struct _hvacvaldata{
   float *vals, valmin, valmax;
   int setvalmin, setvalmax;
   int vis, nvals;
-  int firstshort;
   char  colorlabels[12][11];
   float colorvalues[12];
   float levels256[256];
@@ -1400,6 +1397,9 @@ typedef struct _slicedata {
   int finalize;
   int slcf_index;
   char *slicelabel;
+#ifdef pp_BOUNDS
+  unsigned char *slice_mask;
+#endif
   int compression_type;
   int colorbar_autoflip;
   int ncompressed;
@@ -1415,20 +1415,15 @@ typedef struct _slicedata {
   float position_orig;
   int blocknumber;
   int cell_center_edge;
-  int firstshort_slice;
   int vec_comp;
   int skipdup;
   int setvalmin, setvalmax;
-  float valmin, valmax;
-  float globalmin, globalmax;
-  float valmin_data, valmax_data;
-  float valmin_fds, valmax_fds;   // read in from .bnd files
-  float valmin_smv, valmax_smv;   // computed by smokeview
+  float globalmin_slice, globalmax_slice;
+  float valmin_slice, valmax_slice;
   float diff_valmin,  diff_valmax;
   flowlabels label;
   float *qslicedata, *qsliceframe, *times, *qslice;
   unsigned char *times_map;
-  int have_restart;
   unsigned char *qslicedata_compressed;
   unsigned char *slicecomplevel;
   unsigned char full_mesh;
@@ -1473,9 +1468,6 @@ typedef struct _slicedata {
   FILE_SIZE file_size;
   int *geom_offsets;
   devicedata vals2d;
-#ifdef pp_SLICE_BOUNDS
-  int boundstatus;
-#endif
 #ifdef pp_SLICE_MULTI
   int loadstatus;
 #endif
@@ -1534,10 +1526,17 @@ typedef struct _cpp_boundsdata {
 typedef struct _boundsdata {
   char *shortlabel;
   int dlg_setvalmin, dlg_setvalmax;
+
+  int ini_defined;
+  int ini_setvalmin, ini_setvalmax;
+  float ini_valmin, ini_valmax;
+  float edit_valmin, edit_valmax;
+  int edit_valmin_defined, edit_valmax_defined;
+
   int setchopmin, setchopmax;
   float chopmin, chopmax;
   float dlg_valmin, dlg_valmax;
-  float data_valmin,data_valmax;
+  float data_valmin, data_valmax;
   float dlg_global_valmin, dlg_global_valmax;
   float line_contour_min;
   float line_contour_max;
@@ -1549,13 +1548,15 @@ typedef struct _boundsdata {
   flowlabels *label;
 } boundsdata;
 
-#ifdef pp_SLICE_BOUNDS
+#ifdef pp_BOUNDS
 /* --------------------------  globalboundsdata ------------------------------------ */
 
 typedef struct _globalboundsdata {
   char *file;
   int defined;
-  float valmin, valmax;
+  int nbounds;
+  float valmins_save[MAXPLOT3DVARS], valmaxs_save[MAXPLOT3DVARS];
+  float valmins[MAXPLOT3DVARS],      valmaxs[MAXPLOT3DVARS];
 } globalboundsdata;
 #endif
 
@@ -1616,7 +1617,6 @@ typedef struct _smoke3ddata {
   char menulabel[128];
   float *times;
   unsigned char *times_map;
-  int have_restart;
   int *use_smokeframe;
   int *smokeframe_loaded;
   float extinct, valmin, valmax;
@@ -1682,21 +1682,18 @@ typedef struct _patchdata {
   int is_compressed;
   int cbuffer_size;
   int boundary;
-  int inuse,inuse_getbounds;
-  int firstshort;
+  int firstshort_patch;
   int compression_type, compression_type_temp;
   int setvalmin, setvalmax;
-  float valmin_fds, valmax_fds;   // read in from .bnd files
-  float valmin_smv, valmax_smv;   // computed by smokeview
-  float valmin, valmax;
+  float valmin_patch, valmax_patch;
+  float valmin_glui,  valmax_glui;
   int setchopmin, setchopmax;
   float chopmin, chopmax;
   float diff_valmin, diff_valmax;
-  int blocknumber,loaded,loaded2,display;
+  int blocknumber,loaded,display;
   float *geom_times, *geom_vals;
   int *geom_timeslist,geom_itime;
   unsigned char *geom_times_map;
-  int have_restart;
   unsigned char *geom_ivals;
   int *geom_ivals_static_offset, *geom_ivals_dynamic_offset;
   int *geom_vals_static_offset,  *geom_vals_dynamic_offset;
@@ -1726,12 +1723,11 @@ typedef struct _plot3ddata {
   int finalize;
   int memory_id;
   float time;
-  int u, v, w, nvars;
+  int u, v, w, nplot3dvars;
   float diff_valmin[MAXPLOT3DVARS], diff_valmax[MAXPLOT3DVARS];
   int extreme_min[MAXPLOT3DVARS], extreme_max[MAXPLOT3DVARS];
   int blocknumber,loaded,display,loadnow;
-  float valmin_fds[MAXPLOT3DVARS], valmax_fds[MAXPLOT3DVARS];   // read in from .bnd files
-  float valmin_smv[MAXPLOT3DVARS], valmax_smv[MAXPLOT3DVARS];   // computed by smokeview
+  float valmin_plot3d[MAXPLOT3DVARS], valmax_plot3d[MAXPLOT3DVARS];
   flowlabels label[MAXPLOT3DVARS];
   char menulabel[256], longlabel[256], timelabel[256];
   histogramdata *histograms[MAXPLOT3DVARS];

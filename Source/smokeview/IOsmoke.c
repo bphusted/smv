@@ -3549,66 +3549,31 @@ int GetSmokeFrameStatus(float time_restart, float time_before, float time_now, i
   }
 }
 
-#ifdef pp_RESTART
 /* ------------------ MakeTimesMap ------------------------ */
 
-int MakeTimesMap(float *times, unsigned char *times_map, int n){
-  int i, mode, nrestarts = 0;
+void MakeTimesMap(float *times, unsigned char *times_map, int n){
+  int i, mode;
   float t_restart;
 
-  if(n <= 0)return 0;
+  if(n <= 0)return;
   mode = 1;
   times_map[n - 1] = 1;
   for(i = n - 2;i >= 0;i--){
     if(mode == 1){
       if(times[i] >= times[i + 1]){
         t_restart = times[i + 1];
-        nrestarts++;
         mode = 0;
       }
       times_map[i] = mode;
       continue;
     }
+// to remove near identical time points
+//#define RESTART_EPS 0.0005
+//    if(times[i] < t_restart-RESTART_EPS)mode = 1;
     if(times[i] < t_restart)mode = 1;
     times_map[i] = mode;
   }
-#ifdef pp_RESTART_DEBUG
-  for(i=0;i<n;i++){
-    printf("%i: %f %i\n", i, times[i], (int)times_map[i]);
-  }
-#endif
-  return nrestarts;
 }
-#else
-
-/* ------------------ MakeTimesMap ------------------------ */
-
-int MakeTimesMap(float *times, unsigned char *times_map, int n){
-  int i, have_restart, skip;
-  float time_restart;
-
-  for(i = 0;i < n;i++){
-    times_map[i] = 1;
-  }
-  have_restart = 0;
-  for(i = 1;i < n;i++){
-    if(times[i - 1] > times[i]){
-      have_restart = 1;
-      time_restart = times[i];
-      break;
-    }
-  }
-  if(have_restart == 0)return 0;
-
-  skip = 0;
-  for(i = 1;i < n;i++){
-    if(GetSmokeFrameStatus(time_restart, times[i - 1], times[i], &skip) == 0){
-      times_map[i] = 0;
-    }
-  }
-  return 1;
-}
-#endif
 
 /* ------------------ GetSmoke3DSizes ------------------------ */
 
@@ -3741,7 +3706,7 @@ int GetSmoke3DSizes(smoke3ddata *smoke3di, int fortran_skip, char *smokefile, in
     use_smokeframe_full++;
     iii++;
   }
-  smoke3di->have_restart = MakeTimesMap(smoke3di->times, smoke3di->times_map, count);
+  MakeTimesMap(smoke3di->times, smoke3di->times_map, count);
   *nchars_smoke_uncompressed = nch_uncompressed;
   fclose(SMOKE_SIZE);
   return 0;

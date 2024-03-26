@@ -52,6 +52,12 @@ EXTERNCPP void GLUISetMin(int type, char *label, int set_valmin, float valmin);
 EXTERNCPP void GLUISetMax(int type, char *label, int set_valmax, float valmax);
 EXTERNCPP void GLUISetMinMax(int type, char *label, int set_valmin, float valmin, int set_valmax, float valmax);
 EXTERNCPP void GLUISetMinMaxAll(int type, int *set_valmin, float *valmin, int *set_valmax, float *valmax, int nall);
+#ifdef pp_BOUNDS
+EXTERNCPP void GLUISetGlobalMinMaxAll(int type, float *valmin, float *valmax, int nall);
+EXTERNCPP void GLUISetLoadedMinMaxAll(int type, float *valmin, float *valmax, int nall);
+EXTERNCPP void GLUIGetGlobalMinMaxAll(int type, float *valmin, float *valmax, int nall);
+EXTERNCPP void GLUIGetLoadedMinMaxAll(int type, float *valmin, float *valmax, int nall);
+#endif
 EXTERNCPP void GLUIUpdateBounds(void);
 EXTERNCPP void GLUIPlot3DBoundsCPP_CB(int var);
 EXTERNCPP void GLUISetColorbarDigitsCPP(int ndigits);
@@ -59,7 +65,7 @@ EXTERNCPP void GLUIUpdatePartFast(void);
 EXTERNCPP void GLUIUpdateColorbarControls2(void);
 EXTERNCPP void GLUISetColorbarDigits(void);
 EXTERNCPP void GLUIIncrementPartPropIndex(void);
-EXTERNCPP void GLUIUpdateIsoBounds(void);
+EXTERNCPP void GLUIUpdateIsoBounds();
 EXTERNCPP void GLUIUpdateListIsoColorobar(void);
 EXTERNCPP void GLUIUpdateUseLighting(void);
 EXTERNCPP void GLUIImmersedBoundCB(int var);
@@ -330,6 +336,10 @@ EXTERNCPP int IsColorbarSplit(colorbardata *cbi);
 EXTERNCPP void UpdateHVACNodeColorLabels(int index);
 EXTERNCPP void UpdateAllHVACColorLabels(void);
 
+#ifdef pp_SLICE_MENU_DEBUG
+EXTERNCPP void PrintSliceInfo(void);
+#endif
+
 #ifdef pp_REFRESH
 EXTERNCPP void PeriodicRefresh(int var);
 #endif
@@ -367,6 +377,8 @@ EXTERNCPP void InitStartupDirs(void);
 
 EXTERNCPP int GetFontHeight(void);
 
+EXTERNCPP void LoadAllMultiSliceMenu(void);
+EXTERNCPP void LoadAllMultiVSliceMenu(void);
 
 EXTERNCPP void UpdateShowColorbar(int *showcfast_arg, int *show_slice_colorbar_arg, 
   int *show_hvacduct_colorbar_arg, int *show_hvacnode_colorbar_arg);
@@ -437,6 +449,8 @@ EXTERNCPP void GetLoadedPlot3dBounds(int *compute_loaded, float *loaded_min, flo
 EXTERNCPP void GetGlobalPlot3DBounds(void);
 EXTERNCPP void GetGlobalSliceBounds(int flag, int set_flag);
 EXTERNCPP int IsFDSRunning(FILE_SIZE *last_size);
+EXTERNCPP int BuildGbndFile(int file_type);
+
 EXTERNCPP void GetGlobalSliceBoundsReduced(void);
 EXTERNCPP void GetGlobalHVACDuctBounds(int flag);
 EXTERNCPP void GetGlobalHVACNodeBounds(int flag);
@@ -1143,13 +1157,12 @@ EXTERNCPP void Output3Val(float x, float y, float z, float val);
 EXTERNCPP void OutputBarText(float x, float y, const GLfloat *color, char *string);
 EXTERNCPP float GetStringLength(char *string);
 EXTERNCPP void UpdateGslicePlanes(void);
-#ifdef pp_SLICE_BOUNDS
-EXTERNCPP void SliceBoundsUpdate(void);
-EXTERNCPP void SliceBoundsGet(char *file, float *valmin, float *valmax);
-#endif
 
 EXTERNCPP void UpdateAllGeomTriangles(void);
-#ifdef pp_SLICE_BOUNDS
+#ifdef pp_BOUNDS
+EXTERNCPP void MakeBoundaryMask(patchdata *patchi);
+EXTERNCPP void SetPatchMin(int set_valmin, float valmin, char *buffer2);
+EXTERNCPP void SetPatchMax(int set_valmax, float valmax, char *buffer2);
 EXTERNCPP void SetSliceMin(int set_valmin, float valmin, char *buffer2);
 EXTERNCPP void SetSliceMax(int set_valmax, float valmax, char *buffer2);
 #endif
@@ -1196,7 +1209,7 @@ EXTERNCPP void GetSliceColors(const float *t, int nt, unsigned char *it,
               char colorlabels[12][11],float colorvalues[12], float *tlevels2,
               int *extreme_min, int *extreme_max, int flag
               );
-EXTERNCPP int MakeTimesMap(float *times, unsigned char *times_map, int n);
+EXTERNCPP void MakeTimesMap(float *times, unsigned char *times_map, int n);
 EXTERNCPP meshdata *GetLoadedIsoMesh(void);
 EXTERNCPP void SetIsoLabels(float smin, float smax,
                     isodata *sd, int *errorcode);

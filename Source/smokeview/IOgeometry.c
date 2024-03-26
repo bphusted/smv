@@ -1592,7 +1592,12 @@ void DrawGeom(int flag, int timestate){
 
     // draw geometry normal vectors
 
-    if(show_geom_normal==1&&smooth_geom_normal==0&&geomlisti->ntriangles>0){  // draw faceted normals
+    int doit = 0;
+    if(geomlisti->ntriangles > 0){
+      if(show_geom_normal==1&&smooth_geom_normal==0)doit = 1;
+      if(show_iso_normal == 1&&smooth_iso_normal==0)doit = 1;
+    }
+    if(doit==1){  // draw faceted normals
       glPushMatrix();
       glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
       glTranslatef(-xbar0,-ybar0,-zbar0);
@@ -1665,7 +1670,12 @@ void DrawGeom(int flag, int timestate){
       glEnd();
       glPopMatrix();
     }
-    if(show_geom_normal==1&&smooth_geom_normal==1&&geomlisti->ntriangles > 0){  // draw smooth normals
+    doit = 0;
+    if(geomlisti->ntriangles > 0){
+      if(show_geom_normal == 1 && smooth_geom_normal == 1)doit = 1;
+      if(show_iso_normal == 1 && smooth_iso_normal == 1)doit = 1;
+    }
+    if(doit==1){  // draw smooth normals
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
       glTranslatef(-xbar0, -ybar0, -zbar0);
@@ -2020,12 +2030,14 @@ void UpdateTriangles(int flag,int update){
         geomj = geominfoptrs[j];
         if(geomj->geomtype != GEOM_GEOM&&geomj->geomtype!=GEOM_ISO)continue;
         geomlisti = geomj->geomlistinfo+ii;
-        for(i = 0; i<geomlisti->nverts; i++){
-          vertdata *verti;
+        if(geomlisti->verts != NULL){
+          for(i = 0; i < geomlisti->nverts; i++){
+            vertdata *verti;
 
-          verti = geomlisti->verts+i;
-          verti->on_mesh_boundary = OnMeshBoundary(verti->xyz);
-          if(verti->on_mesh_boundary==1)nsurface_verts++;
+            verti = geomlisti->verts + i;
+            verti->on_mesh_boundary = OnMeshBoundary(verti->xyz);
+            if(verti->on_mesh_boundary == 1)nsurface_verts++;
+          }
         }
       }
 
@@ -2047,15 +2059,17 @@ void UpdateTriangles(int flag,int update){
           geomj = geominfoptrs[j];
           if(geomj->geomtype != GEOM_GEOM&&geomj->geomtype != GEOM_ISO)continue;
           geomlisti = geomj->geomlistinfo + ii;
-          for(i = 0; i<geomlisti->nverts; i++){
-            vertdata *verti;
+          if(geomlisti->verts != NULL){
+            for(i = 0; i < geomlisti->nverts; i++){
+              vertdata *verti;
 
-            verti = geomlisti->verts+i;
-            if(verti->on_mesh_boundary==1){
-              if(isurf<nsurface_verts){
-                surface_verts[isurf] = verti;
-                match_verts[isurf] = -1;
-                isurf++;
+              verti = geomlisti->verts + i;
+              if(verti->on_mesh_boundary == 1){
+                if(isurf < nsurface_verts){
+                  surface_verts[isurf] = verti;
+                  match_verts[isurf] = -1;
+                  isurf++;
+                }
               }
             }
           }
@@ -2820,6 +2834,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   FREEMEMORY(patchi->geom_vals);
   FREEMEMORY(patchi->geom_ivals);
   FREEMEMORY(patchi->geom_times);
+  FREEMEMORY(patchi->geom_times_map);
   if(load_flag==UNLOAD){
     plotstate = GetPlotState(DYNAMIC_PLOTS);
     if(patchi->boundary==1)UpdateBoundaryType();
@@ -2882,6 +2897,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     NewMemory((void **)&patchi->geom_nstatics,             ntimes_local*sizeof(int));
     NewMemory((void **)&patchi->geom_ndynamics,            ntimes_local*sizeof(int));
     NewMemory((void **)&patchi->geom_times,                ntimes_local*sizeof(float));
+    NewMemory((void **)&patchi->geom_times_map,            ntimes_local*sizeof(unsigned char));
     NewMemory((void **)&patchi->geom_ivals_static_offset,  ntimes_local*sizeof(int));
     NewMemory((void **)&patchi->geom_ivals_dynamic_offset, ntimes_local*sizeof(int));
     NewMemory((void **)&patchi->geom_vals_static_offset,   ntimes_local*sizeof(int));
@@ -2904,7 +2920,14 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   }
   filesize=GetGeomData(patchi->file, ntimes_local, nvals, patchi->geom_times,
     patchi->geom_nstatics, patchi->geom_ndynamics, patchi->geom_vals, time_frame, time_value, geom_offsets, &error);
+  MakeTimesMap(patchi->geom_times, patchi->geom_times_map, ntimes_local);
+
   return_filesize += filesize;
+  if(error == 1){
+    patchi->loaded = 0;
+    patchi->display = 0;
+    return return_filesize;
+  }
 
   patchi->ngeom_times = ntimes_local;
   patchi->geom_nvals = nvals;
@@ -2979,10 +3002,10 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
 
     UpdateLoadedLists();
     GetSliceDataBounds(slicei, &qmin, &qmax);
-    slicei->globalmin = qmin;
-    slicei->globalmax = qmax;
-    slicei->valmin_smv = qmin;
-    slicei->valmax_smv = qmax;
+    slicei->globalmin_slice = qmin;
+    slicei->globalmax_slice = qmax;
+    slicei->valmin_slice    = qmin;
+    slicei->valmax_slice    = qmax;
     if(slice_average_flag==1){
       int data_per_timestep, nvals2, ntimes;
       float *vals, *times;
@@ -2997,10 +3020,10 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
         show_slice_average = 0;
       }
     }
-    slicei->valmin = qmin;
-    slicei->valmax = qmax;
-    slicei->valmin_data = qmin;
-    slicei->valmax_data = qmax;
+    slicei->valmin_slice    = qmin;
+    slicei->valmax_slice    = qmax;
+    slicei->globalmin_slice = qmin;
+    slicei->globalmax_slice = qmax;
     for (i = 0; i < 256; i++){
       slicei->qval256[i] = (qmin*(255 - i) + qmax*i) / 255;
     }
@@ -3022,7 +3045,9 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   else{
     slicefile_labelindex = GetSliceBoundsIndexFromLabel(patchi->label.shortlabel);
   }
+#ifdef pp_RECOMPUTE_DEBUG
   int recompute = 0;
+#endif
   if(current_script_command!=NULL||(slicei==NULL&&patchi->finalize==1)||(slicei!=NULL&&slicei->finalize==1)){
     plotstate = GetPlotState(DYNAMIC_PLOTS);
     if(patchi->boundary==1)UpdateBoundaryType();
@@ -3041,18 +3066,22 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     int bound_update = 0;
     if(force_bound_update == 1 || current_script_command != NULL)bound_update = 1;
     if(patchi->boundary == 1){
-      if(bound_update==1||patch_bounds_defined==0 || IsFDSRunning(&last_size_for_boundary) == 1){
+      if(bound_update==1||patch_bounds_defined==0 || BuildGbndFile(BOUND_PATCH) == 1){
         GetGlobalPatchBounds(1,DONOT_SET_MINMAX_FLAG);
         SetLoadedPatchBounds(NULL, 0);
         GLUIPatchBoundsCPP_CB(BOUND_DONTUPDATE_COLORS);
+#ifdef pp_RECOMPUTE_DEBUG
         recompute = 1;
+#endif
       }
     }
     else{
-      if(bound_update==1||slice_bounds_defined==0||IsFDSRunning(&last_size_for_slice)==1){
+      if(bound_update==1||slice_bounds_defined==0|| BuildGbndFile(BOUND_SLICE) ==1){
         GetGlobalSliceBounds(1, DONOT_SET_MINMAX_FLAG);
         SetLoadedSliceBounds(NULL, 0);
+#ifdef pp_RECOMPUTE_DEBUG
         recompute = 1;
+#endif
       }
     }
     if(bounds->set_valmin==BOUND_SET_MIN||bounds->set_valmax==BOUND_SET_MAX){
@@ -3090,7 +3119,9 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     PRINTF(" - %.1f MB/%.1f s\n", (float)return_filesize/1000000., total_time);
   }
   PrintMemoryInfo;
+#ifdef pp_RECOMPUTE_DEBUG
   if(recompute == 1)printf("***recomputing bounds\n");
+#endif
   return return_filesize;
 }
 
@@ -4547,7 +4578,6 @@ void DrawGeomVData(vslicedata *vd){
         CLAMP( (float)cvals[(index)]/255.0,0.0,1.0) \
         )
 
-
 void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
   int i;
   unsigned char *ivals, *cvals;
@@ -4564,8 +4594,8 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
   float rvals[3];
   float valmin, valmax;
   if(sd!=NULL){
-    valmin = sd->valmin;
-    valmax = sd->valmax;
+    valmin = sd->valmin_slice;
+    valmax = sd->valmax_slice;
     if(valmin>=valmax){
       valmin = 0.0;
       valmax = 1.0;

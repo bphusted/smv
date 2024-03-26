@@ -64,6 +64,7 @@ int update_hist_bounds;
 GLUI_Panel *PANEL_toggle_cba = NULL;
 GLUI_Listbox *LISTBOX_cb_toggle_bound1 = NULL;
 GLUI_Listbox *LISTBOX_cb_toggle_bound2 = NULL;
+GLUI_Listbox *LISTBOX_sliceload=NULL;
 extern GLUI_Spinner *SPINNER_slice_skip2;
 
 /* ------------------ bounds_dialog class ------------------------ */
@@ -123,6 +124,12 @@ class bounds_dialog{
   int  set_chopmax(char *label, int set_valmax, float valmax);
   int  set_min(char *label, int set_valmin, float valmin);
   void set_min_all(int *set_valmin, float *valmin, int nvals);
+#ifdef pp_BOUNDS
+  void get_global_minmax_all(float *valmin, float *valmax, int nvals);
+  void get_loaded_minmax_all(float *valmin, float *valmax, int nvals);
+  void set_global_minmax_all(float *valmin, float *valmax, int nvals);
+  void set_loaded_minmax_all(float *valmin, float *valmax, int nvals);
+#endif
   int  set_max(char *label, int set_valmax, float valmax);
   void set_max_all(int *set_valmax, float *valmax, int nvals);
   void set_plot_minmax(float p_min, float p_max);
@@ -604,6 +611,76 @@ void bounds_dialog::set_min_all(int *set_valmin, float *valmin, int nvals){
     boundi->valmin[boundi->set_valmin] = valmin[i];
   }
 }
+
+#ifdef pp_BOUNDS
+/* ------------------ get_global_minmax_all ------------------------ */
+
+void bounds_dialog::get_global_minmax_all(float *valmin, float *valmax, int nvals){
+  int i, set_valmin, set_valmax;
+
+  nvals = MIN(nall_bounds, nvals);
+  set_valmin = BOUND_GLOBAL_MIN;
+  set_valmax = BOUND_GLOBAL_MAX;
+  for(i = 0; i < nall_bounds; i++){
+    cpp_boundsdata *boundi;
+
+    boundi = all_bounds + i;
+    valmin[i] = boundi->valmin[set_valmin];
+    valmax[i] = boundi->valmax[set_valmax];
+  }
+}
+
+/* ------------------ get_loaded_minmax_all ------------------------ */
+
+void bounds_dialog::get_loaded_minmax_all(float *valmin, float *valmax, int nvals){
+  int i, set_valmin, set_valmax;
+
+  nvals = MIN(nall_bounds, nvals);
+  set_valmin = BOUND_LOADED_MIN;
+  set_valmax = BOUND_LOADED_MAX;
+  for(i = 0; i < nall_bounds; i++){
+    cpp_boundsdata *boundi;
+
+    boundi = all_bounds + i;
+    valmin[i] = boundi->valmin[set_valmin];
+    valmax[i] = boundi->valmax[set_valmax];
+  }
+}
+
+/* ------------------ set_global_minmax_all ------------------------ */
+
+void bounds_dialog::set_global_minmax_all(float *valmin, float *valmax, int nvals){
+  int i, set_valmin, set_valmax;
+
+  nvals = MIN(nall_bounds, nvals);
+  set_valmin = BOUND_GLOBAL_MIN;
+  set_valmax = BOUND_GLOBAL_MAX;
+  for(i = 0; i < nall_bounds; i++){
+    cpp_boundsdata *boundi;
+
+    boundi = all_bounds + i;
+    boundi->valmin[set_valmin] = valmin[i];
+    boundi->valmax[set_valmax] = valmax[i];
+  }
+}
+
+/* ------------------ set_loaded_minmax_all ------------------------ */
+
+void bounds_dialog::set_loaded_minmax_all(float *valmin, float *valmax, int nvals){
+  int i, set_valmin, set_valmax;
+
+  nvals = MIN(nall_bounds, nvals);
+  set_valmin = BOUND_LOADED_MIN;
+  set_valmax = BOUND_LOADED_MAX;
+  for(i = 0; i < nall_bounds; i++){
+    cpp_boundsdata *boundi;
+
+    boundi = all_bounds + i;
+    boundi->valmin[set_valmin] = valmin[i];
+    boundi->valmax[set_valmax] = valmax[i];
+  }
+}
+#endif
 
 /* ------------------ set_max_all ------------------------ */
 
@@ -1416,6 +1493,120 @@ extern "C" void GLUISetMinMaxAll(int type, int *set_valmin, float *valmin, int *
   }
 }
 
+#ifdef pp_BOUNDS
+/* ------------------ GLUIGetGlobalMinMaxAll ------------------------ */
+
+extern "C" void GLUIGetGlobalMinMaxAll(int type, float *valmin, float *valmax, int nall){
+  switch(type){
+  case BOUND_HVACDUCT:
+    hvacductboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_HVACNODE:
+    hvacnodeboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PATCH:
+    patchboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PART:
+    partboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PLOT3D:
+    plot3dboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_SLICE:
+    sliceboundsCPP.get_global_minmax_all(valmin, valmax, nall);
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
+}
+
+/* ------------------ GLUIGetLoadedMinMaxAll ------------------------ */
+
+extern "C" void GLUIGetLoadedMinMaxAll(int type, float *valmin, float *valmax, int nall){
+  switch(type){
+  case BOUND_HVACDUCT:
+    hvacductboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_HVACNODE:
+    hvacnodeboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PATCH:
+    patchboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PART:
+    partboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PLOT3D:
+    plot3dboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_SLICE:
+    sliceboundsCPP.get_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
+}
+
+/* ------------------ GLUISetGlobalMinMaxAll ------------------------ */
+
+extern "C" void GLUISetGlobalMinMaxAll(int type, float *valmin, float *valmax, int nall){
+  switch(type){
+  case BOUND_HVACDUCT:
+    hvacductboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_HVACNODE:
+    hvacnodeboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PATCH:
+    patchboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PART:
+    partboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PLOT3D:
+    plot3dboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_SLICE:
+    sliceboundsCPP.set_global_minmax_all(valmin, valmax, nall);
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
+}
+
+/* ------------------ GLUISetLoadedMinMaxAll ------------------------ */
+
+extern "C" void GLUISetLoadedMinMaxAll(int type, float *valmin, float *valmax, int nall){
+  switch(type){
+  case BOUND_HVACDUCT:
+    hvacductboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_HVACNODE:
+    hvacnodeboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PATCH:
+    patchboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PART:
+    partboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_PLOT3D:
+    plot3dboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  case BOUND_SLICE:
+    sliceboundsCPP.set_loaded_minmax_all(valmin, valmax, nall);
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
+}
+#endif
+
 /* ------------------ HVAC callback: GLUIHVACDuctBoundsCPP_CB ------------------------ */
 
 extern "C" void GLUIHVACDuctBoundsCPP_CB(int var){
@@ -2038,12 +2229,12 @@ void SetLoadedSliceBounds(int *list, int nlist){
 
     slicei = sliceinfo+list[i];
     if(valmin>valmax){
-      valmin = slicei->valmin_fds;
-      valmax = slicei->valmax_fds;
+      valmin = slicei->valmin_slice;
+      valmax = slicei->valmax_slice;
     }
     else{
-      valmin = MIN(valmin, slicei->valmin_fds);
-      valmax = MAX(valmax, slicei->valmax_fds);
+      valmin = MIN(valmin, slicei->valmin_slice);
+      valmax = MAX(valmax, slicei->valmax_slice);
     }
   }
   for(i = 0; i<nsliceinfo; i++){
@@ -2053,12 +2244,12 @@ void SetLoadedSliceBounds(int *list, int nlist){
     if(slicei->loaded==0)continue;
     if(strcmp(slicei->label.shortlabel, label)!=0)continue;
     if(valmin>valmax){
-      valmin = slicei->valmin_fds;
-      valmax = slicei->valmax_fds;
+      valmin = slicei->valmin_slice;
+      valmax = slicei->valmax_slice;
     }
     else{
-      valmin = MIN(valmin, slicei->valmin_fds);
-      valmax = MAX(valmax, slicei->valmax_fds);
+      valmin = MIN(valmin, slicei->valmin_slice);
+      valmax = MAX(valmax, slicei->valmax_slice);
     }
   }
   if(valmin<=valmax){
@@ -2104,12 +2295,12 @@ void SetLoadedPatchBounds(int *list, int nlist){
   for(i = 0; i<nlist; i++){
     patchi = patchinfo+list[i];
     if(valmin>valmax){
-      valmin = patchi->valmin_fds;
-      valmax = patchi->valmax_fds;
+      valmin = patchi->valmin_patch;
+      valmax = patchi->valmax_patch;
     }
     else{
-      valmin = MIN(valmin, patchi->valmin_fds);
-      valmax = MAX(valmax, patchi->valmax_fds);
+      valmin = MIN(valmin, patchi->valmin_patch);
+      valmax = MAX(valmax, patchi->valmax_patch);
     }
   }
   for(i = 0; i<npatchinfo; i++){
@@ -2117,12 +2308,12 @@ void SetLoadedPatchBounds(int *list, int nlist){
     if(patchi->loaded==0)continue;
     if(strcmp(patchi->label.shortlabel, label)!=0)continue;
     if(valmin>valmax){
-      valmin = patchi->valmin_fds;
-      valmax = patchi->valmax_fds;
+      valmin = patchi->valmin_patch;
+      valmax = patchi->valmax_patch;
     }
     else{
-      valmin = MIN(valmin, patchi->valmin_fds);
-      valmax = MAX(valmax, patchi->valmax_fds);
+      valmin = MIN(valmin, patchi->valmin_patch);
+      valmax = MAX(valmax, patchi->valmax_patch);
     }
   }
   if(valmin<=valmax){
@@ -2160,8 +2351,8 @@ void SetLoadedPlot3DBounds(void){
 
       plot3di = plot3dinfo+i;
       if(plot3di->loadnow == 0)continue;
-      valmin_fds = plot3di->valmin_fds;
-      valmax_fds = plot3di->valmax_fds;
+      valmin_fds = plot3di->valmin_plot3d;
+      valmax_fds = plot3di->valmax_plot3d;
       if(valmin[j]>valmax[j]){
         valmin[j] = valmin_fds[j];
         valmax[j] = valmax_fds[j];
@@ -2178,8 +2369,8 @@ void SetLoadedPlot3DBounds(void){
 
       plot3di = plot3dinfo+i;
       if(plot3di->loaded==0)continue;
-      valmin_fds = plot3di->valmin_fds;
-      valmax_fds = plot3di->valmax_fds;
+      valmin_fds = plot3di->valmin_plot3d;
+      valmax_fds = plot3di->valmax_plot3d;
       if(valmin[j]>valmax[j]){
         valmin[j] = valmin_fds[j];
         valmax[j] = valmax_fds[j];
@@ -2239,38 +2430,38 @@ void SetLoadedPartBounds(int *list, int nlist){
     }
     if(list==NULL)nlist = 0;
     for(i = 0; i<nlist; i++){
-      float *valmin_fds, *valmax_fds;
+      float *valmin_part, *valmax_part;
       partdata *parti;
 
       parti = partinfo+list[i];
       if(parti->have_bound_file==NO)continue;
-      valmin_fds = parti->valmin_fds;
-      valmax_fds = parti->valmax_fds;
+      valmin_part = parti->valmin_part;
+      valmax_part = parti->valmax_part;
       if(valmin[j]>valmax[j]){
-        valmin[j] = valmin_fds[j];
-        valmax[j] = valmax_fds[j];
+        valmin[j] = valmin_part[j];
+        valmax[j] = valmax_part[j];
       }
       else{
-        valmin[j] = MIN(valmin[j], valmin_fds[j]);
-        valmax[j] = MAX(valmax[j], valmax_fds[j]);
+        valmin[j] = MIN(valmin[j], valmin_part[j]);
+        valmax[j] = MAX(valmax[j], valmax_part[j]);
       }
     }
 
     for(i = 0; i<npartinfo; i++){
-      float *valmin_fds, *valmax_fds;
+      float *valmin_part, *valmax_part;
       partdata *parti;
 
       parti = partinfo+i;
       if(parti->loaded==0||parti->have_bound_file==NO)continue;
-      valmin_fds = parti->valmin_fds;
-      valmax_fds = parti->valmax_fds;
+      valmin_part = parti->valmin_part;
+      valmax_part = parti->valmax_part;
       if(valmin[j]>valmax[j]){
-        valmin[j] = valmin_fds[j];
-        valmax[j] = valmax_fds[j];
+        valmin[j] = valmin_part[j];
+        valmax[j] = valmax_part[j];
       }
       else{
-        valmin[j] = MIN(valmin[j], valmin_fds[j]);
-        valmax[j] = MAX(valmax[j], valmax_fds[j]);
+        valmin[j] = MIN(valmin[j], valmin_part[j]);
+        valmax[j] = MAX(valmax[j], valmax_part[j]);
       }
     }
   }
@@ -2370,6 +2561,9 @@ GLUI_Rollout     *ROLLOUT_split=NULL;
 GLUI_Panel *PANEL_vector1=NULL, *PANEL_vector2=NULL;
 GLUI_Panel *PANEL_partread = NULL;
 GLUI_Panel *PANEL_slice_misc=NULL, *PANEL_slice_vector=NULL, *PANEL_showslice=NULL;
+GLUI_Panel *PANEL_slice_xyz=NULL;
+GLUI_Panel *PANEL_slice_filetype=NULL;
+GLUI_Panel *PANEL_sliceload_option = NULL;
 GLUI_Panel *PANEL_slicevalues = NULL;
 GLUI_Panel *PANEL_plot3d=NULL;
 GLUI_Panel *PANEL_setmesh = NULL;
@@ -2432,6 +2626,7 @@ GLUI_Panel *PANEL_slice_plot2dd = NULL;;
 GLUI_Panel *PANEL_slice_plot2de = NULL;;
 GLUI_Panel *PANEL_slice_plot2df = NULL;;
 
+GLUI_Spinner *SPINNER_partdrawskip = NULL;
 GLUI_Spinner *SPINNER_sliceval_ndigits = NULL;
 GLUI_Spinner *SPINNER_n_part_threads = NULL;
 GLUI_Spinner *SPINNER_iso_outline_ioffset = NULL;
@@ -2514,9 +2709,6 @@ GLUI_Spinner *SPINNER_size_factor2         = NULL;
 GLUI_Spinner *SPINNER_plot2d_dt = NULL;
 GLUI_Spinner *SPINNER_meshclip[6];
 GLUI_Spinner *SPINNER_set_mesh = NULL;
-#ifdef pp_SLICE_BOUNDS
-GLUI_Spinner *SPINNER_getbounds = NULL;
-#endif
 
 GLUI_Checkbox *CHECKBOX_slice_load_incremental=NULL;
 GLUI_Checkbox *CHECKBOX_color_vector_black = NULL;
@@ -2556,6 +2748,8 @@ GLUI_Checkbox *CHECKBOX_show_intersection_box=NULL;
 GLUI_Checkbox *CHECKBOX_show_intersected_meshes = NULL;
 GLUI_Checkbox *CHECKBOX_load_only_when_unloaded = NULL;
 
+GLUI_RadioGroup *RADIO_filetype=NULL;
+GLUI_RadioGroup *RADIO_sliceload_dir=NULL;
 GLUI_RadioGroup *RADIO_iso_setmin=NULL;
 GLUI_RadioGroup *RADIO_iso_setmax=NULL;
 GLUI_RadioGroup *RADIO_transparency_option=NULL;
@@ -2575,6 +2769,12 @@ GLUI_RadioGroup *RADIO_plot3d_display=NULL;
 GLUI_RadioGroup *RADIO2_plot3d_display = NULL;
 GLUI_RadioButton *RADIO_button_cutcell = NULL;
 
+GLUI_RadioButton *RADIOBUTTON_iso_percentile_min = NULL;
+GLUI_RadioButton *RADIOBUTTON_iso_percentile_max = NULL;
+GLUI_RadioButton *RADIOBUTTON_sliceload_x=NULL;
+GLUI_RadioButton *RADIOBUTTON_sliceload_y=NULL;
+GLUI_RadioButton *RADIOBUTTON_sliceload_z=NULL;
+GLUI_RadioButton *RADIOBUTTON_sliceload_xyz=NULL;
 GLUI_RadioButton *RADIOBUTTON_plot3d_iso_hidden=NULL;
 GLUI_RadioButton *RADIOBUTTON_zone_permin=NULL;
 GLUI_RadioButton *RADIOBUTTON_zone_permax=NULL;
@@ -2916,16 +3116,45 @@ extern "C" void GLUIUpdateListIsoColorobar(void){
 /* ------------------ GLUIUpdateIsoBounds ------------------------ */
 
 extern "C" void GLUIUpdateIsoBounds(void){
-  if(setisomin==PERCENTILE_MIN||setisomin==GLOBAL_MIN){
-    if(setisomin==GLOBAL_MIN)glui_iso_valmin=iso_global_min;
-    if(EDIT_iso_valmin!=NULL)EDIT_iso_valmin->set_float_val(glui_iso_valmin);
+  boundsdata *sb = NULL;
+  char label[256];
+
+  if(iisottype<0|| iisottype >=niso_bounds)return;
+  sb = isobounds + iisottype;
+  setisomin = sb->dlg_setvalmin;
+  setisomax = sb->dlg_setvalmax;
+  strcpy(label, "Isosurface - colored by ");
+  strcat(label, sb->label->longlabel);
+  strcat(label, "(");
+  strcat(label, sb->label->unit);
+  strcat(label, ")");
+  if(ROLLOUT_iso!=NULL)ROLLOUT_iso->set_name(label);
+
+  if(setisomin == GLOBAL_MIN || setisomin == SET_MIN){
+    if(setisomin == GLOBAL_MIN){
+      glui_iso_valmin = iso_global_min;
+      if(EDIT_iso_valmin != NULL)EDIT_iso_valmin->disable();
+    }
+    if(setisomin == SET_MIN){
+      glui_iso_valmin = sb->dlg_valmin;
+      if(EDIT_iso_valmin != NULL)EDIT_iso_valmin->enable();
+    }
+    if(EDIT_iso_valmin != NULL)EDIT_iso_valmin->set_float_val(glui_iso_valmin);
+    if(RADIO_iso_setmin!=NULL&&sb!=NULL)RADIO_iso_setmin->set_int_val(setisomin);
   }
-  if(setisomax==PERCENTILE_MAX||setisomax==GLOBAL_MAX){
-    if(setisomax==GLOBAL_MAX)glui_iso_valmax=iso_global_max;
-    if(EDIT_iso_valmax!=NULL)EDIT_iso_valmax->set_float_val(glui_iso_valmax);
+  if(setisomax == GLOBAL_MAX || setisomin == SET_MAX){
+    if(setisomax == GLOBAL_MAX){
+      glui_iso_valmax = iso_global_max;
+      if(EDIT_iso_valmin != NULL)EDIT_iso_valmax->disable();
+    }
+    if(setisomax == SET_MAX){
+      glui_iso_valmax = sb->dlg_valmax;
+      if(EDIT_iso_valmax!=NULL)EDIT_iso_valmax->enable();
+    }
+    if(EDIT_iso_valmax != NULL)EDIT_iso_valmax->set_float_val(glui_iso_valmax);
+    if(RADIO_iso_setmax!=NULL&&sb!=NULL)RADIO_iso_setmax->set_int_val(setisomax);
   }
 }
-
 /* ------------------ GLUIUpdateVectorpointsize ------------------------ */
 
 
@@ -4116,6 +4345,33 @@ void AddColorbarListBound(GLUI_Listbox *LIST_cbar, int index, char *label_arg, i
   }
 }
 
+#define SLICE_LOADALL   1
+#define SLICE_UNLOADALL 2
+
+/* ------------------ SliceLoadCB ------------------------ */
+
+void LoadAllMultiSliceMenu(void);
+void LoadAllMultiVSliceMenu(void);
+
+void SliceLoadCB(int var){
+  switch(var){
+  case SLICE_LOADALL:
+    if(sliceload_isvector==1){
+      LoadAllMultiVSliceMenu();
+    }
+    else{
+      LoadAllMultiSliceMenu();
+    }
+    break;
+  case SLICE_UNLOADALL:
+    UnloadSliceMenu(UNLOAD_ALL);
+    break;
+  default:
+    assert(FFALSE);
+    break;
+  }
+}
+
 /* ------------------ GLUIUpdateColorbarListBound ------------------------ */
 
 extern "C" void GLUIUpdateColorbarListBound(int flag){
@@ -4163,7 +4419,7 @@ extern "C" void GLUIBoundsSetup(int main_window){
     glui_bounds=NULL;
   }
   overwrite_all=0;
-  glui_bounds = GLUI_Master.create_glui( "Files/Data/Coloring",0,0,0 );
+  glui_bounds = GLUI_Master.create_glui( "Files/Data/Coloring",0,dialogX0,dialogY0);
   glui_bounds->hide();
 
   ROLLOUT_files = glui_bounds->add_rollout("Files", false);
@@ -4449,20 +4705,24 @@ extern "C" void GLUIBoundsSetup(int main_window){
       PANEL_iso1 = glui_bounds->add_panel_to_panel(ROLLOUT_iso_bounds, "", GLUI_PANEL_NONE);
       EDIT_iso_valmin = glui_bounds->add_edittext_to_panel(PANEL_iso1, "", GLUI_EDITTEXT_FLOAT, &glui_iso_valmin, ISO_VALMIN, GLUIIsoBoundCB);
       glui_bounds->add_column_to_panel(PANEL_iso1, false);
+
       RADIO_iso_setmin = glui_bounds->add_radiogroup_to_panel(PANEL_iso1, &setisomin, ISO_SETVALMIN, GLUIIsoBoundCB);
-      glui_bounds->add_radiobutton_to_group(RADIO_iso_setmin, _("percentile min"));
+      RADIOBUTTON_iso_percentile_min = glui_bounds->add_radiobutton_to_group(RADIO_iso_setmin, _("percentile min"));
       glui_bounds->add_radiobutton_to_group(RADIO_iso_setmin, _("set min"));
       glui_bounds->add_radiobutton_to_group(RADIO_iso_setmin, _("global min"));
       GLUIIsoBoundCB(ISO_SETVALMIN);
+      RADIOBUTTON_iso_percentile_min->disable();
 
       PANEL_iso2 = glui_bounds->add_panel_to_panel(ROLLOUT_iso_bounds, "", GLUI_PANEL_NONE);
       EDIT_iso_valmax = glui_bounds->add_edittext_to_panel(PANEL_iso2, "", GLUI_EDITTEXT_FLOAT, &glui_iso_valmax, ISO_VALMAX, GLUIIsoBoundCB);
       glui_bounds->add_column_to_panel(PANEL_iso2, false);
+
       RADIO_iso_setmax = glui_bounds->add_radiogroup_to_panel(PANEL_iso2, &setisomax, ISO_SETVALMAX, GLUIIsoBoundCB);
-      glui_bounds->add_radiobutton_to_group(RADIO_iso_setmax, _("percentile max"));
+      RADIOBUTTON_iso_percentile_max = glui_bounds->add_radiobutton_to_group(RADIO_iso_setmax, _("percentile max"));
       glui_bounds->add_radiobutton_to_group(RADIO_iso_setmax, _("set max"));
       glui_bounds->add_radiobutton_to_group(RADIO_iso_setmax, _("global max"));
       GLUIIsoBoundCB(ISO_SETVALMAX);
+      RADIOBUTTON_iso_percentile_max->disable();
     }
 
     ROLLOUT_iso_color = glui_bounds->add_rollout_to_panel(ROLLOUT_iso, "Color/transparency", false, ISO_ROLLOUT_COLOR, IsoRolloutCB);
@@ -4574,14 +4834,16 @@ extern "C" void GLUIBoundsSetup(int main_window){
     PANEL_partread=glui_bounds->add_panel_to_panel(ROLLOUT_particle_settings,_("Particle loading"));
     CHECKBOX_partfast = glui_bounds->add_checkbox_to_panel(PANEL_partread, _("Fast loading"), &partfast, PARTFAST, PartBoundCB);
     CHECKBOX_use_partload_threads = glui_bounds->add_checkbox_to_panel(PANEL_partread, _("Parallel loading"), &use_partload_threads);
-    SPINNER_n_part_threads = glui_bounds->add_spinner_to_panel(PANEL_partread, _("Files loaded at once"), GLUI_SPINNER_INT, &n_partload_threads);
+    SPINNER_n_part_threads = glui_bounds->add_spinner_to_panel(PANEL_partread, _("Files loaded at once:"), GLUI_SPINNER_INT, &n_partload_threads);
     if(npartinfo>1){
       SPINNER_n_part_threads->set_int_limits(1,MIN(npartinfo,MAX_THREADS));
     }
     else{
       SPINNER_n_part_threads->set_int_limits(1,1);
     }
+    SPINNER_partdrawskip = glui_bounds->add_spinner_to_panel(PANEL_partread, _("Draw skip:"), GLUI_SPINNER_INT, &partdrawskip, PARTSKIP, PartBoundCB);
     PartBoundCB(PARTFAST);
+    PartBoundCB(PARTSKIP);
   }
   PartBoundCB(FILETYPE_INDEX);
 
@@ -4888,6 +5150,24 @@ hvacductboundsCPP.setup("hvac", ROLLOUT_hvacduct, hvacductbounds_cpp, nhvacductb
       glui_bounds->add_checkbox_to_panel(ROLLOUT_slice_settings, _("terrain slice overlap"), &terrain_slice_overlap);
       glui_bounds->add_checkbox_to_panel(ROLLOUT_slice_settings, _("actual agl offset"), &agl_offset_actual);
     }
+    PANEL_sliceload_option = glui_bounds->add_panel_to_panel(ROLLOUT_slice_settings, "", true);
+    glui_bounds->add_button_to_panel(PANEL_sliceload_option, _("Load all"), SLICE_LOADALL, SliceLoadCB);
+    glui_bounds->add_checkbox_to_panel(PANEL_sliceload_option, "vector slice", &sliceload_isvector);
+    PANEL_slice_xyz = glui_bounds->add_panel_to_panel(PANEL_sliceload_option, "orientation", true);
+    RADIO_sliceload_dir = glui_bounds->add_radiogroup_to_panel(PANEL_slice_xyz, &sliceload_dir);
+    RADIOBUTTON_sliceload_x   = glui_bounds->add_radiobutton_to_group(RADIO_sliceload_dir, "x");
+    RADIOBUTTON_sliceload_y   = glui_bounds->add_radiobutton_to_group(RADIO_sliceload_dir, "y");
+    RADIOBUTTON_sliceload_z   = glui_bounds->add_radiobutton_to_group(RADIO_sliceload_dir, "z");
+    RADIOBUTTON_sliceload_xyz = glui_bounds->add_radiobutton_to_group(RADIO_sliceload_dir, "x,y,z");
+    PANEL_slice_filetype = glui_bounds->add_panel_to_panel(PANEL_sliceload_option, "file type", true);
+    RADIO_filetype = glui_bounds->add_radiogroup_to_panel(PANEL_slice_filetype, &sliceload_filetype);
+    glui_bounds->add_radiobutton_to_group(RADIO_filetype, _("node centered"));
+    glui_bounds->add_radiobutton_to_group(RADIO_filetype, _("cell centered"));
+    LISTBOX_sliceload = glui_bounds->add_listbox_to_panel(PANEL_sliceload_option, "quantity:", &sliceload_boundtype);
+    for(i=0;i<nslicebounds_cpp;i++){
+      LISTBOX_sliceload->add_item(i, slicebounds_cpp[i].label);
+    }
+    glui_bounds->add_button_to_panel(PANEL_sliceload_option, _("Unload all"), SLICE_UNLOADALL, SliceLoadCB);
   }
 
   // ----------------------------------- Time ----------------------------------------
@@ -4966,10 +5246,6 @@ hvacductboundsCPP.setup("hvac", ROLLOUT_hvacduct, hvacductbounds_cpp, nhvacductb
   CHECKBOX_show_intersected_meshes = glui_bounds->add_checkbox_to_panel(PANEL_mesh1, "show intersected meshes", &show_intersected_meshes, USEMESH_DRAW_MESH, MeshBoundCB);
   glui_bounds->add_checkbox_to_panel(PANEL_mesh1, "show intersected mesh indices", &show_mesh_labels);
   CHECKBOX_load_only_when_unloaded = glui_bounds->add_checkbox_to_panel(PANEL_mesh1, "Load a file only if unloaded", &load_only_when_unloaded, USEMESH_LOAD_WHEN_LOADED, MeshBoundCB);
-#ifdef pp_SLICE_BOUNDS
-  SPINNER_getbounds = glui_bounds->add_spinner_to_panel(PANEL_mesh1, "number of getbound threads", GLUI_SPINNER_INT, &n_getbounds_threads);
-  SPINNER_getbounds->set_int_limits(1,16);
-#endif
 
   glui_bounds->add_column_to_panel(PANEL_mesh1, false);
 
@@ -5379,7 +5655,19 @@ extern "C" void GLUIUpdatePlot3dListIndex(void){
 extern "C" void GLUIIsoBoundCB(int var){
   int i;
   float *iso_color;
+  boundsdata *sb;
 
+  switch(var){
+    case ISO_SETVALMIN:
+    case ISO_SETVALMAX:
+    case ISO_VALMIN:
+    case ISO_VALMAX:
+      if(iisottype<0)return;
+      sb = isobounds + iisottype;
+      break;
+    default:
+      break;
+  }
   switch(var){
   case ISO_OUTLINE_IOFFSET:
     iso_outline_offset = (float)iso_outline_ioffset/1000.0;
@@ -5481,9 +5769,11 @@ extern "C" void GLUIIsoBoundCB(int var){
     visAIso= 1*show_iso_shaded + 2*show_iso_outline + 4*show_iso_points;
     updatemenu=1;
     break;
+
   case ISO_SETVALMIN:
     switch (setisomin){
       case SET_MIN:
+        if(sb->edit_valmin_defined==1)glui_iso_valmin = sb->edit_valmin;
         iso_valmin=glui_iso_valmin;
         EDIT_iso_valmin->enable();
         break;
@@ -5498,13 +5788,16 @@ extern "C" void GLUIIsoBoundCB(int var){
         assert(FFALSE);
         break;
     }
+    sb->dlg_setvalmin = setisomin;
     glui_iso_valmin=iso_valmin;
     EDIT_iso_valmin->set_float_val(glui_iso_valmin);
     glutPostRedisplay();
     break;
+    
   case ISO_SETVALMAX:
     switch (setisomax){
       case SET_MAX:
+        if(sb->edit_valmax_defined==1)glui_iso_valmax = sb->edit_valmax;
         iso_valmax=glui_iso_valmax;
         EDIT_iso_valmax->enable();
         break;
@@ -5519,16 +5812,27 @@ extern "C" void GLUIIsoBoundCB(int var){
         assert(FFALSE);
         break;
     }
+    sb->dlg_setvalmax = setisomax;
     glui_iso_valmax = iso_valmax;
     EDIT_iso_valmax->set_float_val(glui_iso_valmax);
     glutPostRedisplay();
     break;
   case ISO_VALMIN:
+    if(setisomin==1){
+      sb->edit_valmin = glui_iso_valmin;
+      sb->edit_valmin_defined = 1;
+    }
     iso_valmin=glui_iso_valmin;
+    sb->dlg_valmin = iso_valmin;
     glutPostRedisplay();
     break;
   case ISO_VALMAX:
+    if(setisomax==1){
+      sb->edit_valmax = glui_iso_valmax;
+      sb->edit_valmax_defined = 1;
+    }
     iso_valmax=glui_iso_valmax;
+    sb->dlg_valmax = iso_valmax;
     glutPostRedisplay();
     break;
   default:
@@ -5686,6 +5990,12 @@ void PartBoundCB(int var){
       streak5show=1;
     }
     updatemenu=1;
+    break;
+  case PARTSKIP:
+    if(partdrawskip < 1){
+      partdrawskip = 1;
+      if(SPINNER_partdrawskip!=NULL)SPINNER_partdrawskip->set_float_val(partdrawskip);
+    }
     break;
   case TRACERS:
   case PARTFAST:
@@ -5989,9 +6299,12 @@ extern "C" void GLUISliceBoundCB(int var){
       updatemenu = 1;
       update_colorbar_digits = 1;
       break;
+    case SLICE_OPTION:
+      updatemenu = 1;
+      break;
     case SLICE_SKIP:
       slice_skip = CLAMP(slice_skip,1,max_slice_skip);
-      SPINNER_slice_skip->set_int_val(slice_skip);
+      if(SPINNER_slice_skip!=NULL)SPINNER_slice_skip->set_int_val(slice_skip);
       if(SPINNER_slice_skip2!=NULL)SPINNER_slice_skip2->set_int_val(slice_skip);
       slice_skipx = slice_skip;
       slice_skipy = slice_skip;
