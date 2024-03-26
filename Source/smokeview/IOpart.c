@@ -570,6 +570,7 @@ void DrawPartFrame(void){
   for(i=0;i<npartinfo;i++){
     parti = partinfo + i;
     if(parti->loaded==0||parti->display==0)continue;
+    IF_NOT_USEMESH_CONTINUE(USEMESH_DRAW,parti->blocknumber);
     DrawPart(parti);
     SNIFF_ERRORS("after DrawPart");
   }
@@ -714,34 +715,6 @@ void UpdateAllPartVis(partdata *parti){
     if(firstframe_local== 1)firstframe_local = 0;
   }
 }
-
-/* ------------------ GetHistFileStatus ------------------------ */
-
-#ifdef pp_HIST
-int GetHistFileStatus(partdata *parti){
-
-  // return -1 if history file cannot be created (corresponding particle file does not exist)
-  // return  0 if history file does not need to be created
-  // return  1 if history file needs to be created (doesn't exist or is older than corresponding particle file)
-
-  STRUCTSTAT stat_histfile_buffer, stat_regfile_buffer;
-  int stat_histfile, stat_regfile;
-
-  stat_histfile = STAT(parti->hist_file, &stat_histfile_buffer);
-  stat_regfile = STAT(parti->reg_file, &stat_regfile_buffer);
-
-  if(stat_regfile != 0)return HIST_ERR;                    // particle filei does not exist
-
-  if(stat_regfile_buffer.st_size > parti->reg_file_size){  // particle file has grown
-    parti->reg_file_size = stat_regfile_buffer.st_size;
-    return HIST_OLD;
-  }
-
-  if(stat_histfile != 0) return HIST_OLD;                  // history file does not exist
-  if(stat_regfile_buffer.st_mtime > stat_histfile_buffer.st_mtime)return HIST_OLD; // size file is older than particle file
-  return HIST_OK;
-}
-#endif
 
 /* ------------------ GetSizeFileStatus ------------------------ */
 
@@ -1167,9 +1140,6 @@ void MergePartHistograms(void){
 void GeneratePartHistograms(void){
   int i;
 
-#ifdef pp_HIST
-  EnableDisablePartPercentileDraw(0);
-#endif
   for(i=0;i<npartinfo;i++){
     partdata *parti;
 
@@ -1179,9 +1149,6 @@ void GeneratePartHistograms(void){
     }
   }
   MergePartHistograms();
-#ifdef pp_HIST
-  EnableDisablePartPercentileDraw(1);
-#endif
   if(in_part_mt == 1){
     printf("particle setup complete\n");
     in_part_mt = 0;
@@ -1403,9 +1370,6 @@ void PrintPartProp(void){
     else{
       PRINTF("label=%s min=%f max=%f\n", propi->label->longlabel, propi->valmin, propi->valmax);
       PRINTF("   glbmin=%f glbmax=%f\n", propi->dlg_global_valmin, propi->dlg_global_valmax);
-#ifdef pp_HIST
-      PRINTF("   permin=%f permax=%f\n", propi->percentile_min, propi->percentile_max);
-#endif
     }
     PRINTF("\n");
   }
@@ -1528,10 +1492,6 @@ void InitPartProp(void){
           propi->dlg_global_valmax=-propi->dlg_global_valmin;
           propi->valmin=1.0;
           propi->valmax=0.0;
-#ifdef pp_HIST
-          propi->percentile_min=1.0;
-          propi->percentile_max=0.0;
-#endif
           propi->user_min=1.0;
           propi->user_max=0.0;
           propi->display=0;
@@ -1544,10 +1504,6 @@ void InitPartProp(void){
 
           propi->partlabelvals = NULL;
           NewMemory((void **)&propi->partlabelvals, 256*sizeof(float));
-#ifdef pp_HIST
-          propi->buckets = NULL;
-          InitHistogram(&propi->histogram, NHIST_BUCKETS, NULL, NULL);
-#endif
           npart5prop++;
         }
       }
@@ -1738,9 +1694,10 @@ int GetPartHeader(partdata *parti, int *nf_all, int option_arg, int print_option
   // allocate memory for number of time steps * number of classes
 
   CheckMemory;
-  NewMemory((void **)&parti->data5,   parti->nclasses*parti->ntimes*sizeof(part5data));
-  NewMemory((void **)&parti->times,   parti->ntimes*sizeof(float));
-  NewMemory((void **)&parti->filepos, nframes_all_local*sizeof(LINT));
+  NewMemory((void **)&parti->data5,     parti->nclasses*parti->ntimes*sizeof(part5data));
+  NewMemory((void **)&parti->times,     parti->ntimes*sizeof(float));
+  NewMemory((void **)&parti->times_map, parti->ntimes);
+  NewMemory((void **)&parti->filepos,   nframes_all_local*sizeof(LINT));
 
   // free memory for x, y, z frame data
 
@@ -1948,6 +1905,7 @@ void FinalizePartLoad(partdata *parti){
 
     partj = partinfo+j;
     if(partj->request_load==1){
+      partj->have_restart = MakeTimesMap(partj->times, partj->times_map, partj->ntimes);
       partj->request_load = 0;
       partj->loaded = 1;
       partj->display = 1;
@@ -1957,23 +1915,12 @@ void FinalizePartLoad(partdata *parti){
 
   // generate histograms now rather than in the background if a script is running
 
-#ifdef pp_HIST
-  if(current_script_command!=NULL||part_multithread==0){
-    GeneratePartHistograms();
-  }
-  else{
-    update_generate_part_histograms = 1;
-  }
-#endif
   INIT_PRINT_TIMER(part_time1);
   GetGlobalPartBounds(ALL_FILES);
   SetLoadedPartBounds(NULL, 0);
   PRINT_TIMER(part_time1, "particle get bounds time");
   if(cache_part_data==1){
     INIT_PRINT_TIMER(part_time2);
-#ifdef pp_HIST
-    SetPercentilePartBounds();
-#endif
     for(j = 0; j<npartinfo; j++){
       partdata *partj;
 
@@ -2005,11 +1952,6 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   FILE_SIZE file_size_local;
   float load_time_local;
 
-#ifdef pp_PART_HIST
-  if(loadflag_arg==UNLOAD&&part_multithread==1&&update_generate_part_histograms==-1){
-    JOIN_PART_HIST;
-  }
-#endif
   SetTimeState();
   START_TIMER(load_time_local);
   assert(ifile_arg>=0&&ifile_arg<npartinfo);
@@ -2023,12 +1965,13 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   parti->loaded = 0;
   parti->display=0;
 
-  LOCK_PART_LOAD;
+  THREADcontrol(partload_threads, THREAD_LOCK);
   plotstate=GetPlotState(DYNAMIC_PLOTS);
   updatemenu=1;
-  UNLOCK_PART_LOAD;
+  THREADcontrol(partload_threads, THREAD_UNLOCK);
 
   FREEMEMORY(parti->times);
+  FREEMEMORY(parti->times_map);
   FREEMEMORY(parti->filepos);
 
   if(loadflag_arg==UNLOAD){
@@ -2049,10 +1992,10 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
     return 0.0;
   }
 
-  if(part_multithread==1){
-    LOCK_PART_LOAD;
+  if(use_partload_threads==1){
+    THREADcontrol(partload_threads, THREAD_LOCK);
     PrintPartLoadSummary(PART_BEFORE, PART_LOADING);
-    UNLOCK_PART_LOAD;
+    THREADcontrol(partload_threads, THREAD_UNLOCK);
   }
   else{
     PRINTF("Loading %s", file_arg);
@@ -2067,16 +2010,14 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   CheckMemory;
   GetPartData(parti, nf_all_local, &file_size_local);
   CheckMemory;
-  LOCK_PART_LOAD;
+  THREADcontrol(partload_threads, THREAD_LOCK);
   parti->loaded = 1;
   parti->display = 1;
-#ifndef pp_HIST
   parti->hist_update=1;
-#endif
   if(cache_part_data==0){
     UpdatePartColors(parti, 0);
   }
-  UNLOCK_PART_LOAD;
+  THREADcontrol(partload_threads, THREAD_UNLOCK);
   if(cache_part_data==0){
     FCLOSE_m(parti->stream);
     parti->stream = NULL;
@@ -2085,11 +2026,11 @@ FILE_SIZE ReadPart(char *file_arg, int ifile_arg, int loadflag_arg, int *errorco
   PrintMemoryInfo;
 
   parti->request_load = 1;
-  if(part_multithread==1){
+  if(use_partload_threads==1){
     if(npartinfo>1){
-      LOCK_PART_LOAD;
+      THREADcontrol(partload_threads, THREAD_LOCK);
       PrintPartLoadSummary(PART_AFTER, PART_LOADING);
-      UNLOCK_PART_LOAD;
+      THREADcontrol(partload_threads, THREAD_UNLOCK);
     }
   }
   else{

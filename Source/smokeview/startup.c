@@ -205,10 +205,6 @@ void ReadBoundINI(void){
           boundi->defined = 1;
           boundi->global_min = gmin;
           boundi->global_max = gmax;
-#ifdef pp_HIST
-          boundi->percentile_min = pmin;
-          boundi->percentile_max = pmax;
-#endif
         }
       }
       continue;
@@ -335,9 +331,9 @@ int SetupCase(char *filename){
   InitMisc();
   GLUITrainerSetup(mainwindow_id);
   glutDetachMenu(GLUT_RIGHT_BUTTON);
-  LOCK_CHECKFILES;
+  THREADcontrol(checkfiles_threads, THREAD_LOCK);
   InitMenus();
-  UNLOCK_CHECKFILES;
+  THREADcontrol(checkfiles_threads, THREAD_UNLOCK);
   glutAttachMenu(GLUT_RIGHT_BUTTON);
   if(trainer_mode==1){
     GLUIShowTrainer();
@@ -368,6 +364,7 @@ int GetScreenHeight(void){
     fgets(buffer, 255, stream);
     sscanf(buffer, "%i", &screen_height);
     fclose(stream);
+    unlink(full_height_file);
   }
   FREEMEMORY(full_height_file);
   return screen_height;

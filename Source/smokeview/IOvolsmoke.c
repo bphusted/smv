@@ -67,8 +67,6 @@
       value = *vv;\
     }
 
-#ifdef pp_BLACKBODY
-
 // https://www.fourmilab.ch/documents/specrend/specrend.c
 
 /* A colour system is defined by the CIE x and y coordinates of
@@ -598,7 +596,6 @@ void Temperature2Emission(float temperature, float *emission){
   emission[1] = (1.0-factor)*rgb_bef[1] + factor*rgb_aft[1];
   emission[2] = (1.0-factor)*rgb_bef[2] + factor*rgb_aft[2];
 }
-#endif
 
 /* ----------------------- GetFireEmission ----------------------------- */
 
@@ -1172,27 +1169,27 @@ void InitNabors(void){
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[0] = meshi->boxmin[0]- meshi->boxeps_fds[0];
-    meshi->skip_nabors[MLEFT] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MLEFT] = GetMesh(xyz);
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[0] = meshi->boxmax[0] + meshi->boxeps_fds[0];
-    meshi->skip_nabors[MRIGHT] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MRIGHT] = GetMesh(xyz);
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[1] = meshi->boxmin[1] - meshi->boxeps_fds[1];
-    meshi->skip_nabors[MFRONT] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MFRONT] = GetMesh(xyz);
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[1] = meshi->boxmax[0] + meshi->boxeps_fds[1];
-    meshi->skip_nabors[MBACK] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MBACK] = GetMesh(xyz);
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[2] = meshi->boxmin[2] - meshi->boxeps_fds[2];
-    meshi->skip_nabors[MDOWN] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MDOWN] = GetMesh(xyz);
 
     memcpy(xyz, xyzmid, 3*sizeof(float));
     xyz[2] = meshi->boxmax[2] + meshi->boxeps_fds[2];
-    meshi->skip_nabors[MUP] = GetMesh(xyz, NULL);
+    meshi->skip_nabors[MUP] = GetMesh(xyz);
   }
 }
 
@@ -1470,7 +1467,6 @@ void InitVolRender(void){
   if(nvolrenderinfo>0){
     InitSuperMesh();
   }
-
 }
 
 /* ------------------ GetMeshInSmesh ------------------------ */
@@ -3274,16 +3270,11 @@ void ReadVolsmokeAllFramesAllMeshes(void){
   plotstate=GetPlotState(DYNAMIC_PLOTS);
   stept=1;
   UpdateTimes();
-#ifdef pp_THREAD
-  if(use_multi_threading==1){
-    MtReadVolsmokeAllFramesAllMeshes2();
+
+  if(volsmokeload_threads == NULL){
+    volsmokeload_threads = THREADinit(&n_volsmokeload_threads, &use_volsmokeload_threads, ReadVolsmokeAllFramesAllMeshes2);
   }
-  else{
-    ReadVolsmokeAllFramesAllMeshes2(NULL);
-  }
-#else
-  ReadVolsmokeAllFramesAllMeshes2(NULL);
-#endif
+  THREADrun(volsmokeload_threads, NULL);
 }
 
 /* ------------------ UnloadVolsmokeTextures ------------------------ */

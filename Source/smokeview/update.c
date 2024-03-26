@@ -693,12 +693,20 @@ void UpdateShow(void){
 
 /* ------------------ GetItime ------------------------ */
 
-int GetItime(int n, int *timeslist, float *times, int ntimes){
+int GetItime(int n, int *timeslist, unsigned char *times_map, float *times, int ntimes){
   int istart=0;
 
   if(n>0)istart=timeslist[n-1];
-  while(istart<ntimes-1&&times[istart+1]<=global_times[n]){
-    istart++;
+  while(1){
+    if(times_map!=NULL&&istart+1>=0&&istart+1<ntimes-1&&times_map[istart+1]==0){
+      istart++;
+      continue;
+    }
+    if(istart<ntimes-1&&times[istart+1]<=global_times[n]){
+      istart++;
+      continue;
+    }
+    break;
   }
   istart=CLAMP(istart,0,ntimes-1);
   return istart;
@@ -721,17 +729,21 @@ void SynchTimes(void){
 
       tourj = tourinfo + j;
       if(tourj->display==0)continue;
-      tourj->timeslist[n]=GetItime(n,tourj->timeslist,tourj->path_times,tourj->ntimes);
+      tourj->timeslist[n]=GetItime(n,tourj->timeslist,NULL,tourj->path_times,tourj->ntimes);
     }
 
   /* synchronize geometry times */
 
     for(j=0;j<ngeominfoptrs;j++){
       geomdata *geomi;
+      unsigned char *times_map = NULL;
 
       geomi = geominfoptrs[j];
       if(geomi->loaded==0||geomi->display==0)continue;
-      geomi->timeslist[n]=GetItime(n,geomi->timeslist,geomi->times,geomi->ntimes);
+      if(geomi->geomtype == GEOM_ISO&& geomi->block_number >= 0){
+        times_map = meshinfo[geomi->block_number].iso_times_map;
+      }
+      geomi->timeslist[n] = GetItime(n, geomi->timeslist, times_map, geomi->times, geomi->ntimes);
     }
 
   /* synchronize particle times */
@@ -741,7 +753,7 @@ void SynchTimes(void){
 
       parti=partinfo+j;
       if(parti->loaded==0)continue;
-      parti->timeslist[n]=GetItime(n,parti->timeslist,parti->times,parti->ntimes);
+      parti->timeslist[n]=GetItime(n,parti->timeslist,parti->times_map,parti->times,parti->ntimes);
     }
 
   /* synchronize shooter times */
@@ -769,10 +781,10 @@ void SynchTimes(void){
 
       sd = sliceinfo + slice_loaded_list[jj];
       if(sd->slice_filetype == SLICE_GEOM){
-        sd->patchgeom->geom_timeslist[n] = GetItime(n, sd->patchgeom->geom_timeslist, sd->patchgeom->geom_times, sd->ntimes);
+        sd->patchgeom->geom_timeslist[n] = GetItime(n, sd->patchgeom->geom_timeslist, NULL,sd->patchgeom->geom_times, sd->ntimes);
       }
       else{
-        sd->timeslist[n] = GetItime(n, sd->timeslist, sd->times, sd->ntimes);
+        sd->timeslist[n] = GetItime(n, sd->timeslist, sd->times_map, sd->times, sd->ntimes);
       }
     }
 
@@ -783,7 +795,7 @@ void SynchTimes(void){
       for(jj=0;jj<nsmoke3dinfo;jj++){
         smoke3di = smoke3dinfo + jj;
         if(smoke3di->loaded==0)continue;
-        smoke3di->timeslist[n]=GetItime(n,smoke3di->timeslist,smoke3di->times,smoke3di->ntimes);
+        smoke3di->timeslist[n]=GetItime(n,smoke3di->timeslist,smoke3di->times_map,smoke3di->times,smoke3di->ntimes);
       }
     }
 
@@ -795,7 +807,7 @@ void SynchTimes(void){
       patchi = patchinfo + j;
       if(patchi->loaded==0)continue;
       if(patchi->structured == YES)continue;
-      patchi->geom_timeslist[n]=GetItime(n,patchi->geom_timeslist,patchi->geom_times,patchi->ngeom_times);
+      patchi->geom_timeslist[n]=GetItime(n,patchi->geom_timeslist,NULL,patchi->geom_times,patchi->ngeom_times);
     }
     for(j=0;j<nmeshes;j++){
       patchdata *patchi;
@@ -804,8 +816,8 @@ void SynchTimes(void){
       meshi=meshinfo+j;
       if(meshi->patchfilenum<0||meshi->patch_times==NULL)continue;
       patchi=patchinfo+meshi->patchfilenum;
-      if(patchi->structured == NO)continue;
-      meshi->patch_timeslist[n]=GetItime(n,meshi->patch_timeslist,meshi->patch_times,meshi->npatch_times);
+      if(patchi->structured == NO||patchi->loaded==0)continue;
+      meshi->patch_timeslist[n]=GetItime(n,meshi->patch_timeslist,meshi->patch_times_map,meshi->patch_times,meshi->npatch_times);
     }
 
   /* synchronize isosurface times */
@@ -815,7 +827,7 @@ void SynchTimes(void){
 
       meshi=meshinfo+igrid;
       if(meshi->iso_times==NULL)continue;
-      meshi->iso_timeslist[n]=GetItime(n,meshi->iso_timeslist,meshi->iso_times,meshi->niso_times);
+      meshi->iso_timeslist[n]=GetItime(n,meshi->iso_timeslist,NULL,meshi->iso_times,meshi->niso_times);
     }
 
   /* synchronize volume render times */
@@ -830,13 +842,13 @@ void SynchTimes(void){
         if(vr->smokeslice==NULL)continue;
         if(vr->loaded==0||vr->display==0)continue;
         if(vr->times==NULL)continue;
-        vr->timeslist[n]=GetItime(n,vr->timeslist,vr->times,vr->ntimes);
+        vr->timeslist[n]=GetItime(n,vr->timeslist,NULL,vr->times,vr->ntimes);
       }
     }
     /* synchronize zone times */
 
     if(showzone==1){
-      zone_timeslist[n]=GetItime(n,zone_timeslist,zone_times,nzone_times);
+      zone_timeslist[n]=GetItime(n,zone_timeslist,NULL,zone_times,nzone_times);
     }
 
   }
@@ -1888,6 +1900,10 @@ void UpdateShowScene(void){
   have_fire  = HaveFireLoaded();
   have_smoke = HaveSootLoaded();
 
+  if(glui_meshclip_defined==1&&update_meshclip == 1){
+    update_meshclip = 0;
+    GLUIUpdateMeshBounds();
+  }
   if(update_csv_load == 1){
     InitializeDeviceCsvData(LOAD);
     update_csv_load = 0;
@@ -1963,13 +1979,6 @@ void UpdateShowScene(void){
     GLUISplitCB(SPLIT_COLORBAR);
     update_splitcolorbar = 0;
   }
-#ifdef pp_HIST
-  if(update_generate_part_histograms==1){
-    update_generate_part_histograms = 0;
-    GeneratePartHistogramsMT();
-    update_generate_part_histograms = -1;
-  }
-#endif
   if(update_stept==1){
     update_stept = 0;
     SetTimeVal(time_paused);
@@ -2027,15 +2036,6 @@ void UpdateShowScene(void){
     GLUISetCurrentViewPoint(viewpoint_label_saved);
     update_saving_viewpoint--;
   }
-#ifdef pp_HIST
-#ifdef pp_PATCH_HIST
-  if(update_boundary_hist==1){
-    //UpdateAllBoundaryBounds();
-    UpdateAllBoundaryBounds();
-    update_boundary_hist = 0;
-  }
-#endif
-#endif
   if(update_viewpoint_script>0){
     GLUISetCurrentViewPoint(viewpoint_script);
     update_viewpoint_script--;
@@ -2087,14 +2087,16 @@ void UpdateShowScene(void){
   }
   UpdateShow();
   if(global_times!=NULL&&updateUpdateFrameRateMenu==1)FrameRateMenu(frameratevalue);
-  if(updatefaces==1)UpdateFaces();
-  if(updatefacelists==1)UpdateFaceLists();
-#ifdef pp_HIST
-  if(update_draw_hist==1){
-    update_draw_hist = 0;
-    SetPercentileDrawOff();
+  if(updatefaces == 1){
+    INIT_PRINT_TIMER(timer_update_faces);
+    UpdateFaces();
+    PRINT_TIMER(timer_update_faces, "UpdateFaces");
   }
-#endif
+  if(updatefacelists == 1){
+    INIT_PRINT_TIMER(timer_update_facelists);
+    UpdateFaceLists();
+    PRINT_TIMER(timer_update_facelists, "UpdateFaceLists");
+  }
 }
 
 /* ------------------ UpdateFlippedColorbar ------------------------ */
@@ -2418,31 +2420,31 @@ void OutputBounds(void){
 /* ------------------ HandleMakeMovie ------------------------ */
 
 void HandleMakeMovie(void){
-  LOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_LOCK);
   if(have_ffmpeg == 0){
     PRINTF("*** Error: The movie generating program ffmpeg is not available\n");
-    UNLOCK_SETUP_FFMPEG
+    THREADcontrol(ffmpeg_threads, THREAD_UNLOCK);
     return;
   }
   GLUIEnableDisableMakeMovieCPP(OFF);
   update_makemovie = 1;
-  UNLOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_UNLOCK);
 }
 
 /* ------------------ EnableDisableMakeMovie ------------------------ */
 
 void EnableDisableMakeMovie(int onoff){
-  LOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_LOCK);
   GLUIEnableDisableMakeMovieCPP(onoff);
-  UNLOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_UNLOCK);
 }
 
 /* ------------------ EnableDisablePlayMovie ------------------------ */
 
 void EnableDisablePlayMovie(void){
-  LOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_LOCK);
   GLUIEnableDisablePlayMovieCPP();
-  UNLOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_UNLOCK);
 }
 
 /* ------------------ UpdateDisplay ------------------------ */
@@ -2452,7 +2454,6 @@ void UpdateDisplay(void){
   if(sortslices == 1&&nsliceloaded>0){
     SortSlices();
   }
-  LOCK_IBLANK
   if(csv_loaded == 0){
     if(vis_hrr_plot == 1 || viswindrose == 1 || vis_device_plot != DEVICE_PLOT_HIDDEN || showdevice_val == 1){
       InitializeDeviceCsvData(LOAD);
@@ -2470,12 +2471,41 @@ void UpdateDisplay(void){
     update_texturebar = 0;
     UpdateTexturebar();
   }
+  if(update_make_iblank == 1){
+    int ig;
+
+    for(ig = 0; ig < nmeshes; ig++){
+      meshdata *meshi;
+
+      meshi = meshinfo + ig;
+      meshi->c_iblank_node = meshi->c_iblank_node_temp;
+      meshi->c_iblank_cell = meshi->c_iblank_cell_temp;
+      meshi->f_iblank_cell = meshi->f_iblank_cell_temp;
+      meshi->c_iblank_x    = meshi->c_iblank_x_temp;
+      meshi->c_iblank_y    = meshi->c_iblank_y_temp;
+      meshi->c_iblank_z    = meshi->c_iblank_z_temp;
+
+      meshi->c_iblank_node_html = meshi->c_iblank_node_html_temp;
+      meshi->c_iblank_node0     = meshi->c_iblank_node0_temp;
+      meshi->c_iblank_cell0     = meshi->c_iblank_cell0_temp;
+      meshi->f_iblank_cell0     = meshi->f_iblank_cell0_temp;
+      meshi->c_iblank_x0        = meshi->c_iblank_x0_temp;
+      meshi->c_iblank_y0        = meshi->c_iblank_y0_temp;
+      meshi->c_iblank_z0        = meshi->c_iblank_z0_temp;
+    }
+    update_make_iblank = 0;
+    update_setvents    = 1;
+    update_setcvents   = 1;
+  }
   if(update_setvents==1){
     SetVentDirs();
     update_setvents=0;
   }
-  UNLOCK_IBLANK
-  LOCK_SETUP_FFMPEG
+  if(update_setcvents == 1){
+    SetCVentDirs();
+    update_setcvents = 0;
+  }
+  THREADcontrol(ffmpeg_threads, THREAD_LOCK);
   if(update_ff == 1){
     update_ff = 0;
     if(have_ffmpeg == 1){
@@ -2485,7 +2515,7 @@ void UpdateDisplay(void){
       GLUIEnableDisableMakeMovieCPP(OFF);
     }
   }
-  UNLOCK_SETUP_FFMPEG
+  THREADcontrol(ffmpeg_threads, THREAD_UNLOCK);
   if(update_ini==1){
     update_ini = 0;
     ReadIni(NULL);
@@ -2576,9 +2606,9 @@ void UpdateDisplay(void){
   }
   if(updatemenu == 1 && usemenu == 1 && menustatus == GLUT_MENU_NOT_IN_USE){
     glutDetachMenu(GLUT_RIGHT_BUTTON);
-    LOCK_CHECKFILES;
+    THREADcontrol(checkfiles_threads, THREAD_LOCK);
     InitMenus();
-    UNLOCK_CHECKFILES;
+    THREADcontrol(checkfiles_threads, THREAD_UNLOCK);
     glutAttachMenu(GLUT_RIGHT_BUTTON);
     updatemenu = 0;
   }
@@ -2605,12 +2635,6 @@ void UpdateDisplay(void){
     update_colorbar_select_index = 0;
     UpdateRGBColors(colorbar_select_index);
   }
-#ifdef pp_HIST
-  if(histograms_defined==0&&update_slice_hists == 1){
-    update_slice_hists = 0;
-    UpdateSliceHist();
-  }
-#endif
   if(update_windrose_showhide==1){
     GLUIUpdateWindRoseDevices(UPDATE_WINDROSE_DEVICE);
   }
@@ -2618,12 +2642,6 @@ void UpdateDisplay(void){
     update_research_mode = 0;
     GLUIUpdateResearchMode();
   }
-#ifdef pp_HIST
-  if(update_percentile_mode==1){
-    update_percentile_mode = 0;
-    SetPercentileMode(percentile_mode);
-  }
-#endif
   if(update_colorbar_digits==1){
     update_colorbar_digits = 0;
     GLUISetColorbarDigitsCPP(ncolorlabel_digits);
