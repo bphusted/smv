@@ -717,27 +717,13 @@ int GetItime(int n, int *timeslist, unsigned char *times_map, float *times, int 
 /* ------------------ GetDataTimeFrame ------------------------ */
 
 int GetDataTimeFrame(float time, unsigned char *times_map, float *times, int ntimes){
-  int i, mini;
-  float tmin = -1.0;
+  int i;
 
-  mini = 0;
-  for(i = 0; i < ntimes; i++){
-    float tdiff;
-
+  for(i = 0; i < ntimes-1; i++){
     if(times_map!=NULL&&times_map[i] == 0)continue;
-    tdiff = ABS(time - times[i]);
-    if(tmin < 0.0){
-      tmin = tdiff;
-      mini = i;
-    }
-    else{
-      if(tdiff < tmin){
-        tmin = tdiff;
-        mini = i;
-      }
-    }
+    if(times[i]<=time&&time<times[i+1])return i;
   }
-  return mini;
+  return ntimes-1;
 }
 
 /* ------------------ SynchTimes ------------------------ */
@@ -1288,13 +1274,6 @@ void UpdateTimes(void){
       MergeGlobalTimes(ptime, 1);
     }
   }
-  for(i=0;i<npartinfo;i++){
-    partdata *parti;
-
-    parti = partinfo + i;
-    if(parti->loaded==0)continue;
-    MergeGlobalTimes(parti->times, parti->ntimes);
-  }
   for(i=0;i<nsliceinfo;i++){
     slicedata *sd;
 
@@ -1361,6 +1340,13 @@ void UpdateTimes(void){
         MergeGlobalTimes(smoke3di->times, smoke3di->ntimes);
       }
     }
+  }
+  for(i = 0; i < npartinfo; i++){
+    partdata *parti;
+
+    parti = partinfo + i;
+    if(parti->loaded == 0)continue;
+    MergeGlobalTimes(parti->times, parti->ntimes);
   }
 
   for(i=0;i<ntourinfo;i++){
@@ -2511,12 +2497,6 @@ void EnableDisablePlayMovie(void){
 void UpdateDisplay(void){
   SNIFF_ERRORS("UpdateDisplay: start");
 
-#ifdef pp_SLICE_MENU_DEBUG
-  if(update_printsliceinfo == 1){
-    PrintSliceInfo();
-    update_printsliceinfo = 0;
-  }
-#endif
   if(sortslices == 1&&nsliceloaded>0){
     SortSlices();
   }

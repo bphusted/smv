@@ -22,6 +22,7 @@ $QFDS -d Visualization part_color.fds
 $QFDS -d Visualization plume5c.fds
 $QFDS -d Visualization plume5cdelta.fds
 $QFDS -d Visualization plumeiso.fds
+$QFDS -d Visualization plume_average.fds
 $QFDS -p 8 -d Visualization plumeiso8.fds
 $QFDS -d Visualization plume5c_bounddef.fds
 $QFDS -d Visualization script_test.fds
@@ -50,6 +51,9 @@ $QFDS -d Visualization tour.fds
 $QFDS -d Visualization transparency.fds
 $QFDS -d Visualization vcirctest.fds
 $QFDS -d Visualization vcirctest2.fds
+$QFDS -p 3 -d Visualization vectorskipx.fds
+$QFDS -p 3 -d Visualization vectorskipy.fds
+$QFDS -p 3 -d Visualization vectorskipz.fds
 $QFDS -d Visualization version.fds
 $QFDS -d Visualization version2.fds
 $QFDS -d Visualization windrose.fds

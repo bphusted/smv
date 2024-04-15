@@ -70,6 +70,10 @@ SVEXTERN threaderdata SVDECL(*classifyallgeom_threads, NULL);
 SVEXTERN int SVDECL(n_slicebound_threads, 1), SVDECL(use_slicebound_threads, 1);
 SVEXTERN threaderdata SVDECL(*slicebound_threads, NULL);
 
+//***part bounds
+SVEXTERN int SVDECL(n_partbound_threads, 1), SVDECL(use_partbound_threads, 1);
+SVEXTERN threaderdata SVDECL(*partbound_threads, NULL);
+
 //*** slice
 #ifdef pp_SLICE_MULTI // not implemented
 SVEXTERN int SVDECL(n_sliceload_threads, 4), SVDECL(use_sliceload_threads, 0);
@@ -122,11 +126,20 @@ SVEXTERN int hvac_duct_color[3];
 SVEXTERN int hvac_node_color[3];
 #endif
 
+
+//*** buffers for consolidating memory allocations
+#ifdef pp_ONEBUFFER
+#define MAXFILELEN 360
+SVEXTERN float SVDECL(*part_bound_buffer, NULL);
+SVEXTERN char SVDECL(*part_buffer, NULL);
+SVEXTERN char SVDECL(*smoke3d_buffer, NULL);
+SVEXTERN char SVDECL(*slice_buffer, NULL);
+#endif
+
 SVEXTERN FILE_SIZE SVDECL(last_size_for_slice, 0);
 SVEXTERN FILE_SIZE SVDECL(last_size_for_boundary, 0);
 SVEXTERN char SVDECL(*stepcsv_filename, NULL);
 
-#ifdef pp_BOUNDS
 SVEXTERN char SVDECL(*plot3d_gbnd_filename, NULL), SVDECL(**sorted_plot3d_filenames, NULL);
 SVEXTERN char SVDECL(*slice_gbnd_filename,  NULL), SVDECL(**sorted_slice_filenames,  NULL);
 SVEXTERN char SVDECL(*patch_gbnd_filename,  NULL), SVDECL(**sorted_patch_filenames,  NULL);
@@ -140,7 +153,6 @@ SVEXTERN int SVDECL(nsliceglobalboundsinfo,    0);
 SVEXTERN int SVDECL(npatchglobalboundsinfo,    0);
 
 SVEXTERN FILE_SIZE SVDECL(last_size_for_bound, 0);
-#endif
 
 SVEXTERN int SVDECL(histogram_nframes, 40);
 SVEXTERN int SVDECL(glui_surf_index, 0);
@@ -1494,6 +1506,9 @@ SVEXTERN int colorbartype_save;
 SVEXTERN int SVDECL(colorbarpoint,0);
 SVEXTERN int SVDECL(vectorspresent,0);
 SVEXTERN int SVDECL(colorbar_showscene,0);
+#ifdef pp_NOBOUNDS
+SVEXTERN int SVDECL(no_bounds, 0), SVDECL(force_bounds, 0);
+#endif
 
 SVEXTERN int SVDECL(visAIso,1);
 SVEXTERN int SVDECL(surfincrement,0),SVDECL(visiso,0);
@@ -1510,9 +1525,6 @@ SVEXTERN int SVDECL(sliceload_boundtype, 0);
 SVEXTERN int SVDECL(sliceload_filetype, 0);
 SVEXTERN int SVDECL(sliceload_dir,0);
 SVEXTERN int SVDECL(sliceload_isvector, 0);
-#ifdef pp_SLICE_MENU_DEBUG
-SVEXTERN int SVDECL(update_printsliceinfo, 1);
-#endif
 
 SVEXTERN int SVDECL(nsliceinfo,0),           SVDECL(nvsliceinfo,0);
 SVEXTERN int SVDECL(nmultisliceinfo,0),      SVDECL(nmultivsliceinfo,0);

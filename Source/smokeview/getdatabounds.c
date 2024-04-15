@@ -8,10 +8,8 @@
 #include "smokeviewvars.h"
 #include "IOscript.h"
 
-#ifdef pp_BOUNDS
 void BoundsUpdate(int file_type);
 int BoundsGet(char *file, globalboundsdata *globalboundsinfo, char **sorted_filenames, int n_sorted_filenames, int nbounds, float *valmin, float *valmax);
-#endif
 
 /* ------------------ GetPartFileBounds ------------------------ */
 
@@ -21,7 +19,7 @@ int GetPartFileBounds(char *file, float *valmin, float *valmax, int *ntotal_poin
 
   *ntotal_points = 0;
   if(file==NULL||strlen(file)==0)return 0;
-  stream = fopen(file, "r");
+  stream = FOPEN_2DIR(file, "r");
   if(stream==NULL)return 0;
 
   while(!feof(stream)){
@@ -72,6 +70,28 @@ int GetGlobalPartBounds(int flag){
   float *partmins = NULL, *partmaxs = NULL;
   int nloaded_files = 0;
 
+
+#ifdef pp_ONEBUFFER
+  if(part_bound_buffer == NULL && npartinfo > 0 && npart5prop>0){
+    NewMemory(( void ** )&part_bound_buffer, 2*npartinfo*npart5prop*sizeof(float));
+    for(i = 0; i < npartinfo; i++){
+      partdata *parti;
+      int j;
+
+      parti = partinfo + i;
+      if(parti->loaded == 1)nloaded_files++;
+      parti->valmin_part = part_bound_buffer;
+      part_bound_buffer += npart5prop;
+      parti->valmax_part = part_bound_buffer;
+      part_bound_buffer += npart5prop;
+      for(j = 0; j < npart5prop; j++){
+        parti->valmin_part[j] = 1.0;
+        parti->valmax_part[j] = 0.0;
+      }
+      parti->have_bound_file = GetPartFileBounds(parti->bound_file, parti->valmin_part, parti->valmax_part, &parti->npoints_file);
+    }
+  }
+#else
   for(i = 0; i<npartinfo; i++){
     partdata *parti;
     int j;
@@ -88,6 +108,7 @@ int GetGlobalPartBounds(int flag){
     }
     parti->have_bound_file = GetPartFileBounds(parti->bound_file, parti->valmin_part, parti->valmax_part, &parti->npoints_file);
   }
+#endif
   if(npart5prop>0){
     NewMemory((void **)&partmins, npart5prop*sizeof(float));
     NewMemory((void **)&partmaxs, npart5prop*sizeof(float));
@@ -182,6 +203,14 @@ int GetGlobalPartBounds(int flag){
   return nloaded_files;
 }
 
+/* ------------------ GetGlobalPartBoundsReduced ------------------------ */
+
+void *GetGlobalPartBoundsReduced(void *arg){
+  GetGlobalPartBounds(0);
+  THREAD_EXIT(partbound_threads);
+}
+
+
 /* ------------------ GetPatchBoundsInfo ------------------------ */
 
 boundsdata *GetPatchBoundsInfo(char *shortlabel){
@@ -201,7 +230,7 @@ boundsdata *GetPatchBoundsInfo(char *shortlabel){
 int WriteFileBounds(char *file, float valmin, float valmax){
   FILE *stream;
 
-  stream = fopen(file, "w");
+  stream = FOPEN_2DIR(file, "w");
   if(stream==NULL)return 0;
   fprintf(stream," %f %f %f", 0.0, valmin, valmax);
   fclose(stream);
@@ -217,7 +246,7 @@ int GetFileBounds(char *file, int nbounds, float *valmin, float *valmax){
   float vmins[MAXPLOT3DVARS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   float vmaxs[MAXPLOT3DVARS] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
-  stream = fopen(file, "r");
+  stream = FOPEN_2DIR(file, "r");
   if(stream==NULL){
     memcpy(valmin, vmins, nbounds * sizeof(float));
     memcpy(valmax, vmaxs, nbounds * sizeof(float));
@@ -282,6 +311,9 @@ void GetGlobalPatchBounds(int flag, int set_flag){
   int i;
 
   if(npatchinfo==0)return;
+#ifdef pp_NOBOUNDS
+  if(no_bounds == 1 && force_bounds==0)flag = 0;
+#endif
   for(i = 0; i < npatchbounds; i++){
     boundsdata *boundi;
 
@@ -289,9 +321,7 @@ void GetGlobalPatchBounds(int flag, int set_flag){
     boundi->dlg_global_valmin = 1.0;
     boundi->dlg_global_valmax = 0.0;
   }
-#ifdef pp_BOUNDS
-  BoundsUpdate(BOUND_PATCH);
-#endif
+  if(flag==1)BoundsUpdate(BOUND_PATCH);
   for(i = 0; i < npatchinfo; i++){
     patchdata *patchi;
     float valmin, valmax;
@@ -310,11 +340,7 @@ void GetGlobalPatchBounds(int flag, int set_flag){
     }
     if(force_bound_update == 1)doit = 1;
     if(doit==1){
-#ifdef pp_BOUNDS
       BoundsGet(patchi->reg_file, patchglobalboundsinfo, sorted_patch_filenames, npatchinfo, 1, &valmin, &valmax);
-#else
-      if(GetBounds(patchi->bound_file, &valmin, &valmax, &patchboundsinfo, &npatchboundsinfo)==1)patchi->have_bound_file = YES;
-#endif
       if(valmin > valmax)continue;
       patchi->valmin_patch = valmin;
       patchi->valmax_patch = valmax;
@@ -422,7 +448,7 @@ int GetPlot3DFileBounds(char *file, float *valmin, float *valmax){
   }
   if(compute_bounds==0)return 1;
   if(file==NULL||strlen(file)==0)return 0;
-  stream = fopen(file, "r");
+  stream = FOPEN_2DIR(file, "r");
   if(stream==NULL)return 0;
 
   CheckMemory;
@@ -441,18 +467,16 @@ void GetGlobalPlot3DBounds(void){
   int i;
 
   if(nplot3dinfo <= 0)return;
-#ifdef pp_BOUNDS
+#ifdef pp_NOBOUNDS
+  if(no_bounds==0 || force_bounds==1)BoundsUpdate(BOUND_PLOT3D);
+#else
   BoundsUpdate(BOUND_PLOT3D);
 #endif
   for(i = 0; i<nplot3dinfo; i++){
     plot3ddata *plot3di;
 
     plot3di = plot3dinfo+i;
-#ifdef pp_BOUNDS
     plot3di->have_bound_file = BoundsGet(plot3di->reg_file, plot3dglobalboundsinfo, sorted_plot3d_filenames, nplot3dinfo, plot3di->nplot3dvars, plot3di->valmin_plot3d, plot3di->valmax_plot3d);
-#else
-    plot3di->have_bound_file = GetPlot3DFileBounds(plot3di->bound_file, plot3di->valmin_plot3d, plot3di->valmax_plot3d);
-#endif
   }
   for(i = 0; i<MAXPLOT3DVARS; i++){
     p3min_all[i] = 1.0;
@@ -517,9 +541,7 @@ void GetGlobalPlot3DBounds(void){
       boundscppi->chopmax = p3max_global[0];
     }
   }
-#ifdef pp_BOUNDS
   GLUISetGlobalMinMaxAll(BOUND_PLOT3D, p3min_global, p3max_global, plot3dinfo->nplot3dvars);
-#endif
 }
 
 /* ------------------ GetLoadedPlot3dBounds ------------------------ */
@@ -569,8 +591,6 @@ void GetLoadedPlot3dBounds(int *compute_loaded, float *loaded_min, float *loaded
     }
   }
 }
-
-#ifdef pp_BOUNDS
 
 /* ------------------ CompareBoundFileName ------------------------ */
 
@@ -694,16 +714,23 @@ void RmGbndFile(int file_type){
 
 FILE *FopenGbndFile(int file_type, char *mode){
   FILE *stream = NULL;
+  char *file=NULL;
 
   ASSERT_BOUND_TYPE;
   if(file_type == BOUND_SLICE){
-    stream = fopen(slice_gbnd_filename, mode);
+    file = slice_gbnd_filename;
   }
   else if(file_type==BOUND_PATCH){
-    stream = fopen(patch_gbnd_filename, mode);
+    file = patch_gbnd_filename;
   }
   else if(file_type == BOUND_PLOT3D){
-    stream = fopen(plot3d_gbnd_filename, mode);
+    file = plot3d_gbnd_filename;
+  }
+  else{
+    file = NULL;
+  }
+  if(file != NULL){
+    stream = FOPEN_2DIR(file, mode);
   }
   return stream;
 }
@@ -946,23 +973,10 @@ void BoundsUpdateSetup(int file_type){
     SaveGlobalBoundsinfo(file_type, globalboundsinfo);
   }
   DefineGbndFilename(file_type);
-#ifdef pp_GBND
-  BoundsBnd2Gbnd(file_type);
+#ifdef pp_NOBOUNDS
+  if(no_bounds == 0 || force_bounds==1)BoundsBnd2Gbnd(file_type);
 #else
-  stream = FopenGbndFile(file_type, "r");
-  FILE_SIZE size_temp;
-  size_temp = last_size_for_bound;
-  if(stream == NULL || IsFDSRunning(&size_temp) == 1){
-    if(stream != NULL){
-      fclose(stream);
-      stream = NULL;
-    }
-    BoundsBnd2Gbnd(file_type);
-  }
-  if(stream != NULL){
-    fclose(stream);
-    stream = NULL;
-  }
+  BoundsBnd2Gbnd(file_type);
 #endif
   stream = FopenGbndFile(file_type, "r");
   if(stream != NULL){
@@ -1005,9 +1019,12 @@ void BoundsUpdateSetup(int file_type){
       }
     }
     fclose(stream);
-#ifdef pp_GBND
-    RmGbndFile(file_type);
-#endif    
+   // RmGbndFile(file_type);
+#ifdef pp_NOBOUNDS
+    if(no_bounds == 1 && force_bounds == 0){
+      assert(FFALSE); // global bounds file shouldn't exist if the no_bounds option was set
+    }
+#endif
   }
 }
 
@@ -1378,12 +1395,15 @@ void BoundsUpdate(int file_type){
   BoundsUpdateWrapup(file_type);
   PRINT_TIMER(bound_wrapup, label3);
 }
-#endif
+
 /* ------------------ GetGlobalSliceBounds ------------------------ */
 
 void GetGlobalSliceBounds(int flag, int set_flag){
   int i;
 
+#ifdef pp_NOBOUNDS
+  if(no_bounds == 1 && force_bounds==0)flag = 0;
+#endif
   if(nsliceinfo==0)return;
   for(i = 0;i<nslicebounds;i++){
     boundsdata *boundi;
@@ -1392,7 +1412,9 @@ void GetGlobalSliceBounds(int flag, int set_flag){
     boundi->dlg_global_valmin = 1.0;
     boundi->dlg_global_valmax = 0.0;
   }
-#ifdef pp_BOUNDS
+#ifdef pp_NOBOUNDS
+  if(no_bounds==0 || force_bounds==1)BoundsUpdate(BOUND_SLICE);
+#else
   BoundsUpdate(BOUND_SLICE);
 #endif
   INIT_PRINT_TIMER(slicebounds_timer);
@@ -1414,13 +1436,7 @@ void GetGlobalSliceBounds(int flag, int set_flag){
     if(force_bound_update == 1||nzoneinfo>0)doit = 1;
 
     if(doit==1){
-#ifdef pp_BOUNDS
       BoundsGet(slicei->reg_file, sliceglobalboundsinfo, sorted_slice_filenames, nsliceinfo, 1, &valmin, &valmax);
-#else
-      if(GetBounds(slicei->bound_file, &valmin, &valmax, &sliceboundsinfo, &nsliceboundsinfo)==1){
-        slicei->have_bound_file = YES;
-      }
-#endif
       if(valmin>valmax)continue;
       slicei->valmin_slice = valmin;
       slicei->valmax_slice = valmax;
@@ -1561,6 +1577,9 @@ void GetHVACNodeBounds(char *shortlabel, float *valminptr, float *valmaxptr){
 void GetGlobalHVACDuctBounds(int flag){
   int i;
 
+#ifdef pp_NOBOUNDS
+  if(no_bounds == 1 && force_bounds==0)flag = 0;
+#endif
   int nhvacboundsmax = 0;
   if(hvacductvalsinfo != NULL)nhvacboundsmax = hvacductvalsinfo->n_duct_vars;
   if(nhvacboundsmax == 0)return;
@@ -1620,6 +1639,9 @@ void GetGlobalHVACDuctBounds(int flag){
 void GetGlobalHVACNodeBounds(int flag){
   int i;
 
+#ifdef pp_NOBOUNDS
+  if(no_bounds == 1 && force_bounds==0)flag = 0;
+#endif
   int nhvacboundsmax = 0;
   if(hvacnodevalsinfo != NULL)nhvacboundsmax = hvacnodevalsinfo->n_duct_vars + hvacnodevalsinfo->n_node_vars;
   if(nhvacboundsmax == 0)return;
@@ -1679,7 +1701,9 @@ void GetGlobalHVACNodeBounds(int flag){
 void UpdateGlobalFEDSliceBounds(void){
   int i;
 
-#ifdef pp_BOUNDS
+#ifdef pp_NOBOUNDS
+  if(no_bounds==0 || force_bounds==1)BoundsUpdate(BOUND_SLICE);
+#else
   BoundsUpdate(BOUND_SLICE);
 #endif
   for(i = 0; i<nsliceinfo; i++){
@@ -1692,11 +1716,7 @@ void UpdateGlobalFEDSliceBounds(void){
     if(slicei->valmin_slice>slicei->valmax_slice||
        current_script_command==NULL || NOT_LOADRENDER){
 
-#ifdef pp_BOUNDS
       BoundsGet(slicei->reg_file, sliceglobalboundsinfo, sorted_slice_filenames, nsliceinfo, 1, &valmin, &valmax);
-#else
-      GetBounds(slicei->bound_file, &valmin, &valmax, &sliceboundsinfo, &nsliceboundsinfo);
-#endif
 
       if(valmin>valmax)continue;
       slicei->valmin_slice = valmin;
@@ -1830,10 +1850,10 @@ int ReadPartBounds(partdata *parti,int read_bounds_arg){
 
   // make sure a size file exists
 
-  if(parti->size_file!=NULL)stream = fopen(parti->size_file, "r");
-  if(parti->size_file==NULL||stream==NULL){
+  if(parti->size_file!=NULL)stream = FOPEN_2DIR(parti->size_file, "r");
+  if(stream==NULL){
     CreatePartSizeFile(parti);
-    if(parti->size_file!=NULL)stream = fopen(parti->size_file, "r");
+    if(parti->size_file!=NULL)stream = FOPEN_2DIR(parti->size_file, "r");
     if(stream==NULL)return 0;
   }
   if(stream!=NULL){
@@ -1843,10 +1863,10 @@ int ReadPartBounds(partdata *parti,int read_bounds_arg){
 
   // make sure a bound file exists
 
-  if(parti->bound_file!=NULL)stream = fopen(parti->bound_file, "r");
+  if(parti->bound_file!=NULL)stream = FOPEN_2DIR(parti->bound_file, "r");
   if(parti->bound_file==NULL||stream==NULL){
     CreatePartBoundFile(parti);
-    stream = fopen(parti->bound_file, "r");
+    stream = FOPEN_2DIR(parti->bound_file, "r");
     if(stream==NULL)return 0;
   }
   if(stream!=NULL){
@@ -1862,7 +1882,7 @@ int ReadPartBounds(partdata *parti,int read_bounds_arg){
     return 0;
   }
 
-  stream = fopen(parti->bound_file, "r");
+  stream = FOPEN_2DIR(parti->bound_file, "r");
   for(;;){
     float time_local;
     int nclasses_local, k, version_local =-1;
@@ -1943,7 +1963,7 @@ void MergeAllPartBounds(void){
   if(global_have_global_bound_file==0){
     FILE *stream;
 
-    stream = fopen(part_globalbound_filename, "w");
+    stream = FOPEN_2DIR(part_globalbound_filename, "w");
     if(stream!=NULL){
       global_have_global_bound_file = 1;
       global_part_boundsize = GetFileSizeSMV(partinfo->bound_file);
@@ -2020,7 +2040,7 @@ void GetAllPartBounds(void){
 
   if(global_part_boundsize==0)global_part_boundsize = GetFileSizeSMV(partinfo->bound_file);
 
-  stream = fopen(part_globalbound_filename, "r");
+  stream = FOPEN_2DIR(part_globalbound_filename, "r");
   if(stream!=NULL){
     int n;
     int part_boundsize_old_local;

@@ -35,6 +35,17 @@
 #define ZVENT_1ROOM 1
 #define ZVENT_2ROOM 2
 
+#ifdef pp_ONEBUFFER
+#define PARTBUFFER(len)    part_buffer;    part_buffer    += (len)
+#define SMOKE3DBUFFER(len) smoke3d_buffer; smoke3d_buffer += (len)
+#define SLICEBUFFER(len)   slice_buffer;   slice_buffer   += (len)
+#else
+#define PARTBUFFER(len)
+#define SMOKE3DBUFFER(len)
+#define SLICEBUFFER(len)
+#endif
+
+
 /* ------------------ GetHrrCsvCol ------------------------ */
 
 int GetHrrCsvCol(char *label){
@@ -912,9 +923,7 @@ void InitMesh(meshdata *meshi){
   NewMemory((void **)&meshi->gsliceinfo,     sizeof(meshplanedata));
   NewMemory((void **)&meshi->volrenderinfo,  sizeof(volrenderdata));
 
-#ifdef pp_BOUNDS
   meshi->boundary_mask = NULL;
-#endif
   meshi->in_frustum = 1;
   meshi->imap = NULL;
   meshi->jmap = NULL;
@@ -3020,8 +3029,14 @@ void UpdateBoundInfo(void){
 
   GLUIUpdateChar();
   PRINT_TIMER(bound_timer, "GLUIUpdateChar");
-
+#ifdef pp_PARTBOUND_MULTI
+  if(partbound_threads == NULL){
+    partbound_threads = THREADinit(&n_partbound_threads, &use_partbound_threads, GetGlobalPartBoundsReduced);
+    THREADrun(partbound_threads, NULL);
+  }
+#else
   GetGlobalPartBounds(0);
+#endif
   PRINT_TIMER(bound_timer, "GetGlobalPartBounds");
 
   GetGlobalSliceBoundsReduced();
@@ -5089,10 +5104,7 @@ int ParsePRT5Process(bufferstreamdata *stream, char *buffer, int *nn_part_in, in
 
   nn_part++;
   *nn_part_in = nn_part;
-
-
   parti = partinfo+ipart;
-
   lenkey = 4;
   len = strlen(buffer);
   if(nmeshes>1){
@@ -5124,17 +5136,22 @@ int ParsePRT5Process(bufferstreamdata *stream, char *buffer, int *nn_part_in, in
   bufferptr = TrimFrontBack(buffer);
   len = strlen(bufferptr);
   parti->reg_file = NULL;
-  if(NewMemory((void **)&parti->reg_file, (unsigned int)(len+1))==0)return RETURN_TWO;
+#ifdef pp_ONEBUFFER
+  parti->reg_file   = PARTBUFFER(len+1);
+  parti->bound_file = PARTBUFFER(len+4+1);
+  parti->size_file  = PARTBUFFER(len+3+1);
+#else
+  if(NewMemory((void **)&parti->reg_file,   (unsigned int)(len+1))==0)return RETURN_TWO;
+  if(NewMemory((void **)&parti->bound_file, (unsigned int)(len+4+1))==0)return RETURN_TWO;
+  if(NewMemory((void **)&parti->size_file,  (unsigned int)(len+1+3))==0)return RETURN_TWO;
+#endif
   STRCPY(parti->reg_file, bufferptr);
   parti->reg_file_size = GetFileSizeSMV(parti->reg_file);
 
-  if(NewMemory((void **)&parti->bound_file, (unsigned int)(len+4+1))==0)return RETURN_TWO;
   STRCPY(parti->bound_file, bufferptr);
   STRCAT(parti->bound_file, ".bnd");
   parti->have_bound_file = NO;
 
-  parti->size_file = NULL;
-  if(NewMemory((void **)&parti->size_file, (unsigned int)(len+1+3))==0)return RETURN_TWO;
   STRCPY(parti->size_file, bufferptr);
   STRCAT(parti->size_file, ".sz");
 
@@ -5142,7 +5159,11 @@ int ParsePRT5Process(bufferstreamdata *stream, char *buffer, int *nn_part_in, in
 
   if(FILE_EXISTS_CASEDIR(parti->size_file)==NO&&curdir_writable==NO&&smokeview_scratchdir!=NULL){
     len = strlen(smokeview_scratchdir)+strlen(bufferptr)+1+3+1;
+#ifdef pp_ONEBUFFER
+    parti->size_file = NULL;
+#else
     FREEMEMORY(parti->size_file);
+#endif
     if(NewMemory((void **)&parti->size_file, (unsigned int)len)==0)return RETURN_TWO;
     STRCPY(parti->size_file, smokeview_scratchdir);
     STRCAT(parti->size_file, dirseparator);
@@ -5157,8 +5178,10 @@ int ParsePRT5Process(bufferstreamdata *stream, char *buffer, int *nn_part_in, in
     parti->file = parti->reg_file;
   }
   else{
+#ifndef pp_ONEBUFFER
     FREEMEMORY(parti->reg_file);
     FREEMEMORY(parti->size_file);
+#endif
     parti->file = NULL;
   }
   parti->compression_type = UNCOMPRESSED;
@@ -5186,7 +5209,13 @@ int ParsePRT5Process(bufferstreamdata *stream, char *buffer, int *nn_part_in, in
   FGETS(buffer, 255, stream);
   sscanf(buffer, "%i", &parti->nclasses);
   if(parti->nclasses>0){
-    if(parti->file!=NULL)NewMemory((void **)&parti->partclassptr, parti->nclasses*sizeof(partclassdata *));
+#ifdef pp_ONEBUFFER
+    if(parti->file != NULL){
+      parti->partclassptr = (partclassdata **)PARTBUFFER(parti->nclasses*sizeof(partclassdata *));
+    }
+#else
+    if(parti->file != NULL)NewMemory(( void ** )&parti->partclassptr, parti->nclasses * sizeof(partclassdata *));
+#endif
     for(i = 0; i<parti->nclasses; i++){
       int iclass;
       int ic, iii;
@@ -5566,6 +5595,14 @@ int ParseSMOKE3DProcess(bufferstreamdata *stream, char *buffer, int *nn_smoke3d_
     ismoke3dcount++;
     *ismoke3dcount_in = ismoke3dcount;
 
+#ifdef pp_ONEBUFFER
+    smoke3di->reg_file = SMOKE3DBUFFER(len + 1);
+    STRCPY(smoke3di->reg_file, bufferptr);
+    for(i=0; i<6; i++){
+      smoke3di->alphas_dir[i] = ( unsigned char * )smoke3d_buffer;
+      smoke3d_buffer += 256;
+    }
+#else
     if(NewMemory((void **)&smoke3di->reg_file, (unsigned int)(len+1))==0)return RETURN_TWO;
     STRCPY(smoke3di->reg_file, bufferptr);
     for(i=0; i<6; i++){
@@ -5574,6 +5611,7 @@ int ParseSMOKE3DProcess(bufferstreamdata *stream, char *buffer, int *nn_smoke3d_
       NewMemory((void **)&alpha_dir, 256);
       smoke3di->alphas_dir[i] = alpha_dir;
     }
+#endif
     smoke3di->ntimes = 0;
     smoke3di->ntimes_old = 0;
     smoke3di->filetype = filetype;
@@ -5618,7 +5656,11 @@ int ParseSMOKE3DProcess(bufferstreamdata *stream, char *buffer, int *nn_smoke3d_
     STRCAT(buffer2, ".svz");
 
     len = lenbuffer+4;
+#ifdef pp_ONEBUFFER
+    smoke3di->comp_file = SMOKE3DBUFFER(len + 1);
+#else
     if(NewMemory((void **)&smoke3di->comp_file, (unsigned int)(len+1))==0)return RETURN_TWO;
+#endif
     STRCPY(smoke3di->comp_file, buffer2);
 
     if(have_compressed_files==1&&FILE_EXISTS_CASEDIR(smoke3di->comp_file) == YES){
@@ -5638,7 +5680,11 @@ int ParseSMOKE3DProcess(bufferstreamdata *stream, char *buffer, int *nn_smoke3d_
     ext = strrchr(buffer16, '.');
     if(ext != NULL)*ext = 0;
     strcat(buffer16, ".s16");
+#ifdef pp_ONEBUFFER
+    smoke3di->s16_file = SMOKE3DBUFFER(strlen(buffer16) + 1);
+#else
     if(NewMemory((void **)&smoke3di->s16_file, (unsigned int)(strlen(buffer16) + 1)) == 0)return RETURN_TWO;
+#endif
     STRCPY(smoke3di->s16_file, buffer16);
     if(FILE_EXISTS_CASEDIR(smoke3di->s16_file)==YES){
       smoke3di->is_s16 = 1;
@@ -5840,9 +5886,7 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
 #ifdef pp_SLICE_MULTI
   sd->loadstatus = FILE_UNLOADED;
 #endif
-#ifdef pp_BOUNDS
   sd->slice_mask       = NULL;
-#endif
   sd->vals2d.vals      = NULL;
   sd->vals2d.vals_orig = NULL;
   sd->vals2d.times     = NULL;
@@ -5880,7 +5924,11 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
 
     if(cell_center_flag==1)sd->cell_center = 1;
     sd->slice_filetype = SLICE_GEOM;
+#ifdef pp_ONEBUFFER
+    patchgeom_local = (patchdata *)SLICEBUFFER(sizeof(patchdata));
+#else
     NewMemory((void **)&patchgeom_local, sizeof(patchdata));
+#endif
     sd->patchgeom = patchgeom_local;
   }
   if(terrain==1){
@@ -5928,9 +5976,14 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
     return RETURN_CONTINUE;
   }
 
+#ifdef pp_ONEBUFFER
+  sd->reg_file  = SLICEBUFFER(len + 1);
+  sd->comp_file = SLICEBUFFER(len + 4 + 1);
+#else
   NewMemory((void **)&sd->reg_file, (unsigned int)(len+1));
-  STRCPY(sd->reg_file, bufferptr);
   NewMemory((void **)&sd->comp_file, (unsigned int)(len+4+1));
+#endif
+  STRCPY(sd->reg_file, bufferptr);
 
   sd->compression_type = compression_type;
   switch(compression_type){
@@ -5964,7 +6017,11 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
     bufferptr2 = TrimFrontBack(buffer2);
     lengeom = strlen(bufferptr2);
     sd->geom_file = NULL;
+#ifdef pp_ONEBUFFER
+    sd->geom_file = SLICEBUFFER(lengeom + 1);
+#else
     NewMemory((void **)&sd->geom_file, (unsigned int)(lengeom+1));
+#endif
     STRCPY(sd->geom_file, bufferptr2);
   }
 
@@ -5998,11 +6055,15 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
     sd->colorbar_autoflip = 0;
   }
 
+#ifdef pp_ONEBUFFER
+  sd->size_file  = SLICEBUFFER(len + 3 + 1);
+  sd->bound_file = SLICEBUFFER(len + 4 + 1);
+#else
   NewMemory((void **)&sd->size_file, (unsigned int)(len+3+1));
+  NewMemory((void **)&sd->bound_file, (unsigned int)(len+4+1));
+#endif
   STRCPY(sd->size_file, bufferptr);
   STRCAT(sd->size_file, ".sz");
-
-  NewMemory((void **)&sd->bound_file, (unsigned int)(len+4+1));
   STRCPY(sd->bound_file, bufferptr);
   STRCAT(sd->bound_file, ".bnd");
   sd->have_bound_file = NO;
@@ -6012,7 +6073,11 @@ int ParseSLCFProcess(int option, bufferstreamdata *stream, char *buffer, int *nn
     int lenslicelabel;
 
     lenslicelabel = strlen(slicelabel)+1;
+#ifdef pp_ONEBUFFER
+    sd->slicelabel = SLICEBUFFER(lenslicelabel);
+#else
     NewMemory((void **)&sd->slicelabel, lenslicelabel);
+#endif
     strcpy(sd->slicelabel, slicelabel);
   }
   if(read_slice_header==1){
@@ -7923,6 +7988,18 @@ int ReadSMV_Parse(bufferstreamdata *stream) {
     InitDefaultProp();
     npropinfo=1;
   }
+
+#ifdef pp_ONEBUFFER
+  if(npartinfo>0){
+    if(NewMemory(( void ** )&part_buffer, 4*npartinfo*MAXFILELEN) == 0)return 2;
+  }
+  if(nsliceinfo>0){
+    if(NewMemory(( void ** )&slice_buffer, 7*nsliceinfo*MAXFILELEN) == 0)return 2;
+  }
+  if(nsmoke3dinfo>0){
+    if(NewMemory(( void ** )&smoke3d_buffer, 9*nsmoke3dinfo*MAXFILELEN) == 0)return 2;
+  }
+#endif
 
   PRINT_TIMER(timer_readsmv, "pass 1");
 
@@ -12230,7 +12307,6 @@ void SetSliceBounds(int set_valmin, float valmin, int set_valmax, float valmax, 
   }
 }
 
-#ifdef pp_BOUNDS
 /* ------------------ SetPatchMin ------------------------ */
 
 void SetPatchMin(int set_valmin, float valmin, char *buffer2){
@@ -12293,7 +12369,6 @@ void SetSliceMax(int set_valmax, float valmax, char *buffer2){
     }
   }
 }
-#endif
 
 /* ------------------ ReadIni2 ------------------------ */
 
@@ -13607,7 +13682,10 @@ int ReadIni2(char *inifile, int localfile){
       fgets(buffer, 255, stream);
       strcpy(buffer2, "");
       sscanf(buffer, "%i %f %i %f %s", &setvalmin, &valmin, &setvalmax, &valmax, buffer2);
-      if(strcmp(buffer, "")!=0){
+      if(strcmp(buffer2, "")!=0&&strcmp(buffer2,"Uniform")!=0){
+#ifdef pp_PARTBOUND_MULTI
+        THREADcontrol(partbound_threads, THREAD_JOIN);
+#endif
         for(i = 0; i<npartbounds_cpp; i++){
           cpp_boundsdata *boundi;
 
@@ -13660,9 +13738,6 @@ int ReadIni2(char *inifile, int localfile){
         }
         level_val = NULL;
       }
-#ifndef pp_BOUNDS
-      if(strcmp(buffer2, "TEMP")==0&&nzoneinfo>0)continue;
-#endif
       TrimBack(buffer2);
       SetSliceBounds(set_valmin, valmin, set_valmax, valmax, buffer2);
       continue;
@@ -16473,7 +16548,9 @@ void WriteIniLocal(FILE *fileout){
         );
     }
   }
-
+#ifdef pp_PARTBOUND_MULTI
+  THREADcontrol(partbound_threads, THREAD_JOIN);
+#endif
   for(i = 0; i<npartbounds_cpp; i++){
     cpp_boundsdata *boundi;
 
