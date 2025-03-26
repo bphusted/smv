@@ -226,7 +226,7 @@ void DrawFilled2Tetra(float *v1, float *v2, float *v3, float *v4,
 
 /* ------------------ CompareFloats ------------------------ */
 
-int CompareFloats( const void *arg1, const void *arg2 ){
+int CompareFloats(const void *arg1, const void *arg2){
   float x, y;
   x=*(float *)arg1;
   y=*(float *)arg2;
@@ -246,7 +246,7 @@ void RemoveDupFloats(float **valsptr, int *nvals,int *ivals, float dval_min){
   if(*nvals==0)return;
   nv = *nvals;
   vals = *valsptr;
-  qsort( (float *)vals, (size_t)nv, sizeof( float ), CompareFloats );
+  qsort( (float *)vals, (size_t)nv, sizeof(float), CompareFloats );
   ii=1;
   for(i=1;i<nv;i++){
     if(ABS(vals[i]-vals[i-1])<=dval_min)continue;
@@ -290,11 +290,11 @@ void UpdatePlotxyzAll(void){
   float *xp, *yp, *zp;
   float dxyz_min=100000.0;
 
-  for(i = 0;i < nmeshes;i++){
+  for(i = 0;i < global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     float *xplt, *yplt, *zplt, *dxyz;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
     xplt = meshi->xplt_orig;
     yplt = meshi->yplt_orig;
     zplt = meshi->zplt_orig;
@@ -310,10 +310,10 @@ void UpdatePlotxyzAll(void){
   nplotx_all=0;
   nploty_all=0;
   nplotz_all=0;
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
     nplotx_all+=(meshi->ibar+1);
     nploty_all+=(meshi->jbar+1);
     nplotz_all+=(meshi->kbar+1);
@@ -342,11 +342,11 @@ void UpdatePlotxyzAll(void){
   xp = plotx_all;
   yp = ploty_all;
   zp = plotz_all;
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     int j;
     meshdata *meshi;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
     for(j=0;j<meshi->ibar+1;j++){
       *xp++ = meshi->xplt[j];
     }
@@ -379,11 +379,11 @@ void UpdatePlotxyzAll(void){
   RemoveDupFloats(&plotx_all,&nplotx_all,&iplotx_all,dxyz_min);
   RemoveDupFloats(&ploty_all,&nploty_all,&iploty_all,dxyz_min);
   RemoveDupFloats(&plotz_all,&nplotz_all,&iplotz_all,dxyz_min);
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     int j;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
     NewMemory((void **)&meshi->iplotx_all,nplotx_all*sizeof(int));
     NewMemory((void **)&meshi->iploty_all,nploty_all*sizeof(int));
     NewMemory((void **)&meshi->iplotz_all,nplotz_all*sizeof(int));
@@ -419,30 +419,30 @@ void UpdatePlotxyzAll(void){
       meshi->iplotz_all[j]=ival;
     }
   }
-  for(i = 0; i<nmeshes; i++){
+  for(i = 0; i<global_scase.meshescoll.nmeshes; i++){
     meshdata *meshi;
     int ival;
 
-    meshi = meshinfo+i;
-    ival = ClosestNodeIndex(xbar/2.0, meshi->xplt, meshi->ibar+1);
+    meshi = global_scase.meshescoll.meshinfo+i;
+    ival = ClosestNodeIndex(global_scase.xbar/2.0, meshi->xplt, meshi->ibar+1);
     if(ival<0)continue;
     iplotx_all = ival;
   }
-  for(i = 0; i<nmeshes; i++){
+  for(i = 0; i<global_scase.meshescoll.nmeshes; i++){
     meshdata *meshi;
     int ival;
 
-    meshi = meshinfo+i;
-    ival = ClosestNodeIndex(ybar/2.0, meshi->yplt, meshi->jbar+1);
+    meshi = global_scase.meshescoll.meshinfo+i;
+    ival = ClosestNodeIndex(global_scase.ybar/2.0, meshi->yplt, meshi->jbar+1);
     if(ival<0)continue;
     iploty_all = ival;
   }
-  for(i = 0; i<nmeshes; i++){
+  for(i = 0; i<global_scase.meshescoll.nmeshes; i++){
     meshdata *meshi;
     int ival;
 
-    meshi = meshinfo+i;
-    ival = ClosestNodeIndex(zbar/2.0, meshi->zplt, meshi->kbar+1);
+    meshi = global_scase.meshescoll.meshinfo+i;
+    ival = ClosestNodeIndex(global_scase.zbar/2.0, meshi->zplt, meshi->kbar+1);
     if(ival<0)continue;
     iplotz_all = ival;
   }
@@ -469,18 +469,26 @@ void UpdatePlotxyzAll(void){
 /* ------------------ InExterior ------------------------ */
 
 int InExterior(float *xyz){
-  if(cellmeshinfo == NULL)InitCellMeshInfo();
-  if(is_convex == 1){
-    float *xyzminmax;
+  int i;
+  float x, y, z;
 
-    xyzminmax = cellmeshinfo->xyzminmax;
-    if(xyz[0]<xyzminmax[0] || xyz[0]>xyzminmax[1])return 1;
-    if(xyz[1]<xyzminmax[2] || xyz[1]>xyzminmax[3])return 1;
-    if(xyz[2]<xyzminmax[4] || xyz[2]>xyzminmax[5])return 1;
-    return 0;
+  x = xyz[0];
+  y = xyz[1];
+  z = xyz[2];
+  if(x < xbar0FDS || x > xbarFDS)return 1;
+  if(y < ybar0FDS || y > ybarFDS)return 1;
+  if(z < zbar0FDS || z > zbarFDS)return 1;
+  for(i = 0;i < global_scase.meshescoll.nmeshes;i++){
+    meshdata *meshi;
+
+    meshi = global_scase.meshescoll.meshinfo + i;
+    if(x >= meshi->xplt_orig[0] && x <= meshi->xplt_orig[meshi->ibar] &&
+       y >= meshi->yplt_orig[0] && y <= meshi->yplt_orig[meshi->jbar] &&
+       z >= meshi->zplt_orig[0] && z <= meshi->zplt_orig[meshi->kbar]){
+       return 0;
+     }
   }
-  if(GetMesh(xyz) == NULL)return 1;
-  return 0;
+  return 1;
 }
 
 /* ------------------ GetMesh ------------------------ */
@@ -488,12 +496,12 @@ int InExterior(float *xyz){
 meshdata *GetMesh(float *xyz){
   int i;
 
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     int ibar, jbar, kbar;
     float *xplt, *yplt, *zplt;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
 
     ibar = meshi->ibar;
     jbar = meshi->jbar;
@@ -518,12 +526,12 @@ meshdata *GetMesh(float *xyz){
 int OnMeshBoundary(float *xyz){
   int i;
 
-  for(i = 0; i<nmeshes; i++){
+  for(i = 0; i<global_scase.meshescoll.nmeshes; i++){
     meshdata *meshi;
     int ibar, jbar, kbar;
     float *xplt, *yplt, *zplt;
 
-    meshi = meshinfo+i;
+    meshi = global_scase.meshescoll.meshinfo+i;
 
     ibar = meshi->ibar;
     jbar = meshi->jbar;
@@ -581,12 +589,12 @@ int OnMeshBoundary(float *xyz){
 meshdata *GetMeshNoFail(float *xyz){
   int i;
 
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     int ibar, jbar, kbar;
     float *xplt, *yplt, *zplt;
 
-    meshi = meshinfo+i;
+    meshi = global_scase.meshescoll.meshinfo+i;
 
     ibar = meshi->ibar;
     jbar = meshi->jbar;
@@ -603,12 +611,12 @@ meshdata *GetMeshNoFail(float *xyz){
       return meshi;
     }
   }
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     int ibar, jbar, kbar;
     float *xplt, *yplt, *zplt;
 
-    meshi = meshinfo+i;
+    meshi = global_scase.meshescoll.meshinfo+i;
 
     ibar = meshi->ibar;
     jbar = meshi->jbar;
@@ -625,7 +633,7 @@ meshdata *GetMeshNoFail(float *xyz){
       return meshi;
     }
   }
-  return meshinfo;
+  return global_scase.meshescoll.meshinfo;
 }
 
 /* ------------------ ExtractFrustum ------------------------ */
@@ -794,9 +802,9 @@ int BoxInFrustum(float *xx, float *yy, float *zz, int n){
   float xyz[3];
   float dx, dy, dz;
 
-  dx = (xx[1] - xx[0]) / ( float )(n - 1);
-  dy = (yy[1] - yy[0]) / ( float )(n - 1);
-  dz = (zz[1] - zz[0]) / ( float )(n - 1);
+  dx = (xx[1] - xx[0]) / (float)(n - 1);
+  dy = (yy[1] - yy[0]) / (float)(n - 1);
+  dz = (zz[1] - zz[0]) / (float)(n - 1);
 
   for(i=0;i<n;i++){
     int j;
@@ -831,10 +839,10 @@ int MeshInFrustum(meshdata *meshi){
 
 /* ------------------ RectangleInFrustum ------------------------ */
 
-int RectangleInFrustum( float *x11, float *x12, float *x22, float *x21){
+int RectangleInFrustum(float *x11, float *x12, float *x22, float *x21){
    int p;
 
-   for( p = 0; p < 6; p++ ){
+   for(p = 0; p < 6; p++){
       if( frustum[p][0]*x11[0] + frustum[p][1]*x11[1] + frustum[p][2]*x11[2] + frustum[p][3] > 0 )continue;
       if( frustum[p][0]*x12[0] + frustum[p][1]*x12[1] + frustum[p][2]*x12[2] + frustum[p][3] > 0 )continue;
       if( frustum[p][0]*x22[0] + frustum[p][1]*x22[1] + frustum[p][2]*x22[2] + frustum[p][3] > 0 )continue;
@@ -914,7 +922,7 @@ void GetScreenMapping(float *xyz0, float *screen_perm){
 
 #define SETSCREEN(i1,i2,i3,dscreen)\
   if(i1==0)set=0;\
-  if(set==0&&ABS((dscreen)[i1])>MAX( ABS((dscreen)[i2]) , ABS((dscreen)[i3]) ) ){\
+  if(set==0&&ABS((dscreen)[i1])>MAX( ABS((dscreen)[i2]) , ABS((dscreen)[i3]) )){\
     (dscreen)[i1]=SIGN((dscreen)[i1]);\
     (dscreen)[i2]=0.0;\
     (dscreen)[i3]=0.0;\
@@ -1005,33 +1013,17 @@ void GetScreenMapping(float *xyz0, float *screen_perm){
 
 /* ------------------ GetTimeInterval ------------------------ */
 
-int GetTimeInterval(float val, float *array, int n){
-  if(val<array[1])return 0;
-  if(val>array[n-2])return n-2;
-  return GetInterval(val, array, n);
-}
+int GetTimeInterval(float val, float *vals, int n){
+  int ival;
 
-/* ------------------ GetInterval ------------------------ */
+  if(n <= 1 || val<vals[0])return 0;
+  if(val>= vals[n-1])return n-1;
 
-int GetInterval(float val, float *array, int n){
-  int low, mid, high;
-
-  if(val<array[0])return -1;
-  if(val>array[n-1])return -1;
-
-  low=0;
-  high=n-1;
-  while(high-low>1){
-    mid=(low+high)/2;
-    if(val>array[mid]){
-      low=mid;
-    }
-    else{
-      high=mid;
-    }
-  }
-  assert(low<n);
-  return low;
+  ival = GetInterval(val, vals, n);
+  if(ival >= n - 1)return n - 1;
+  if(ival <= 0)return 0;
+  if(ABS(val - vals[ival]) < ABS(val - vals[ival + 1]))return ival;
+  return ival + 1;
 }
 
 /* ------------------ GetNewPos ------------------------ */
@@ -1056,8 +1048,8 @@ float GetBlockageDistance(float x, float y, float z){
   float view_height;
   char *iblank_cell;
 
-  for(i=0;i<nmeshes;i++){
-    meshi = meshinfo+i;
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
+    meshi = global_scase.meshescoll.meshinfo+i;
 
     iblank_cell = meshi->c_iblank_cell;
 
@@ -1109,20 +1101,20 @@ int MakeIBlankCarve(void){
   char *ib_embed;
 
   n_embedded_meshes=0;
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
 
-    meshi = meshinfo+i;
+    meshi = global_scase.meshescoll.meshinfo+i;
     meshi->c_iblank_embed=NULL;
   }
-  if(nmeshes==1)return 0;
+  if(global_scase.meshescoll.nmeshes==1)return 0;
 
 
-  for(i=0;i<nmeshes;i++){
+  for(i=0;i<global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     int n_embedded;
 
-    meshi = meshinfo+i;
+    meshi = global_scase.meshescoll.meshinfo+i;
     ibar = meshi->ibar;
     jbar = meshi->jbar;
     kbar = meshi->kbar;
@@ -1137,11 +1129,11 @@ int MakeIBlankCarve(void){
     // check to see if there are any embedded meshes
 
     n_embedded=0;
-    for(j=0;j<nmeshes;j++){
+    for(j=0;j<global_scase.meshescoll.nmeshes;j++){
       meshdata *meshj;
 
       if(i==j)continue;
-      meshj = meshinfo + j;
+      meshj = global_scase.meshescoll.meshinfo + j;
       if(
         meshi->boxmin[0]<=meshj->boxmin[0]&&meshj->boxmax[0]<=meshi->boxmax[0]&&
         meshi->boxmin[1]<=meshj->boxmin[1]&&meshj->boxmax[1]<=meshi->boxmax[1]&&
@@ -1154,7 +1146,7 @@ int MakeIBlankCarve(void){
     if(n_embedded==0)continue;
 
     ib_embed=NULL;
-    if(use_iblank==1){
+    if(global_scase.use_iblank==1){
       if(NewMemory((void **)&ib_embed,ijksize*sizeof(char))==0)return 1;
     }
     meshi->c_iblank_embed=ib_embed;
@@ -1162,14 +1154,14 @@ int MakeIBlankCarve(void){
     for(j=0;j<ijksize;j++){
       ib_embed[j]=EMBED_NO;
     }
-    for(j=0;j<nmeshes;j++){
+    for(j=0;j<global_scase.meshescoll.nmeshes;j++){
       meshdata *meshj;
-      int i1, i2, jj1, j2, k1, k2;
+      int i1=0, i2=0, jj1=0, j2=0, k1=0, k2=0;
       int ii, jj, kk;
       float *xplt, *yplt, *zplt;
 
       if(i==j)continue;
-      meshj = meshinfo + j;
+      meshj = global_scase.meshescoll.meshinfo + j;
       // meshj is embedded inside meshi
       if(
         meshi->boxmin[0]>meshj->boxmin[0]||meshj->boxmax[0]>meshi->boxmax[0]||
@@ -1231,13 +1223,141 @@ int MakeIBlankCarve(void){
   return 0;
 }
 
+/* ------------------ SetHiddenBlockages ------------------------ */
+
+void SetHiddenBlockages(meshdata *meshi){
+  int i;
+  int ibar, jbar;
+  char *iblank;
+
+  iblank = meshi->c_iblank_cell;
+  ibar = meshi->ibar;
+  jbar = meshi->jbar;
+
+  for(i = 0; i < meshi->nbptrs; i++){
+    blockagedata *bc;
+    int ii, jj, kk, ijk;
+
+    bc = meshi->blockageinfoptrs[i];
+    bc->hidden = 0;
+    bc->hidden6[0] = 1;
+    bc->hidden6[1] = 1;
+    bc->hidden6[2] = 1;
+    bc->hidden6[3] = 1;
+    bc->hidden6[4] = 1;
+    bc->hidden6[5] = 1;
+    if(bc->ijk[0] == 0          )bc->hidden6[0] = 0;
+    if(bc->ijk[1] == meshi->ibar)bc->hidden6[1] = 0;
+    if(bc->ijk[2] == 0          )bc->hidden6[2] = 0;
+    if(bc->ijk[3] == meshi->jbar)bc->hidden6[3] = 0;
+    if(bc->ijk[4] == 0          )bc->hidden6[4] = 0;
+    if(bc->ijk[5] == meshi->kbar)bc->hidden6[5] = 0;
+
+// check bottom plane
+
+    if(bc->hidden6[DOWN_Z] == 1){
+      for(ii = bc->ijk[0]; ii <= bc->ijk[1]; ii++){
+        for(jj = bc->ijk[2]; jj <= bc->ijk[3]; jj++){
+          kk = bc->ijk[DOWN_Z];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[DOWN_Z] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[DOWN_Z] == 0)break;
+      }
+    }
+
+// check top plane
+
+    if(bc->hidden6[UP_Z] == 1){
+      for(ii = bc->ijk[0]; ii <= bc->ijk[1]; ii++){
+        for(jj = bc->ijk[2]; jj <= bc->ijk[3]; jj++){
+          kk = bc->ijk[5];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[UP_Z] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[UP_Z] == 0)break;
+      }
+    }
+
+    // check left plane
+
+    if(bc->hidden6[DOWN_X] == 1){
+      for(jj = bc->ijk[2]; jj <= bc->ijk[3]; jj++){
+        for(kk = bc->ijk[4]; kk <= bc->ijk[5]; kk++){
+          ii = bc->ijk[0];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[DOWN_X] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[DOWN_X] == 0)break;
+      }
+    }
+
+    // check right plane
+
+    if(bc->hidden6[UP_X] == 1){
+      for(jj = bc->ijk[2]; jj <= bc->ijk[3]; jj++){
+        for(kk = bc->ijk[4]; kk <= bc->ijk[5]; kk++){
+          ii = bc->ijk[1];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[UP_X] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[UP_X] == 0)break;
+      }
+    }
+
+    // check front plane
+
+    if(bc->hidden6[DOWN_Y] == 1){
+      for(ii = bc->ijk[0]; ii <= bc->ijk[1]; ii++){
+        for(kk = bc->ijk[4]; kk <= bc->ijk[5]; kk++){
+          jj = bc->ijk[2];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[DOWN_Y] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[DOWN_Y] == 0)break;
+      }
+    }
+
+    // check back plane
+
+    if(bc->hidden6[UP_Y] == 1){
+      for(ii = bc->ijk[0]; ii <= bc->ijk[1]; ii++){
+        for(kk = bc->ijk[4]; kk <= bc->ijk[5]; kk++){
+          jj = bc->ijk[3];
+          ijk = IJKCELL(ii, jj, kk);
+          if(iblank[ijk] == GAS){
+            bc->hidden6[UP_Y] = 0;
+            break;
+          }
+        }
+        if(bc->hidden6[UP_Y] == 0)break;
+      }
+    }
+  }
+}
+
 /* ------------------ MakeIBlank ------------------------ */
 
 int MakeIBlank(void){
   int ig;
 
-  if(use_iblank==0)return 0;
-  for(ig=0;ig<nmeshes;ig++){
+  if(global_scase.use_iblank==0)return 0;
+  for(ig=0;ig<global_scase.meshescoll.nmeshes;ig++){
     meshdata *meshi;
     int nx, ny, nxy, ibarjbar;
     int ibar,jbar,kbar;
@@ -1246,7 +1366,7 @@ int MakeIBlank(void){
     int ii,ijksize;
     int i,j,k;
 
-    meshi = meshinfo+ig;
+    meshi = global_scase.meshescoll.meshinfo+ig;
 
     ibar = meshi->ibar;
     jbar = meshi->jbar;
@@ -1254,12 +1374,12 @@ int MakeIBlank(void){
     ijksize=(ibar+1)*(jbar+1)*(kbar+1);
 
     if(NewMemory((void **)&c_iblank_node_html, ijksize*sizeof(char))==0)return 1;
-    if(NewMemory((void **)&iblank_node,ijksize*sizeof(char))==0)return 1;
-    if(NewMemory((void **)&iblank_cell,ibar*jbar*kbar*sizeof(char))==0)return 1;
-    if(NewMemory((void **)&fblank_cell,ibar*jbar*kbar*sizeof(float))==0)return 1;
-    if(NewMemory((void **)&c_iblank_x,ijksize*sizeof(char))==0)return 1;
-    if(NewMemory((void **)&c_iblank_y,ijksize*sizeof(char))==0)return 1;
-    if(NewMemory((void **)&c_iblank_z,ijksize*sizeof(char))==0)return 1;
+    if(NewMemory((void **)&iblank_node,        ijksize*sizeof(char))==0)return 1;
+    if(NewMemory((void **)&iblank_cell,        ibar*jbar*kbar*sizeof(char))==0)return 1;
+    if(NewMemory((void **)&fblank_cell,        ibar*jbar*kbar*sizeof(float))==0)return 1;
+    if(NewMemory((void **)&c_iblank_x,         ijksize*sizeof(char))==0)return 1;
+    if(NewMemory((void **)&c_iblank_y,         ijksize*sizeof(char))==0)return 1;
+    if(NewMemory((void **)&c_iblank_z,         ijksize*sizeof(char))==0)return 1;
 
     meshi->c_iblank_node_html_temp = c_iblank_node_html;
     meshi->c_iblank_node0_temp     = iblank_node;
@@ -1430,10 +1550,10 @@ int MakeIBlank(void){
       }
     }
   }
-  for(ig = 0; ig < nmeshes; ig++){
+  for(ig = 0; ig < global_scase.meshescoll.nmeshes; ig++){
     meshdata *meshi;
 
-    meshi = meshinfo + ig;
+    meshi = global_scase.meshescoll.meshinfo + ig;
     meshi->c_iblank_node_temp = meshi->c_iblank_node0_temp;
     meshi->c_iblank_cell_temp = meshi->c_iblank_cell0_temp;
     meshi->f_iblank_cell_temp = meshi->f_iblank_cell0_temp;
@@ -1484,9 +1604,9 @@ void InitClip(void){
   clip_i=0;
   clip_j=0;
   clip_k=0;
-  clip_I=0;
-  clip_J=0;
-  clip_K=0;
+  global_scase.clip_I=0;
+  global_scase.clip_J=0;
+  global_scase.clip_K=0;
 
   stepclip_xmin=0,stepclip_ymin=0,stepclip_zmin=0;
   stepclip_xmax=0,stepclip_ymax=0,stepclip_zmax=0;
@@ -1563,25 +1683,6 @@ void InitTetraClipInfo(clipdata *ci,float *v1, float *v2, float *v3, float *v4){
   NORMALIZE3(clipvals);
   clipvals[3]=-DOT3(clipvals,v1);
 }
-
-/* ----------------------- InitBoxClipInfo ----------------------------- */
-
-void InitBoxClipInfo(clipdata *ci,float xmin, float xmax, float ymin, float ymax, float zmin, float zmax){
-  ci->option=BOX_CLIPPLANES;
-  ci->clip_xmin=1;
-  ci->clip_xmax=1;
-  ci->clip_ymin=1;
-  ci->clip_ymax=1;
-  ci->clip_zmin=1;
-  ci->clip_zmax=1;
-  ci->xmin=xmin;
-  ci->xmax=xmax;
-  ci->ymin=ymin;
-  ci->ymax=ymax;
-  ci->zmin=zmin;
-  ci->zmax=zmax;
-}
-
 
 /* ----------------------- MergeMax ----------------------------- */
 

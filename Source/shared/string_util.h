@@ -66,8 +66,26 @@ typedef struct {
 #define HELP_SUMMARY 1
 #define HELP_ALL 2
 
-// vvvvvvvvvvvvvvvvvvvvvvvv headers vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+#ifndef pp_COMPVER
+#if defined(__VERSION__) && defined(__GNUC__) && !defined(__clang__)
+#define pp_COMPVER "GCC " __VERSION__
+#elif defined(__VERSION__)
+#define pp_COMPVER __VERSION__
+#elif defined(__VERSION)
+#define pp_COMPVER __VERSION
+#elif defined(_MSC_VER)
+// These macros are to convert the MSVC version number to a string
+#define xstr(s) str(s)
+#define str(s) #s
+#define pp_COMPVER "MSVC " xstr(_MSC_VER)
+#else
+#define pp_COMPVER "unknown"
+#endif
+#endif
 
+// vvvvvvvvvvvvvvvvvvvvvvvv headers vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+EXTERNCPP char          *GetCharPtr(char *label);
+EXTERNCPP char          *GetStringPtr(char *buffer);
 EXTERNCPP char          *GetStringPtr(char *buffer);
 EXTERNCPP char          *GetFloatLabel(float val, char *label);
 EXTERNCPP char          *GetIntLabel(int val, char *label);
@@ -94,7 +112,6 @@ EXTERNCPP unsigned char *GetHashMD5(char *file);
 EXTERNCPP unsigned char *GetHashSHA256(char *file);
 EXTERNCPP unsigned char *GetHashSHA1(char *file);
 #endif
-EXTERNCPP void           GetProgVersion(char *PROGversion);
 EXTERNCPP int            MatchWild(char *pTameText, char *pWildText);
 EXTERNCPP int            Match(char *buffer, const char *key);
 EXTERNCPP int            MatchINI(char *buffer, const char *key);
@@ -116,14 +133,16 @@ EXTERNCPP const char    *TrimFrontConst(const char *line);
 EXTERNCPP void           TrimZeros(char *line);
 EXTERNCPP char          *TrimFrontZeros(char *line);
 
+EXTERNCPP char           *Val2String(float val, char *string);
 EXTERNCPP void           TrimMZeros(char *line);
 EXTERNCPP char          *Strstr(char *c, char *key);
 EXTERNCPP char          *STRSTR(char *c, const char *key);
 EXTERNCPP void           ScaleString(const char *stringfrom, char *stringto, const float *scale);
 EXTERNCPP void           ScaleFloat2String(float floatfrom, char *stringto, const float *scale);
+EXTERNCPP float          ScaleFloat2Float(float floatfrom, const float *scale);
 EXTERNCPP void           Num2String(char *string, float tval);
 EXTERNCPP void           Float2String(char *string, float tval, int ndecimals, int fixed_point);
-EXTERNCPP void           Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixedpoint_labels, int exponential_labels, char *exp_offset_label);
+EXTERNCPP void           Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixedpoint_labels, int exponential_labels, int decimal_labels, int zero_pad, char *exp_offset_label);
 EXTERNCPP char          *TrimFrontBack(char *buffer);
 EXTERNCPP int            STRCMP(const char *s1, const char *s2);
 EXTERNCPP char          *GetChid(char *file, char *buffer);
@@ -135,11 +154,12 @@ EXTERNCPP float          GetMantissaExponent(float x, int *exp10);
 EXTERNCPP void           GetGitInfo(char *githash, char *gitdate);
 EXTERNCPP char          *GetString(char *buffer);
 EXTERNCPP char          *Time2TimeLabel(float time, float dt, char *timelabel, int fixed_point);
+EXTERNCPP char          *Time2RenderLabel(float time, float dt, float maxtime, char *timelabel);
 EXTERNCPP char          *RandStr(char* str, int length);
 EXTERNCPP void           GetBaseTitle(char *progname, char *title_base);
 EXTERNCPP void           GetTitle(char *progname, char *fulltitle);
 #ifdef pp_HASH
-EXTERNCPP void           PRINTversion(char *progname, char *progfullpath, int hash_option);
+EXTERNCPP void           PRINTversion(char *progname, int hash_option);
 #else
 EXTERNCPP void           PRINTversion(char *progname);
 #endif

@@ -2,12 +2,13 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include GLUT_H
 #include <math.h>
 
 #include "smokeviewvars.h"
 #include "IOscript.h"
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "glui_smoke.h"
 #include "glui_bounds.h"
 #include "histogram.h"

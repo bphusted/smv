@@ -5,7 +5,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "threader.h"
 
 #ifdef pp_SAMPLE
@@ -27,7 +27,7 @@ void *Sample(void *arg){
 sample_threads = THREADinit(&n_sample_threads, &use_sample_threads, Sample);
 
 //*** call to do the work
-THREADrun(sample_threads, arg);
+THREADrun(sample_threads);
 #endif
 
 /* ------------------ THREADinit ------------------------ */
@@ -43,7 +43,7 @@ threaderdata *THREADinit(int *nthreads_ptr, int *use_threads_ptr, void *(*run_ar
     //   return NULL;
     // }
 
-  NewMemory(( void ** )&thi, sizeof(threaderdata));
+  NewMemory((void **)&thi, sizeof(threaderdata));
 
   if(nthreads_ptr != NULL && *nthreads_ptr > 1)nthreads_local = *nthreads_ptr;
   if(nthreads_local > MAX_THREADS)nthreads_local = MAX_THREADS;
@@ -55,7 +55,7 @@ threaderdata *THREADinit(int *nthreads_ptr, int *use_threads_ptr, void *(*run_ar
   thi->use_threads     = use_threads_local;
   thi->run             = run_arg;
 #ifdef pp_THREAD
-  NewMemory(( void ** )&thi->thread_ids, nthreads_local * sizeof(pthread_t));
+  NewMemory((void **)&thi->thread_ids, MAX_THREADS * sizeof(pthread_t));
   pthread_mutex_init(&thi->mutex, NULL);
 #endif
   return thi;
@@ -67,8 +67,15 @@ void THREADcontrol(threaderdata *thi, int var){
 #ifdef pp_THREAD
   if(thi == NULL)return;
   switch(var){
+  case THREAD_UPDATE:
+    thi->use_threads = *thi->use_threads_ptr;
+    thi->n_threads   = *thi->n_threads_ptr;
+    break;
   case THREAD_LOCK:
     if(thi->use_threads == 1)pthread_mutex_lock(&thi->mutex);
+    break;
+  case THREAD_FORCE_UNLOCK:
+    pthread_mutex_unlock(&thi->mutex);
     break;
   case THREAD_UNLOCK:
     if(thi->use_threads == 1)pthread_mutex_unlock(&thi->mutex);
@@ -89,27 +96,44 @@ void THREADcontrol(threaderdata *thi, int var){
 #endif
 }
 
-/* ------------------ THREADrun ------------------------ */
+/* ------------------ THREADruni ------------------------ */
 
-void THREADrun(threaderdata *thi, void *arg){
+void THREADruni(threaderdata *thi, unsigned char *datainfo, int sizedatai){
 #ifdef pp_THREAD
   if(thi == NULL)return;
-  if(thi->use_threads_ptr!=NULL)thi->use_threads = *(thi->use_threads_ptr);
+  if(thi->use_threads_ptr != NULL)thi->use_threads = *(thi->use_threads_ptr);
   if(thi->n_threads_ptr != NULL){
     thi->n_threads = *(thi->n_threads_ptr);
-    if(thi->n_threads>MAX_THREADS)thi->n_threads = MAX_THREADS;
+    if(thi->n_threads > MAX_THREADS)thi->n_threads = MAX_THREADS;
   }
-  if(thi->use_threads == 1){
-    int i;
+  int i;
 
-    for(i = 0; i < thi->n_threads; i++){
-      pthread_create(thi->thread_ids + i, NULL, thi->run, arg);
+  for(i = 0; i < thi->n_threads; i++){
+    unsigned char *datai;
+
+    datai = NULL;
+    if(datainfo != NULL)datai = datainfo + i*sizedatai;
+    if(thi->use_threads == 1){
+      pthread_create(thi->thread_ids + i, NULL, thi->run, (void *)datai);
+    }
+    else{
+      thi->run(datai);
     }
   }
-  else{
-    thi->run(arg);
-  }
 #else
-  thi->run(arg);
+  int i;
+
+  for(i = 0; i < thi->n_threads; i++){
+    unsigned char *data;
+
+    datai = datainfo + i*sizedatai;
+    thi->run(datai);
+  }
 #endif
+}
+
+/* ------------------ THREADrun ------------------------ */
+
+void THREADrun(threaderdata *thi){
+  THREADruni(thi, NULL, 0);
 }

@@ -1,7 +1,7 @@
 
 PLATFORM=
 SIZE=-m64
-COMPILER=icc
+COMPILER=icx
 CC=$(COMPILER) $(SIZE)
 
 #FILTERC=-D NDEBUG -D FREEGLUT_STATIC -D NEED_XPARSEGEOMETRY_IMPL -D GLUT_DISABLE_ATEXIT_HACK -D _LIB -D FREEGLUT_LIB_PRAGMAS=0
@@ -54,7 +54,7 @@ OBJSWINS_WIN = $(OBJSWINS:.o=.obj)
 # intel linux 64
 
 intel_linux_64 : INC+=-I $(SOURCE_DIR)/x11 
-intel_linux_64 : CC=icc
+intel_linux_64 : CC=icx
 intel_linux_64 : $(OBJS)
 	ar rcs libglut.a $(OBJS)
 
@@ -63,14 +63,6 @@ intel_linux_64 : $(OBJS)
 gnu_linux_64 : INC+=-I $(SOURCE_DIR)/x11
 gnu_linux_64 : CC=gcc
 gnu_linux_64 : $(OBJS)
-	ar rcs libglut.a $(OBJS)
-
-# intel osx 64
-
-intel_osx_64 : INC+=-I $(SOURCE_DIR)/x11  -I /opt/X11/include
-intel_osx_64 : CFLAGS=-Wno-unknown-pragmas
-intel_osx_64 : CC=icc
-intel_osx_64 : $(OBJS)
 	ar rcs libglut.a $(OBJS)
 
 # gnu osx 64

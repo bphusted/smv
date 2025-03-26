@@ -7,21 +7,319 @@
 #include GLUT_H
 
 #include "smokeviewvars.h"
+#include "glui_bounds.h"
 #include "IOscript.h"
+#include "readgeom.h"
 
 #define MAX_FRAMES 1000000
 #define BUILD_GEOM_OFFSETS 0
 #define GET_GEOM_OFFSETS  -1
+
+/* ------------------ CompareFaces ------------------------ */
+
+int CompareFaces(const void *arg1, const void *arg2){
+  tridata *face1, *face2;
+  int *verts1, *verts2;
+  int v1[3], v2[3];
+
+  face1 = *( tridata ** )arg1;
+  face2 = *( tridata ** )arg2;
+  verts1 = face1->vert_index;
+  verts2 = face2->vert_index;
+
+  v1[0] = MIN(verts1[0], MIN(verts1[1], verts1[2]));
+  v1[2] = MAX(verts1[0], MAX(verts1[1], verts1[2]));
+  v1[1] = verts1[0] + verts1[1] + verts1[2] - v1[0] - v1[2];
+
+  v2[0] = MIN(verts2[0], MIN(verts2[1], verts2[2]));
+  v2[2] = MAX(verts2[0], MAX(verts2[1], verts2[2]));
+  v2[1] = verts2[0] + verts2[1] + verts2[2] - v2[0] - v2[2];
+
+  if(v1[0] < v2[0])return -1;
+  if(v1[0] > v2[0])return 1;
+
+  if(v1[1] < v2[1])return -1;
+  if(v1[1] > v2[1])return 1;
+
+  if(v1[2] < v2[2])return -1;
+  if(v1[2] > v2[2])return 1;
+  return 0;
+}
+
+/* ------------------ CompareEdges ------------------------ */
+
+int CompareEdges(const void *arg1, const void *arg2){
+  edgedata *edge1, *edge2;
+  int *v1, *v2;
+
+  edge1 = *( edgedata ** )arg1;
+  edge2 = *( edgedata ** )arg2;
+  v1 = edge1->vert_index;
+  v2 = edge2->vert_index;
+
+  if(v1[0] < v2[0])return -1;
+  if(v1[0] > v2[0])return 1;
+
+  if(v1[1] < v2[1])return -1;
+  if(v1[1] > v2[1])return 1;
+  return 0;
+}
+
+/* ------------------ CompareVerts2 ------------------------ */
+
+#define VERT_EPS 0.001
+
+int CompareVerts2(const void *arg1, const void *arg2){
+  vertdata *vert1, *vert2;
+  float *xyz1, *xyz2;
+
+
+  vert1 = *( vertdata ** )arg1;
+  xyz1 = vert1->xyz;
+
+  vert2 = *( vertdata ** )arg2;
+  xyz2 = vert2->xyz;
+
+  if(xyz1[0] < xyz2[0] - VERT_EPS)return -1;
+  if(xyz1[0] > xyz2[0] + VERT_EPS)return  1;
+
+  if(xyz1[1] < xyz2[1] - VERT_EPS)return -1;
+  if(xyz1[1] > xyz2[1] + VERT_EPS)return  1;
+
+  if(xyz1[2] < xyz2[2] - VERT_EPS)return -1;
+  if(xyz1[2] > xyz2[2] + VERT_EPS)return  1;
+  return 0;
+}
+
+/* ------------------ CompareEdges2 ------------------------ */
+
+int CompareEdges2(edgedata *edge1, edgedata *edge2){
+  int *v1, *v2;
+
+  v1 = edge1->vert_index;
+  v2 = edge2->vert_index;
+
+  if(v1[0] < v2[0])return -1;
+  if(v1[0] > v2[0])return 1;
+
+  if(v1[1] < v2[1])return -1;
+  if(v1[1] > v2[1])return 1;
+  return 0;
+}
+
+/* ------------------ GetEdge ------------------------ */
+
+edgedata *GetEdge(edgedata *edges, int nedges, int iv1, int iv2){
+  int iresult;
+  edgedata ei, *elow, *emid, *ehigh;
+  int low, mid, high;
+  int ilow, ihigh;
+
+  ei.vert_index[0] = MIN(iv1, iv2);
+  ei.vert_index[1] = MAX(iv1, iv2);
+
+  elow = edges;
+  ehigh = edges + nedges - 1;
+
+  ilow = CompareEdges2(&ei, elow);
+  if(ilow < 0)return NULL;
+  if(ilow == 0)return elow;
+
+  ihigh = CompareEdges2(&ei, ehigh);
+  if(ihigh > 0)return NULL;
+  if(ihigh == 0)return ehigh;
+
+  low = 0;
+  high = nedges - 1;
+  while(high - low > 1){
+    mid = (low + high) / 2;
+    emid = edges + mid;
+    iresult = CompareEdges2(&ei, emid);
+    if(iresult == 0)return emid;
+    if(iresult > 0){
+      low = mid;
+    }
+    else{
+      high = mid;
+    }
+  }
+  return NULL;
+}
+
+/* ------------------ ClassifyGeom ------------------------ */
+
+void ClassifyGeom(geomdata *geomi, int *geom_frame_index){
+  int i, iend;
+
+  if(geomi->geomlistinfo == NULL)return;
+  iend = geomi->ntimes;
+  if(geom_frame_index != NULL)iend = 1;
+
+  for(i = -1; i < iend; i++){
+    geomlistdata *geomlisti;
+    int nverts, ntriangles;
+    int j;
+    vertdata *vertbase;
+
+
+    geomlisti = geomi->geomlistinfo + i;
+    if(i != -1 && geom_frame_index != NULL)geomlisti = geomi->geomlistinfo + (*geom_frame_index);
+
+    nverts = geomlisti->nverts;
+    ntriangles = geomlisti->ntriangles;
+    if(nverts == 0 || geomlisti->verts == NULL)continue;
+    vertbase = geomlisti->verts;
+    if(ntriangles > 0){
+      int nfacelist_index;
+      tridata **facelist_ptrs = NULL;
+
+      nfacelist_index = ntriangles;
+      NewMemory(( void ** )&facelist_ptrs, nfacelist_index * sizeof(tridata *));
+      for(j = 0; j < nfacelist_index; j++){
+        tridata *trij;
+        int *vert_index;
+
+        trij = geomlisti->triangles + j;
+        trij->exterior = 1;
+        facelist_ptrs[j] = trij;
+        vert_index = trij->vert_index;
+        vert_index[0] = trij->verts[0] - vertbase;
+        vert_index[1] = trij->verts[1] - vertbase;
+        vert_index[2] = trij->verts[2] - vertbase;
+      }
+      qsort(facelist_ptrs, nfacelist_index, sizeof(tridata *), CompareFaces);
+      for(j = 1; j < nfacelist_index; j++){
+        if(CompareFaces(facelist_ptrs + j, facelist_ptrs + j - 1) == 0){
+          tridata *trij, *trijm1;
+
+          trij = facelist_ptrs[j];
+          trij->exterior = 0;
+
+          trijm1 = facelist_ptrs[j - 1];
+          trijm1->exterior = 0;
+        }
+      }
+      FREEMEMORY(facelist_ptrs);
+    }
+    if(ntriangles > 0){
+      edgedata **edgelist_ptr, *edges, *edges2;
+      tridata *triangles;
+      int ii;
+      int ntris;
+      int nedges;
+      int nedgelist_index = 0;
+
+      ntris = geomlisti->ntriangles;
+      triangles = geomlisti->triangles;
+
+      NewMemory(( void ** )&edges, 3 * ntris * sizeof(edgedata));
+      NewMemory(( void ** )&edges2, 3 * ntris * sizeof(edgedata));
+
+      nedgelist_index = 3 * ntris;
+      NewMemory(( void ** )&edgelist_ptr, nedgelist_index * sizeof(edgedata *));
+
+      for(ii = 0; ii < ntris; ii++){
+        int i0, i1, i2;
+
+        i0 = triangles[ii].vert_index[0];
+        i1 = triangles[ii].vert_index[1];
+        i2 = triangles[ii].vert_index[2];
+
+        edges[3 * ii].vert_index[0] = MIN(i0, i1);
+        edges[3 * ii].vert_index[1] = MAX(i0, i1);
+
+        edges[3 * ii + 1].vert_index[0] = MIN(i1, i2);
+        edges[3 * ii + 1].vert_index[1] = MAX(i1, i2);
+
+        edges[3 * ii + 2].vert_index[0] = MIN(i2, i0);
+        edges[3 * ii + 2].vert_index[1] = MAX(i2, i0);
+
+        edgelist_ptr[3 * ii] = edges + 3 * ii;
+        edgelist_ptr[3 * ii + 1] = edges + 3 * ii + 1;
+        edgelist_ptr[3 * ii + 2] = edges + 3 * ii + 2;
+      }
+
+
+      // remove duplicate edges
+      qsort(edgelist_ptr, nedgelist_index, sizeof(edgedata *), CompareEdges);
+      nedges = 0;
+      edges2[nedges].vert_index[0] = edgelist_ptr[nedges]->vert_index[0];
+      edges2[nedges].vert_index[1] = edgelist_ptr[nedges]->vert_index[1];
+      nedges++;
+      for(ii = 1; ii < nedgelist_index; ii++){
+        if(CompareEdges(edgelist_ptr + ii - 1, edgelist_ptr + ii) == 0)continue;
+        memcpy(edges2[nedges].vert_index, edgelist_ptr[ii]->vert_index, 2 * sizeof(int));
+        nedges++;
+      }
+      if(nedges > 0)ResizeMemory(( void ** )&edges2, nedges * sizeof(edgedata));
+      geomlisti->edges = edges2;
+      geomlisti->nedges = nedges;
+      FREEMEMORY(edges);
+      edges = edges2;
+
+      for(ii = 0; ii < nedges; ii++){
+        edges[ii].ntriangles = 0;
+      }
+
+      // count triangles associated with each edge
+
+      for(ii = 0; ii < ntris; ii++){
+        edgedata *edgei;
+        int *vi;
+
+        vi = triangles[ii].vert_index;
+        edgei = GetEdge(edges, nedges, vi[0], vi[1]);
+        if(edgei != NULL)edgei->ntriangles++;
+        edgei = GetEdge(edges, nedges, vi[1], vi[2]);
+        if(edgei != NULL)edgei->ntriangles++;
+        edgei = GetEdge(edges, nedges, vi[2], vi[0]);
+        if(edgei != NULL)edgei->ntriangles++;
+      }
+
+    }
+    if(nverts > 0){
+      int nvertlist_index = 0;
+      vertdata **vertlist_ptr, *verts;
+      int ii;
+
+      verts = geomlisti->verts;
+      nvertlist_index = nverts;
+      NewMemory(( void ** )&vertlist_ptr, nvertlist_index * sizeof(vertdata *));
+      for(ii = 0; ii < nvertlist_index; ii++){
+        vertlist_ptr[ii] = verts + ii;
+      }
+
+      qsort(vertlist_ptr, nvertlist_index, sizeof(vertdata *), CompareVerts2);
+      for(ii = 0; ii < nvertlist_index; ii++){
+        vertdata *vi;
+
+        vi = verts + ii;
+        vi->isdup = 0;
+      }
+      for(ii = 1; ii < nvertlist_index; ii++){
+        if(CompareVerts2(vertlist_ptr + ii - 1, vertlist_ptr + ii) == 0){
+          vertdata *v1, *v2;
+
+          v1 = vertlist_ptr[ii];
+          v2 = vertlist_ptr[ii - 1];
+          v1->isdup = 1;
+          v2->isdup = 1;
+        }
+      }
+      FREEMEMORY(vertlist_ptr);
+    }
+  }
+}
 
 /* ------------------ ClassifyAllGeom ------------------------ */
 
 void *ClassifyAllGeom(void *arg){
   int i;
 
-  for(i = 0; i < ngeominfo; i++){
+  for(i = 0; i < global_scase.ngeominfo; i++){
     geomdata *geomi;
 
-    geomi = geominfo + i;
+    geomi = global_scase.geominfo + i;
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     if(geomi->read_status != 0){
       THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
@@ -37,10 +335,10 @@ void *ClassifyAllGeom(void *arg){
     geomi->read_status = 2;
     THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
   }
-  for(i = 0; i < ncgeominfo; i++){
+  for(i = 0; i < global_scase.ncgeominfo; i++){
     geomdata *geomi;
 
-    geomi = cgeominfo + i;
+    geomi = global_scase.cgeominfo + i;
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     if(geomi->read_status != 0){
       THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
@@ -59,552 +357,6 @@ void *ClassifyAllGeom(void *arg){
   THREAD_EXIT(readallgeom_threads);
 }
 
-// !  ------------------ Distance3 ------------------------
-
-float Distance3(float v1[3], float v2[3]){
-  float dx = v1[0] - v2[0];
-  float dy = v1[1] - v2[1];
-  float dz = v1[2] - v2[2];
-  return sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-// !  ------------------ GetVertType ------------------------
-
-void GetVertType(int nverts, int *triangles, int ntriangles, int *vert_type){
-  // ! classify each vertex in a geometry as either interior or exterior
-  // ! a vertex VI is interior if the vertices connected to I form a cycle or
-  // loop ! ie VI is connected to v1, v2, v3 and v1 -> v2 -> v3 -> v1 ! if they
-  // don't form a loop then it is an exterior vertex
-
-  // ! exterior vertices (connected to a blockage or mesh boundary) won't be
-  // moved or deleted
-  int *trii;
-
-  // ! count number of triangles connected to each vertex
-  int *tri_count;
-
-  NewMemory((void **)&tri_count, nverts*sizeof(int));
-  memset(tri_count, 0, nverts * sizeof(*tri_count));
-
-  int i;
-  for (i = 0; i < ntriangles; i++){
-    trii = triangles + 3*i;
-
-    int j;
-    for (j = 0; j < 3; j++){
-      int vertj_index = trii[j];
-
-      if(vertj_index >= 1 && vertj_index <= nverts)tri_count[vertj_index]++;
-    }
-  }
-
-  int maxcount = tri_count[0];
-  for (i = 1; i < nverts; i++){
-    maxcount = MAX(maxcount, tri_count[i]);
-  }
-  FREEMEMORY(tri_count);
-
-  // ! construct a list of triangles connected to each vertex
-  // ! vert_trilist(I,1) contains number of triangles connected to vertex I
-  // ! vert_trilist(I,2-> ) contains the triangle indices
-
-  int *vert_trilist;
-  NewMemory((void **)&vert_trilist, nverts * (maxcount + 1)*sizeof(int));
-  memset(vert_trilist, 0, nverts * (maxcount + 1) * sizeof(*vert_trilist));
-
-  for (i = 0; i < ntriangles; i++){
-    trii = &triangles[3 * i];
-
-    int j;
-    for (j = 0; j < 3; j++){
-      int vertj_index = trii[j];
-      if(vertj_index >= 1 && vertj_index <= nverts){
-        vert_trilist[vertj_index * nverts +
-                     1]++; // bump triangle count by 1 for vertex j
-        int k = vert_trilist[vertj_index * nverts + 1] + 1;
-        vert_trilist[vertj_index * nverts + k] =
-            i; // put triangle index into triangle count + 1
-      }
-    }
-  }
-
-  memset(vert_type, 1, nverts * sizeof(*vert_type));
-
-  int *vert_count;
-  NewMemory((void **)&vert_count, nverts*sizeof(int));
-  memset(vert_count, 0, nverts * sizeof(*vert_count));
-
-  // ! count vertices connected to each vertex
-  for (i = 1; i < nverts; i++){
-    memset(vert_count, 0, nverts * sizeof(*vert_count));
-
-    int j;
-    for (j = 1; j <= vert_trilist[i * nverts + 1];
-         j++){ // loop over triangles connected to vertex I
-      int trij_index = vert_trilist[i * nverts + j];
-
-      int k;
-      for (k = 1; k <= 3; k++){ // loop over vertices of triangle J
-        int vertk_index = triangles[3 * trij_index - 3 + k];
-        if(vertk_index != i) vert_count[vertk_index]++;
-      }
-    }
-    for (j = 1; j < nverts; j++){
-      if(vert_count[j] == 1){ // consider all vertices that are connected to vertex I
-        vert_type[i] = 0; // if all of these neighbors have two neighbors among
-                          // this set then I is interior
-        break; // if at least one of these neighbors has only one neigbor
-                    // among this set then I is on the exterior
-      }
-    }
-  }
-
-  FREEMEMORY(vert_trilist);
-  FREEMEMORY(vert_count);
-}
-
-// !  ------------------ AverageVerts2 ------------------------
-
-void AverageVerts2(float v1[3], int v1type, float v2[3], int v2type,
-                    float mesh_bounds[6], float *vavg){
-  float BOXEPS = 0.001;
-
-  if(v1type == 0){
-    vavg[0] = v1[0];
-    vavg[1] = v1[1];
-    vavg[2] = v1[2];
-    return;
-  }
-
-  if(v2type == 0){
-    vavg[0] = v2[0];
-    vavg[1] = v2[1];
-    vavg[2] = v2[2];
-    return;
-  }
-
-  if(fabs(v1[0] - mesh_bounds[0]) < BOXEPS ||
-      fabs(v1[0] - mesh_bounds[1]) < BOXEPS){
-    vavg[0] = v1[0];
-  }
-  else if(fabs(v2[0] - mesh_bounds[0]) < BOXEPS ||
-             fabs(v2[0] - mesh_bounds[1]) < BOXEPS){
-    vavg[0] = v2[0];
-  }
-  else{
-    vavg[0] = (v1[0] + v2[0]) / 2.0;
-  }
-
-  if(fabs(v1[1] - mesh_bounds[2]) < BOXEPS ||
-      fabs(v1[1] - mesh_bounds[4 - 1]) < BOXEPS){
-    vavg[1] = v1[1];
-  }
-  else if(fabs(v2[1] - mesh_bounds[2]) < BOXEPS ||
-             fabs(v2[1] - mesh_bounds[4 - 1]) < BOXEPS){
-    vavg[1] = v2[1];
-  }
-  else{
-    vavg[1] = (v1[1] + v2[1]) / 2.0;
-  }
-
-  if(fabs(v1[2] - mesh_bounds[5 - 1]) < BOXEPS ||
-      fabs(v1[2] - mesh_bounds[6 - 1]) < BOXEPS){
-    vavg[2] = v1[2];
-  }
-  else if(fabs(v2[2] - mesh_bounds[5 - 1]) < BOXEPS ||
-             fabs(v2[2] - mesh_bounds[6 - 1]) < BOXEPS){
-    vavg[2] = v2[2];
-  }
-  else{
-    vavg[2] = (v1[2] + v2[2]) / 2.0;
-  }
-}
-
-// !  ------------------ AverageVerts3 ------------------------
-
-void AverageVerts3(float v1[3], int v1type, float v2[3], int v2type,
-                    float v3[3], int v3type, float mesh_bounds[6],
-                    float *vavg){
-  float BOXEPS = 0.001;
-
-  if(v1type == 0){
-    vavg[0] = v1[0];
-    vavg[1] = v1[1];
-    vavg[2] = v1[2];
-    return;
-  }
-
-  if(v2type == 0){
-    vavg[0] = v2[0];
-    vavg[1] = v2[1];
-    vavg[2] = v2[2];
-    return;
-  }
-
-  if(v3type == 0){
-    vavg[0] = v3[0];
-    vavg[1] = v3[1];
-    vavg[2] = v3[2];
-    return;
-  }
-
-  if(fabs(v1[0] - mesh_bounds[0]) < BOXEPS ||
-      fabs(v1[0] - mesh_bounds[1]) < BOXEPS){
-    vavg[0] = v1[0];
-  }
-  else if(fabs(v2[0] - mesh_bounds[0]) < BOXEPS ||
-             fabs(v2[0] - mesh_bounds[1]) < BOXEPS){
-    vavg[0] = v2[0];
-  }
-  else if(fabs(v3[0] - mesh_bounds[0]) < BOXEPS ||
-             fabs(v3[0] - mesh_bounds[1]) < BOXEPS){
-    vavg[0] = v3[0];
-  }
-  else{
-    vavg[0] = (v1[0] + v2[0] + v3[0]) / 3.0;
-  }
-
-  if(fabs(v1[1] - mesh_bounds[2]) < BOXEPS ||
-      fabs(v1[1] - mesh_bounds[4 - 1]) < BOXEPS){
-    vavg[1] = v1[1];
-  }
-  else if(fabs(v2[1] - mesh_bounds[2]) < BOXEPS ||
-             fabs(v2[1] - mesh_bounds[4 - 1]) < BOXEPS){
-    vavg[1] = v2[1];
-  }
-  else if(fabs(v3[1] - mesh_bounds[2]) < BOXEPS ||
-             fabs(v3[1] - mesh_bounds[4 - 1]) < BOXEPS){
-    vavg[1] = v3[1];
-  }
-  else{
-    vavg[1] = (v1[1] + v2[1] + v3[1]) / 3.0;
-  }
-
-  if(fabs(v1[2] - mesh_bounds[5 - 1]) < BOXEPS ||
-      fabs(v1[2] - mesh_bounds[6 - 1]) < BOXEPS){
-    vavg[2] = v1[2];
-  }
-  else if(fabs(v2[2] - mesh_bounds[5 - 1]) < BOXEPS ||
-             fabs(v2[2] - mesh_bounds[6 - 1]) < BOXEPS){
-    vavg[2] = v2[2];
-  }
-  else if(fabs(v3[2] - mesh_bounds[5 - 1]) < BOXEPS ||
-             fabs(v3[2] - mesh_bounds[6 - 1]) < BOXEPS){
-    vavg[2] = v3[2];
-  }
-  else{
-    vavg[2] = (v1[2] + v2[2] + v3[2]) / 3.0;
-  }
-}
-
-#ifdef pp_DECIMATE
-#define IJNODE(i,j) ((j)*nx+(i))
-
-// !  ------------------ PtInTriangle ------------------------
-
-int PtInTriangle(float *xy, float *v0, float *v1, float *v2, float *zval){
-  float l[3];
-  float denom;
-
-  // (   1   1   1 ) ( l0 )    ( 1 )
-  // ( v00 v10 v20 ) ( l1 ) =  ( x )
-  // ( v01 v11 v21 ) ( l2 )    ( y )
-
-  //      |   1   1   1 |
-  // l0 = |   x v10 v20 | / denom
-  //      |   y v11 v21 |
-
-  //      |   1   1   1 |
-  // l1 = |   v00 x v20 | / denom
-  //      |   v01 y v21 |
-
-  //      |   1   1   1 |
-  // l2 = |   v00 v10 x | / denom
-  //      |   v01 v11 y |
-
-  denom = (v1[0] * v2[1] - v1[1] * v2[0]) - (v0[0] * v2[1] - v0[1] * v2[0]) + (v0[0] * v1[1] - v0[1] * v1[0]);
-  if(denom == 0.0)return 0;
-
-  l[0] = (v1[0] * v2[1] - v1[1] * v2[0]) - (xy[0] * v2[1] - xy[1] * v2[0]) + (xy[0] * v1[1] - xy[1] * v1[0]);
-  l[0] /= denom;
-  if(ABS(l[0]) > 1.0)return 0;
-
-  l[1] = (xy[0] * v2[1] - xy[1] * v2[0]) - (v0[0] * v2[1] - v0[1] * v2[0]) + (v0[0] * xy[1] - v0[1] * xy[0]);
-  l[1] /= denom;
-  if(ABS(l[1]) > 1.0)return 0;
-
-  l[2] = (v1[0] * xy[1] - v1[1] * xy[0]) - (v0[0] * xy[1] - v0[1] * xy[0]) + (v0[0] * v1[1] - v0[1] * v1[0]);
-  l[2] /= denom;
-  if(ABS(l[2]) > 1.0)return 0;
-
-  *zval = l[0] * v0[2] + l[1] * v1[2] + l[2] * v2[2];
-  return 1;
-}
-
-/* ------------------ DecimateTerrain ------------------------ */
-
-void DecimateTerrain(vertdata *verts, int nverts, tridata *triangles, int ntriangles,
-              vertdata **verts_new, int *nverts_new, tridata **triangles_new, int *ntriangles_new,
-              float *boxmin, float *boxmax, int nx, int ny){
-  int i, j, nvnew, ntrinew;
-  int *tri_new;
-  float dx, dy;
-  vertdata *vertnewptr;
-  tridata *trinewptr;
-
-  nvnew = nx*ny;
-  NewMemory((void **)&vertnewptr, nvnew*sizeof(vertdata));
-  NewMemory((void **)&tri_new,        nvnew*sizeof(int));
-  *nverts_new = nvnew;
-  *verts_new  = vertnewptr;
-
-  ntrinew = 2*(nx - 1)*(ny - 1);
-  NewMemory((void **)&trinewptr, ntrinew * sizeof(tridata));
-  *ntriangles_new = ntrinew;
-  *triangles_new = trinewptr;
-
-  for(i = 0;i < nvnew;i++){
-    tri_new[i] = -1;
-  }
-  dx = (boxmax[0] - boxmin[0]) / (float)(nx-1);
-  dy = (boxmax[1] - boxmin[1]) / (float)(ny-1);
-  for(i = 0;i < ntriangles;i++){
-    tridata *trii;
-    float *v0, *v1, *v2;
-    float xtmin, xtmax, ytmin, ytmax;
-    int imin, imax, jmin, jmax;
-    int ii;
-    float xyz[3];
-
-    trii = triangles + i;
-    v0 = trii->verts[0]->xyz;
-    v1 = trii->verts[1]->xyz;
-    v2 = trii->verts[2]->xyz;
-    xtmin = MIN(MIN(v0[0], v1[0]), v2[0]);
-    xtmax = MAX(MAX(v0[0], v1[0]), v2[0]);
-    ytmin = MIN(MIN(v0[1], v1[1]), v2[1]);
-    ytmax = MAX(MAX(v0[1], v1[1]), v2[1]);
-
-    imin = CLAMP((xtmin - boxmin[0]) / dx,   0, nx-1);
-    imax = CLAMP((xtmax - boxmin[0]) / dx+1, 0, nx-1);
-    jmin = CLAMP((ytmin - boxmin[1]) / dy,   0, ny-1);
-    jmax = CLAMP((ytmax - boxmin[1]) / dy+1, 0, ny-1);
-    for(ii = imin;ii <= imax;ii++){
-      int jj, exit_loop;
-
-      xyz[0] = boxmin[0] + (float)ii * dx;
-
-      exit_loop = 0;
-      for(jj = jmin;jj <= jmax;jj++){
-        float zval;
-
-        xyz[1] = boxmin[1] + (float)jj * dy;
-
-        if(PtInTriangle(xyz, v0, v1, v2, &zval)==1){
-          int index;
-
-          xyz[2] = zval;
-          index = IJNODE(ii, jj);
-          tri_new[index]   = i;
-          memcpy(vertnewptr[index].xyz, xyz, 3*sizeof(float));
-          exit_loop = 1;
-          break;
-        }
-        if(exit_loop == 1)break;
-      }
-    }
-  }
-  int ij = 0;
-  int ncount2 = 0;
-  for(j = 0; j < ny-1; j++){
-    for(i = 0; i < nx-1; i++){
-      tridata *tri;
-      int ival;
-
-      tri           = trinewptr + ij++;
-      tri->verts[0] = *verts_new + IJNODE(i,   j);
-      tri->verts[1] = *verts_new + IJNODE(i+1, j);
-      tri->verts[2] = *verts_new + IJNODE(i,   j+1);
-      ival = tri_new[IJNODE(i, j)];
-      if(ival < 0){
-        ncount2++;
-        ival = 0;
-      }
-      tri->ival = ival;
-
-      tri           = trinewptr + ij++;
-      tri->verts[0] = *verts_new + IJNODE(i,   j+1);
-      tri->verts[1] = *verts_new + IJNODE(i+1, j);
-      tri->verts[2] = *verts_new + IJNODE(i+1, j+1);
-      ival = tri_new[IJNODE(i, j)];
-      if(ival < 0){
-        ncount2++;
-        ival = 0;
-      }
-      tri->ival = ival;
-    }
-  }
-  printf("ncount1=%i ncount2=%i\n", ntriangles, ncount2);
-  FREEMEMORY(tri_new);
-}
-
-/* ------------------ DecimateAllTerrains ------------------------ */
-
-void DecimateAllTerrains(void){
-  int i;
-
-  for(i=0;i<nmeshes;i++){
-    meshdata *meshi;
-
-    meshi = meshinfo + i;
-    meshi->decimated = 0;
-  }
-  for(i=0;i<npatchinfo;i++){
-    meshdata *meshi;
-    patchdata *patchi;
-    geomlistdata *geomlisti;
-    int nx, ny;
-    float *boxmin, *boxmax;
-
-    patchi = patchinfo + i;
-    if(patchi->loaded==0||patchi->display==0||patchi->blocknumber<0)continue;
-    meshi = meshinfo + patchi->blocknumber;
-    if(meshi->decimated == 1)continue;
-    if(patchi->geominfo == NULL || patchi->geominfo->display == 0 || patchi->geominfo->loaded == 0)continue;
-
-    meshi->decimated = 1;
-    geomlisti = patchi->geominfo->geomlistinfo - 1;
-    boxmin = meshi->boxmin;
-    boxmax = meshi->boxmax;
-    nx = MAX((boxmax[0] - boxmin[0]) / terrain_decimate_delta+1, 2);
-    ny = MAX((boxmax[1] - boxmin[1]) / terrain_decimate_delta+1, 2);
-    DecimateTerrain(geomlisti->verts, geomlisti->nverts,  geomlisti->triangles,  geomlisti->ntriangles,
-                    &meshi->dec_verts, &meshi->ndec_verts, &meshi->dec_triangles, &meshi->ndec_triangles,
-                    boxmin, boxmax, nx, ny);
-  }
-}
-#endif
-
-  /* ------------------ GetTriangleNormal ------------------------ */
-
-void GetTriangleNormal(float *v1, float *v2, float *v3, float *normal, float *area){
-  double u[3], v[3], normal_local[3];
-  float norm;
-  int i;
-
-  for(i=0;i<3;i++){
-    u[i]=(double)v2[i] - (double)v1[i];
-    v[i]=(double)v3[i] - (double)v1[i];
-  }
-
-  // triangle area = 1/2 * | u x v |
-  /*
-     i   j  k
-     ux uy uz
-     vx vy vz
-  */
-  normal_local[0]=u[1]*v[2]-u[2]*v[1];
-  normal_local[1]=u[2]*v[0]-u[0]*v[2];
-  normal_local[2]=u[0]*v[1]-u[1]*v[0];
-  norm = sqrt((float)(normal_local[0]*normal_local[0]+normal_local[1]*normal_local[1]+normal_local[2]*normal_local[2]));
-  if(area!=NULL)*area = norm/2.0;
-  if((float)norm==0.0){
-    normal[0] = 0.0;
-    normal[1] = 0.0;
-    normal[2] = 1.0;
-  }
-  else{
-    normal[0] = (float)normal_local[0]/norm;
-    normal[1] = (float)normal_local[1]/norm;
-    normal[2] = (float)normal_local[2]/norm;
-  }
-}
-/* ----------------------- CompareVerts ----------------------------- */
-
-int CompareVerts( const void *arg1, const void *arg2 ){
-  vertdata *verti, *vertj;
-  float *xyzi, *xyzj;
-
-  verti = (vertdata *)arg1;
-  vertj = (vertdata *)arg2;
-  xyzi = verti->xyz;
-  xyzj = vertj->xyz;
-
-  if(xyzi[0]<xyzj[0])return -1;
-  if(xyzi[0]>xyzj[0])return 1;
-  if(xyzi[1]<xyzj[1])return -1;
-  if(xyzi[1]>xyzj[1])return 1;
-  if(xyzi[2]<xyzj[2])return -1;
-  if(xyzi[2]>xyzj[2])return 1;
-  return 0;
-}
-
-/* ------------------ DistXY ------------------------ */
-
-float DistXY(float *x, float *y){
-  float r1, r2, r3;
-
-  r1 = x[0]-y[0];
-  r2 = x[1]-y[1];
-  r3 = x[2]-y[2];
-  return sqrt(r1*r1+r2*r2+r3*r3);
-}
-
-/* ------------------ GetAngle ------------------------ */
-
-float GetAngle(float d1, float d2, float d3){
-  float angle_local;
-  float arg;
-  float denom;
-
-
-//         v1
-//        /  \
-//       d3   d2
-//      /      \
-//    v2---d1---v3
-
-//       d2^2 + d3^2 - d1^2
-// arg = ------------------
-//           2*d2*d3
-
-// d2==0.0 ==> d3==d1 ==> arg=0.0
-// d3==0.0 ==> d2==d1 ==> arg=0.0
-
-
-  denom = 2.0*d2*d3;
-  if(ABS(denom) > 0.0){
-    arg = CLAMP((d2*d2 + d3*d3 - d1*d1) / denom,-1.0,1.0);
-    angle_local = acos(arg)*RAD2DEG;
-  }
-  else{
-    angle_local = acos(0.0)*RAD2DEG;
-  }
-  return angle_local;
-}
-
-/* ------------------ GetMinAngle ------------------------ */
-
-float GetMinAngle(tridata *trii){
-  float minangle;
-  float d1, d2, d3;
-  float *xyz1, *xyz2, *xyz3;
-  float angle1, angle2, angle3;
-
-  xyz1 = trii->verts[0]->xyz;
-  xyz2 = trii->verts[1]->xyz;
-  xyz3 = trii->verts[2]->xyz;
-  d1 = DistXY(xyz1,xyz2);
-  d2 = DistXY(xyz1,xyz3);
-  d3 = DistXY(xyz2,xyz3);
-  angle1 = GetAngle(d1,d2,d3);
-  angle2 = GetAngle(d2,d1,d3);
-  angle3 = GetAngle(d3,d1,d2);
-  minangle = angle1;
-  if(angle2<minangle)minangle=angle2;
-  if(angle3<minangle)minangle=angle3;
-  return minangle;
-}
 
 /* ------------------ GetFaceInfo ------------------------ */
 
@@ -616,7 +368,9 @@ void GetFaceInfo(void){
     geomlistdata *geomlisti;
     vertdata **verts;
     int j;
+#ifndef pp_ISOFRAME
     int ndups=0,nused=0,nskinny=0;
+#endif
 
     geomi = geominfoptrs[i];
     geomlisti = geomi->geomlistinfo;
@@ -636,9 +390,11 @@ void GetFaceInfo(void){
         trii->verts[2]->nused=0;
       }
       qsort(verts,geomlisti->nverts,sizeof(vertdata *),CompareVerts);
+#ifndef pp_ISOFRAME
       for(j=1;j<geomlisti->nverts;j++){
         if(CompareVerts(verts[j-1],verts[j])==0)ndups++;
       }
+#endif
       for(j=0;j<geomlisti->ntriangles;j++){
         tridata *trii;
 
@@ -648,12 +404,15 @@ void GetFaceInfo(void){
         trii->verts[2]->nused++;
         if(GetMinAngle(trii)<=10.0){
           trii->skinny=1;
+#ifndef pp_ISOFRAME
           nskinny++;
+#endif
         }
         else{
           trii->skinny=0;
         }
       }
+#ifndef pp_ISOFRAME
       for(j=0;j<geomlisti->nverts;j++){
         if(verts[j]->nused>0)nused++;
       }
@@ -665,6 +424,7 @@ void GetFaceInfo(void){
         PRINTF("     unused: %i\n", geomlisti->nverts-nused);
         PRINTF(" duplicates: %i\n\n", ndups);
       }
+#endif
       FREEMEMORY(verts);
     }
   }
@@ -705,10 +465,10 @@ void UpdateGeomAreas(void){
 
     // initialize surf values
 
-    for(i = 0; i<nsurfinfo; i++){
+    for(i = 0; i<global_scase.surfcoll.nsurfinfo; i++){
       surfdata *surfi;
 
-      surfi = surfinfo+i;
+      surfi = global_scase.surfcoll.surfinfo+i;
       surfi->geom_area = 0.0;
       surfi->axis[0] = 0.0;
       surfi->axis[1] = 0.0;
@@ -746,10 +506,10 @@ void UpdateGeomAreas(void){
 
     // normalize median
 
-    for(i = 0; i<nsurfinfo; i++){
+    for(i = 0; i<global_scase.surfcoll.nsurfinfo; i++){
       surfdata *surfi;
 
-      surfi = surfinfo+i;
+      surfi = global_scase.surfcoll.surfinfo+i;
       if(surfi->ntris>0){
         surfi->axis[0] /= surfi->ntris;
         surfi->axis[1] /= surfi->ntris;
@@ -778,7 +538,7 @@ void DrawSelectGeom(void){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glPointSize(20);
       color_index = 1;
       glBegin(GL_POINTS);
@@ -805,7 +565,7 @@ void DrawSelectGeom(void){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       color_index = 0;
       glBegin(GL_TRIANGLES);
       for(i = 0; i<geomlisti->ntriangles; i++){
@@ -862,9 +622,145 @@ int HaveNonTextures(tridata **tris, int ntris){
   return 0;
 }
 
-/* ------------------ DrawBox ------------------------ */
+/* ------------------ DrawBoxShaded ------------------------ */
 
-void DrawBox(float *bb, float *box_color){
+void DrawBoxShaded(float *bb, int flag, int *hidden6, float *box_color){
+  float x0, x1, y0, y1, z0, z1;
+
+  x0 = bb[0];
+  x1 = bb[1];
+  y0 = bb[2];
+  y1 = bb[3];
+  z0 = bb[4];
+  z1 = bb[5];
+  glColor3fv(box_color);
+  glBegin(GL_TRIANGLES);
+
+  if(flag==2||(flag==3&&hidden6[0]==0)){
+    glNormal3f(-1.0, 0.0, 0.0);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x0, y1, z1);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x0, y0, z1);
+    glVertex3f(x0, y1, z1);
+
+    if(flag == 3 && hidden6[0] == 0){
+      glNormal3f(1.0, 0.0, 0.0);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x0, y1, z0);
+      glVertex3f(x0, y1, z1);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x0, y1, z1);
+      glVertex3f(x0, y0, z1);
+    }
+  }
+
+  if(flag==2||(flag==3&&hidden6[1]==0)){
+    glNormal3f(1.0, 0.0, 0.0);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x1, y1, z0);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x1, y0, z1);
+
+    if(flag == 3 && hidden6[1] == 0){
+      glNormal3f(-1.0, 0.0, 0.0);
+      glVertex3f(x1, y0, z0);
+      glVertex3f(x1, y1, z1);
+      glVertex3f(x1, y1, z0);
+      glVertex3f(x1, y0, z0);
+      glVertex3f(x1, y0, z1);
+      glVertex3f(x1, y1, z1);
+    }
+  }
+
+  if(flag==2||(flag==3&&hidden6[2]==0)){
+    glNormal3f(0.0, -1.0, 0.0);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x1, y0, z1);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x1, y0, z1);
+    glVertex3f(x0, y0, z1);
+
+    if(flag == 3 && hidden6[2] == 0){
+      glNormal3f(0.0, 1.0, 0.0);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x1, y0, z1);
+      glVertex3f(x1, y0, z0);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x0, y0, z1);
+      glVertex3f(x1, y0, z1);
+    }
+  }
+
+  if(flag==2||(flag==3&&hidden6[3]==0)){
+    glNormal3f(0.0, 1.0, 0.0);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x1, y1, z0);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x0, y1, z1);
+    glVertex3f(x1, y1, z1);
+
+    if(flag == 3 && hidden6[3] == 0){
+      glNormal3f(0.0, -1.0, 0.0);
+      glVertex3f(x0, y1, z0);
+      glVertex3f(x1, y1, z0);
+      glVertex3f(x1, y1, z1);
+      glVertex3f(x0, y1, z0);
+      glVertex3f(x1, y1, z1);
+      glVertex3f(x0, y1, z1);
+    }
+  }
+
+  if(flag==2||(flag==3&&hidden6[4]==0)){
+    glNormal3f(0.0, 0.0, -1.0);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x1, y1, z0);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x1, y1, z0);
+
+    if(flag == 3 && hidden6[4] == 0){
+      glNormal3f(0.0, 0.0, 1.0);
+      glVertex3f(x1, y0, z0);
+      glVertex3f(x1, y1, z0);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x0, y0, z0);
+      glVertex3f(x1, y1, z0);
+      glVertex3f(x0, y1, z0);
+    }
+  }
+
+  if(flag==2||(flag==3&&hidden6[5]==0)){
+    glNormal3f(0.0, 0.0, 1.0);
+    glVertex3f(x0, y0, z1);
+    glVertex3f(x1, y0, z1);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x0, y0, z1);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x0, y1, z1);
+
+    if(flag == 3 && hidden6[5] == 0){
+      glNormal3f(0.0, 0.0, -1.0);
+      glVertex3f(x0, y0, z1);
+      glVertex3f(x1, y1, z1);
+      glVertex3f(x1, y0, z1);
+      glVertex3f(x0, y0, z1);
+      glVertex3f(x0, y1, z1);
+      glVertex3f(x1, y1, z1);
+    }
+  }
+  glEnd();
+}
+
+/* ------------------ DrawBoxOutline ------------------------ */
+
+void DrawBoxOutline(float *bb, float *box_color){
   glColor3fv(box_color);
   glLineWidth(geom_linewidth);
   glBegin(GL_LINES);
@@ -914,7 +810,7 @@ void DrawBox(float *bb, float *box_color){
   glEnd();
 }
 
-/* ------------------ DrawBox ------------------------ */
+/* ------------------ DrawBoxMinMax ------------------------ */
 
 void DrawBoxMinMax(float *bbmin, float *bbmax, float *box_color){
   float bb[6];
@@ -925,20 +821,7 @@ void DrawBoxMinMax(float *bbmin, float *bbmax, float *box_color){
   bb[1] = bbmax[0];
   bb[3] = bbmax[1];
   bb[5] = bbmax[2];
-  DrawBox(bb, box_color);
-}
-
-/* ------------------ DrawObstBoundingBox ------------------------ */
-
-void DrawObstBoundingBox(void){
-  if(obst_bounding_box[0]>obst_bounding_box[1])return;
-  if(obst_bounding_box[2]>obst_bounding_box[3])return;
-  if(obst_bounding_box[4]>obst_bounding_box[5])return;
-  glPushMatrix();
-  glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-  glTranslatef(-xbar0, -ybar0, -zbar0);
-  DrawBox(obst_bounding_box, foregroundcolor);
-  glPopMatrix();
+  DrawBoxOutline(bb, box_color);
 }
 
 /* ------------------ DrawGeomBoundingBox ------------------------ */
@@ -948,12 +831,12 @@ void DrawGeomBoundingBox(float *boundingbox_color){
 
   glPushMatrix();
   glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),vertical_factor*SCALE2SMV(1.0));
-  glTranslatef(-xbar0,-ybar0,-zbar0);
-  for(i = 0; i<ngeominfo; i++){
+  glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
+  for(i = 0; i<global_scase.ngeominfo; i++){
     geomdata *geomi;
     int j, have_box;
 
-    geomi = geominfo + i;
+    geomi = global_scase.geominfo + i;
     if(geomi->geomtype!=GEOM_GEOM)continue;
     have_box = 0;
     for(j = 0; j<geomi->ngeomobjinfo; j++){
@@ -966,12 +849,12 @@ void DrawGeomBoundingBox(float *boundingbox_color){
         box_color = foregroundcolor;
         if(geomobjj->color!=NULL)box_color = geomobjj->color;
         if(boundingbox_color!=NULL)box_color = boundingbox_color;
-        DrawBox(geomobjj->bounding_box, box_color);
+        DrawBoxOutline(geomobjj->bounding_box, box_color);
         have_box = 1;
       }
     }
     if(have_box==0){
-      DrawBox(geomi->bounding_box, foregroundcolor);
+      DrawBoxOutline(geomi->bounding_box, foregroundcolor);
     }
   }
   glPopMatrix();
@@ -991,8 +874,8 @@ void DrawGeom(int flag, int timestate){
   tridata **tris;
   int texture_state = OFF, texture_first=1;
 
-  if(auto_terrain==1)return;
-  if(show_geom_boundingbox==SHOW_BOUNDING_BOX_ALWAYS||geom_bounding_box_mousedown==1){
+  if(global_scase.auto_terrain==1)return;
+  if(hide_scene==1 && mouse_down==1){
     if(flag==DRAW_OPAQUE&&timestate==GEOM_STATIC&&have_geom_triangles==1){
       DrawGeomBoundingBox(NULL);
     }
@@ -1009,7 +892,7 @@ void DrawGeom(int flag, int timestate){
   if(ntris==0&&show_faces_shaded==1&&show_faces_outline==0)return;
 
   if(ntris>0&&timestate==GEOM_STATIC){
-    float *color;
+    float *color=NULL;
     surfdata *selected_surf;
 
   // draw geometry surface
@@ -1038,12 +921,12 @@ void DrawGeom(int flag, int timestate){
     ENABLE_LIGHTING;
     glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,iso_specular);
     glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,iso_shininess);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,block_ambient2);
+    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,global_scase.color_defs.block_ambient2);
     glEnable(GL_COLOR_MATERIAL);
 
     glPushMatrix();
     glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),vertical_factor*SCALE2SMV(1.0));
-    glTranslatef(-xbar0,-ybar0,-zbar0);
+    glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
     glBegin(GL_TRIANGLES);
     if(have_non_textures==1){
       for(i = 0; i<ntris; i++){
@@ -1138,7 +1021,7 @@ void DrawGeom(int flag, int timestate){
                 texture_state = TextureOff();
                 glBegin(GL_TRIANGLES);
               }
-              glColor4f(color[0], color[1], color[2], transparent_level_local);
+              if(color!=NULL) glColor4f(color[0], color[1], color[2], transparent_level_local);
               last_color = color;
               last_transparent_level = transparent_level_local;
             }
@@ -1222,7 +1105,7 @@ void DrawGeom(int flag, int timestate){
     }
     glEnd();
     if(texture_state==ON){
-      texture_state=TextureOff();
+      TextureOff();
     }
 
     if(visGeomTextures == 1 || show_texture_1dimage == 1){
@@ -1354,16 +1237,16 @@ void DrawGeom(int flag, int timestate){
     if(show_surf_axis==1){
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glLineWidth(glui_surf_axis_width);
       glBegin(GL_LINES);
-      for(i = 0; i<nsurfinfo;  i++){
+      for(i = 0; i<global_scase.surfcoll.nsurfinfo;  i++){
         surfdata *surfi;
         float *axis;
         float x0, y0, z0;
         float x1, y1, z1;
 
-        surfi = surfinfo+i;
+        surfi = global_scase.surfcoll.surfinfo+i;
         if(surfi->ntris==0)continue;
         axis = surfi->axis;
 
@@ -1390,13 +1273,13 @@ void DrawGeom(int flag, int timestate){
         Output3Text(foregroundcolor, x0, y0, z1, "Z");
       }
       glEnd();
-      for(i = 0; i<nsurfinfo; i++){
+      for(i = 0; i<global_scase.surfcoll.nsurfinfo; i++){
         surfdata *surfi;
         float *axis;
         float x0, y0, z0;
         float x1, y1, z1;
 
-        surfi = surfinfo+i;
+        surfi = global_scase.surfcoll.surfinfo+i;
         if(surfi->ntris==0)continue;
         axis = surfi->axis;
 
@@ -1422,7 +1305,7 @@ void DrawGeom(int flag, int timestate){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
-      glTranslatef(-xbar0,-ybar0,-zbar0);
+      glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
       glTranslatef(0.0, 0.0, geom_dz_offset);
       if(geomi->geomtype==GEOM_ISO){
         glLineWidth(isolinewidth);
@@ -1524,7 +1407,7 @@ void DrawGeom(int flag, int timestate){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
-      glTranslatef(-xbar0,-ybar0,-zbar0);
+      glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
       glTranslatef(0.0, 0.0, geom_dz_offset);
       glPointSize(geom_pointsize);
       glBegin(GL_POINTS);
@@ -1600,7 +1483,7 @@ void DrawGeom(int flag, int timestate){
     if(doit==1){  // draw faceted normals
       glPushMatrix();
       glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
-      glTranslatef(-xbar0,-ybar0,-zbar0);
+      glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
       glLineWidth(geom_linewidth);
       glBegin(GL_LINES);
       glColor3fv(blue);
@@ -1678,7 +1561,7 @@ void DrawGeom(int flag, int timestate){
     if(doit==1){  // draw smooth normals
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glLineWidth(geom_linewidth);
       glBegin(GL_LINES);
       glColor3fv(blue);
@@ -2213,238 +2096,6 @@ void UpdateTriangles(int flag,int update){
   updating_triangles = 0;
 }
 
-#define FORTREADBR(var,count,STREAM) \
-                       FORTREAD(var,4, (count),STREAM);\
-                       if(returncode==0)break;
-
-/* ------------------ ReadGeomHeader0 ------------------------ */
-
-void ReadGeomHeader0(geomdata *geomi, int *geom_frame_index, int *ntimes_local){
-  FILE *stream;
-  int one=0;
-  int nvertfaces[2];
-  float times_local[2];
-  int nt;
-  int returncode=0;
-  int version;
-  int nfloat_vals, nint_vals;
-  int *int_vals;
-  float *float_vals;
-  int nverts=0, ntris=0;
-  int icount;
-
-  //***format
-  // one  (endian)
-  // version  (version=1 for this file type, for isosurfaces)
-  // nfloats
-  // if(nfloats>0) float_1, ...., float_nfloats
-  // nints
-  // if(nints>0) int_1, ..., int_nints
-  //*** static verts and triangles (verts and triangles that appear at all time steps)
-  // nverts, ntris
-  // vert_1, ..., vert_nverts   (each vert_i is a triple x_i,y_i,z_i of floats)
-  // tri_1a,tri_1b,tri_1c ..., tri_ntrisa,tri_ntrisb,tri_ntrisc
-  // surf_1, ..., surf_ntris      (each tri_i is a triple I,J,K triangle int indices )
-  //*** for a time step
-  // time             (float)
-  // nverts, ntris    (int,int)
-  // vert_1, ..., vert_nverts   (each vert_i is a triple x_i,y_i,z_i of floats)
-  // tri_1a,tri_1b,tri_1c ..., tri_ntrisa,tri_ntrisb,tri_ntrisc
-  // surf_1, ..., surf_ntris      (each tri_i is a triple I,J,K triangle int indices )
-
-  stream = fopen(geomi->file,"rb");
-  if(stream==NULL){
-    *ntimes_local=-1;
-    return;
-  }
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-  FORTREAD(&version,4,1,stream);
-
-// floating point header
-
-  FORTREAD(&nfloat_vals,4,1,stream);
-  if(nfloat_vals>0){
-    NewMemoryMemID((void **)&float_vals,nfloat_vals*sizeof(float),geomi->memory_id);
-    FORTREAD(float_vals,4, nfloat_vals,stream);
-    geomi->float_vals=float_vals;
-    geomi->nfloat_vals=nfloat_vals;
-  }
-
-  // integer header
-
-  FORTREAD(&nint_vals,4,1,stream);
-  if(nint_vals>0){
-    NewMemoryMemID((void **)&int_vals,nint_vals*sizeof(float),geomi->memory_id);
-    FORTREAD(int_vals,4,nint_vals,stream);
-    geomi->int_vals=int_vals;
-    geomi->nint_vals=nint_vals;
-  }
-
-// static verts
-
-  FORTREAD(nvertfaces,4, 2,stream);
-  nverts=nvertfaces[0];
-  ntris=nvertfaces[1];
-
-  // static vertices
-
-  if(nverts>0){
-    FSEEK(stream,4+3*nverts*4+4,SEEK_CUR);
-  }
-
-  // static triangles
-
-  if(ntris>0){
-    FSEEK(stream,4+3*ntris*4+4,SEEK_CUR);
-    FSEEK(stream,4+ntris*4+4,SEEK_CUR);
-  }
-
-  nt=0;
-  icount=-1;
-  for(;;){
-    FORTREADBR(times_local,2,stream);
-    icount++;
-    FORTREADBR(nvertfaces,2,stream);
-    nverts=nvertfaces[0];
-    ntris=nvertfaces[1];
-
-    // dynamic vertices
-
-    if(nverts>0){
-      FSEEK(stream,4+3*nverts*4+4,SEEK_CUR);
-    }
-
-    // dynamic faces
-
-    if(ntris>0){
-      FSEEK(stream,4+3*ntris*4+4,SEEK_CUR);
-      FSEEK(stream,4+ntris*4+4,SEEK_CUR);
-    }
-
-    if(geom_frame_index==NULL){
-      if(tload_step      >  1 && icount%tload_step != 0)continue;
-      if(use_tload_begin == 1 && times_local[0]     < tload_begin)continue;
-      if(use_tload_end   == 1 && times_local[0]     >tload_end)break;
-    }
-    nt++;
-  }
-  *ntimes_local=nt;
-  fclose(stream);
-}
-
-/* ------------------ ReadGeomHeader2 ------------------------ */
-
-void ReadGeomHeader2(geomdata *geomi, int *ntimes_local){
-  FILE *stream;
-  int one=0;
-  int nvertfacesvolumes[3];
-  int nt;
-  int returncode=0;
-  int version;
-  int nverts=0, ntris=0, nvolumes=0;
-  int first_frame_all;
-  int header[3];
-  float time_local;
-
-  //***format
-  // one  (endian)
-  // version  (version=1 for this file type - for isosurfaces)
-  // dummy,dummy,first_frame_all     (dummy's not used, if first_frame_all=1 then verts/tris
-  //                                  in first frame are displayed for all frames)
-  //*** for each time step:
-  // time             (float)
-  // nverts, ntris, dummy    (int,int,int)
-  // vert_1, ..., vert_nverts   (each vert_i is a triple x_i,y_i,z_i of floats)
-  // tri_1a,tri_1b,tri_1c ..., tri_ntrisa,tri_ntrisb,tri_ntrisc
-  //*** if cfaces:
-  // loc_1, .., loc_ntris
-  // surf_1, ..., surf_ntris
-  // geom_1, ..., geom_ntris
-  //*** if not cfaces:
-  // surf_1, ..., surf_ntris
-  // texture_1, ..., texture_ntris
-
-  stream = fopen(geomi->file,"rb");
-  if(stream==NULL){
-    *ntimes_local=-1;
-    return;
-  }
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-  FORTREAD(&version,4,1,stream);
-
-  FORTREAD(header,4,3,stream);
-  first_frame_all=header[2];
-
-  nt=0;
-  if(first_frame_all==1)nt=-1;
-  for(;;){
-    FORTREADBR(&time_local,1,stream);
-    FORTREADBR(nvertfacesvolumes,3,stream);
-    nverts=nvertfacesvolumes[0];
-    ntris=nvertfacesvolumes[1];
-    nvolumes=nvertfacesvolumes[2];
-
-    // vertices
-
-    if(nverts>0){
-      FSEEK(stream,4+3*nverts*4+4,SEEK_CUR); // skip vertices
-    }
-
-    // faces
-
-    if(ntris>0){
-      int skip=0;
-
-      skip = 4+3*ntris*4+4; // skip triangles
-      if(geomi->geomtype==GEOM_CGEOM){
-        skip += 4+4*ntris+4;             // skip locations
-        skip += 4+4*ntris+4;             // skip surfs
-        skip += 4+4*ntris+4;             // skip geometries
-      }
-      else{
-        skip += 4+   ntris*4+4; // skip surf
-        skip += 4+ 6*ntris*4+4; // skip textures
-      }
-      FSEEK(stream, skip, SEEK_CUR);
-    }
-
-    // volumes
-
-    if(nvolumes>0){
-      FSEEK(stream,4+4*nvolumes*4+4,SEEK_CUR); // skip volumes
-      FSEEK(stream,4+nvolumes*4+4,SEEK_CUR);   // skip matl
-    }
-    nt++;
-  }
-  *ntimes_local=nt;
-  fclose(stream);
-}
-
-/* ------------------ ReadGeomHeader ------------------------ */
-
-void ReadGeomHeader(geomdata *geomi, int *geom_frame_index, int *ntimes_local){
-  FILE *stream;
-  int version;
-  int returncode=0;
-  int one=0;
-
-  stream = fopen(geomi->file,"rb");
-  if(stream==NULL){
-    *ntimes_local=-1;
-    return;
-  }
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-  FORTREAD(&version,4,1,stream);
-  fclose(stream);
-
-  if(version<=1){
-    ReadGeomHeader0(geomi, geom_frame_index, ntimes_local);
-  }
-  else{
-    ReadGeomHeader2(geomi, ntimes_local);
-  }
-}
-
 /* ------------------ GetGeomDataSizeFixed ------------------------ */
 
 int GetGeomDataSizeFixed(patchdata *patchi, int *nvars, int time_frame, int *geom_offsets, int *geom_offset_flag, int *max_buffer_size, int *error){
@@ -2491,18 +2142,18 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
   float time;
   int one, version;
   int nvert_s, nvert_d, nface_s, nface_d;
-  FILE *stream=NULL;
-  int returncode=0;
+  FILE_m *stream=NULL;
   int nvars_local, ntimes_local;
   int iframe;
   int geom_offset_index=0, geom_offset = 0, frame_start;
   int is_compressed=0;
+  int count_read;
 
   *error=1;
   *nvars = 0;
   if(filename==NULL)return 0;
   if(cvals_sizes != NULL)is_compressed = 1;
-  stream = fopen(filename,"rb");
+  stream = fopen_b(filename,NULL,0,"rb");
   if(stream == NULL){
     if(is_compressed == 1){
       printf(" The compressed boundary file %s failed to open\n", filename);
@@ -2526,11 +2177,11 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
     // nval1,nval2,nval3,nval4
     // ncompressed
     // compressed_1,...,compressed_ncompressed
-    fseek(stream, 20, SEEK_CUR);
+    fseek_m(stream, 20, SEEK_CUR);
   }
   else{
-    FORTREAD(&one, 4, 1, stream);
-    FORTREAD(&version, 4, 1, stream);
+    FORTREAD_m(&one, 4, 1, stream);
+    FORTREAD_m(&version, 4, 1, stream);
   }
 
   geom_offset = 0;
@@ -2541,7 +2192,7 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
   }
   else{
     frame_start = time_frame;
-    fseek(stream, geom_offsets[time_frame], SEEK_CUR);
+    if(geom_offsets!=NULL)fseek_m(stream, geom_offsets[time_frame], SEEK_CUR);
   }
   int count = 0;
   for(iframe=frame_start;;iframe++){
@@ -2549,25 +2200,25 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
 
     if(geom_offset_flag!=NULL&&*geom_offset_flag==BUILD_GEOM_OFFSETS)geom_offsets[geom_offset_index] = geom_offset;
     if(is_compressed==1){
-      returncode = fread(&time, 4, 1, stream);
+      count_read = fread_m(&time, 4, 1, stream);
       geom_offset += 4;
     }
     else{
-      FORTREAD(&time, 4, 1, stream);
+      FORTREAD_m(&time, 4, 1, stream);
       geom_offset += (4+4+4);
     }
-    if(returncode==0)break;
+    if(count_read != 1)break;
     if(is_compressed==1){
       int ncvals;
       int ntotal;
 
-      fread(nvals, 4, 4, stream);
+      fread_m(nvals, 4, 4, stream);
       if(max_buffer_size != NULL){
         ntotal = nvals[0] + nvals[1] + nvals[2] + nvals[3];
         *max_buffer_size = MAX(*max_buffer_size, ntotal);
       }
       geom_offset += 16;
-      fread(&ncvals, 4, 1, stream);
+      fread_m(&ncvals, 4, 1, stream);
       if(cvals_offsets != NULL){
         if(count == 0){
           cvals_offsets[count] = 0;
@@ -2580,13 +2231,13 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
       }
       geom_offset += 4;
       nvars_local += ncvals;
-      fseek(stream, ncvals, SEEK_CUR);
+      fseek_m(stream, ncvals, SEEK_CUR);
       geom_offset += ncvals;
     }
     else{
-      FORTREAD(nvals, 4, 4, stream);
+      FORTREAD_m(nvals, 4, 4, stream);
       geom_offset += (4+4*4+4);
-      if(returncode==0)break;
+      if(count_read != 4)break;
       nvert_s = nvals[0];
       nface_s = nvals[1];
       nvert_d = nvals[2];
@@ -2607,10 +2258,10 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
     geom_offset_index++;
     if(geom_offset_flag!=NULL&&*geom_offset_flag==GET_GEOM_OFFSETS&&time_frame==iframe)break;
     if(is_compressed == 0){
-      if(fseek(stream, nskip, SEEK_CUR) != 0)break;
+      if(fseek_m(stream, nskip, SEEK_CUR) != 0)break;
     }
   }
-  fclose(stream);
+  fclose_b(stream);
   *nvars = nvars_local;
   if(geom_offset_flag!=NULL&&*geom_offset_flag==BUILD_GEOM_OFFSETS)*geom_offset_flag = geom_offset_index;
   return ntimes_local;
@@ -2618,14 +2269,13 @@ int GetGeomDataSize(char *filename, int *nvars, int time_frame, int *cvals_offse
 
 /* ------------------ GetGeomData------------------------ */
 
-FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *nstatics, int *ndynamics, float *vals,
+FILE_SIZE GetGeomData(patchdata *patchi, char *filename, int load_flag, int ntimes, int nvals, float *times, int *nstatics, int *ndynamics, float *vals,
                       int time_frame, float *time_value, int *geom_offsets, int *error){
   FILE_SIZE file_size;
 
   int one, nvars;
   int nvert_s, ntri_s, nvert_d, ntri_d;
   int version;
-  int returncode=0;
   int count;
   float time;
   int iframe, frame_start, frame_stop;
@@ -2655,16 +2305,37 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
   // ncompressed
   // compressed_1,...,compressed_ncompressed
 
+  FILE_m *stream;
+  int count_read;
 
-  FILE *stream;
+#ifdef pp_BOUNDFRAME
+  if(patchi != NULL&&load_flag!=UNLOAD){
+    patchi->frameinfo = FRAMELoadData(patchi->frameinfo, patchi->file, patchi->size_file, NULL, load_flag, time_frame, FORTRAN_FILE, GetGeomDataFrameInfo);
+    update_frame = 1;
+  }
+#endif
 
   cvals = (unsigned char *)vals;
-  file_size = 0;
   *error = 1;
   if(filename==NULL)return 0;
   ext = strrchr(filename, '.');
   if(ext != NULL && strcmp(ext, ".svz") == 0)is_compressed = 1;
-  stream = fopen(filename, "rb");
+#ifdef pp_BOUNDFRAME
+  if(patchi!=NULL && patchi->frameinfo!=NULL && patchi->frameinfo->bufferinfo!=NULL){
+    bufferdata *bufferinfo;
+
+    bufferinfo = patchi->frameinfo->bufferinfo;
+    stream     = fopen_b(patchi->reg_file, bufferinfo->buffer, bufferinfo->nbuffer, "rb");
+    file_size  = patchi->frameinfo->filesize;
+  }
+  else{
+    stream    = fopen_b(filename, NULL, 0, "rb");
+    file_size = GetFileSizeSMV(filename);
+  }
+#else
+  stream = fopen_b(filename, NULL, 0, "rb");
+  file_size = GetFileSizeSMV(filename);
+#endif
   if(stream == NULL){
     if(is_compressed == 1){
       printf(" The compressed boundary file %s failed to open\n", filename);
@@ -2679,16 +2350,14 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
   if(is_compressed == 1){
     int completion;
 
-    fread(&one, 4, 1, stream);
-    fread(&completion, 4, 1, stream);
-    fread(&version, 4, 1, stream);
-    fread(valminmax, 4, 2, stream);
-    file_size = 20;
+    fread_m(&one, 4, 1, stream);
+    fread_m(&completion, 4, 1, stream);
+    fread_m(&version, 4, 1, stream);
+    fread_m(valminmax, 4, 2, stream);
   }
   else{
-    FORTREAD(&one, 4, 1, stream);
-    FORTREAD(&version, 4, 1, stream);
-    file_size = 2 * (4 + 4 + 4);
+    FORTREAD_m(&one, 4, 1, stream);
+    FORTREAD_m(&version, 4, 1, stream);
   }
   nvars = 0;
   count = 0;
@@ -2699,30 +2368,27 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
   else{
     frame_start = time_frame;
     frame_stop = time_frame+1;
-    fseek(stream, geom_offsets[time_frame], SEEK_CUR);
+    if(geom_offsets!=NULL)fseek_m(stream, geom_offsets[time_frame], SEEK_CUR);
   }
   for(iframe = frame_start; iframe<frame_stop; iframe++){
     int nvals_local[4];
     int ncompressed;
 
     if(is_compressed == 1){
-      returncode = fread(&time, 4, 1, stream);
-      file_size += 4;
+      fread_m(&time, 4, 1, stream);
     }
     else{
-      FORTREAD(&time, 4, 1, stream);
-      file_size += (4 + 4 + 4);
+      FORTREAD_m(&time, 4, 1, stream);
+      if(count_read!=1)break;
     }
     if(time_frame==ALL_FRAMES||time_frame==iframe)times[count] = time;
-    if(returncode==0)break;
     if(is_compressed == 1){
-      fread(nvals_local, 4, 4, stream);
-      fread(&ncompressed, 4, 1, stream);
-      file_size += 20;
+      fread_m(nvals_local, 4, 4, stream);
+      fread_m(&ncompressed, 4, 1, stream);
     }
     else{
-      FORTREAD(nvals_local, 4, 4, stream);
-      file_size += 8 + 16;
+      FORTREAD_m(nvals_local, 4, 4, stream);
+      if(count_read != 4)break;
     }
     nvert_s = nvals_local[0];
     ntri_s  = nvals_local[1];
@@ -2732,31 +2398,29 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
 
     if(is_compressed == 1){
       if(ncompressed>0){
-        fread(cvals, 1, ncompressed, stream);
+        fread_m(cvals, 1, ncompressed, stream);
         cvals += ncompressed;
       }
     }
     else{
       if(nvert_s > 0){
         if(time_frame == ALL_FRAMES || time_frame == iframe){
-          FORTREAD(vals + nvars, 4, nvert_s, stream);
-          if(returncode == 0)break;
-          file_size += (4 + 4 * nvert_s + 4);
+          FORTREAD_m(vals + nvars, 4, nvert_s, stream);
+          if(count_read!=nvert_s)break;
           nvars += nvert_s;
         }
         else{
-          fseek(stream, 4 + 4 * nvert_s + 4, SEEK_CUR);
+          fseek_m(stream, 4 + 4 * nvert_s + 4, SEEK_CUR);
         }
       }
       if(ntri_s > 0){
         if(time_frame == ALL_FRAMES || time_frame == iframe){
-          FORTREAD(vals + nvars, 4, ntri_s, stream);
-          if(returncode == 0)break;
-          file_size += (4 + 4 * ntri_s + 4);
+          FORTREAD_m(vals + nvars, 4, ntri_s, stream);
+          if(count_read!=ntri_s)break;
           nvars += ntri_s;
         }
         else{
-          fseek(stream, (4 + 4 * ntri_s + 4), SEEK_CUR);
+          fseek_m(stream, (4 + 4 * ntri_s + 4), SEEK_CUR);
         }
       }
     }
@@ -2764,34 +2428,34 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
     if(is_compressed == 0){
       if(nvert_d > 0){
         if(time_frame == ALL_FRAMES || time_frame == iframe){
-          FORTREAD(vals + nvars, 4, nvert_d, stream);
-          if(returncode == 0)break;
-          file_size += (4 + 4 * nvert_d + 4);
+          FORTREAD_m(vals + nvars, 4, nvert_d, stream);
+          if(count_read!=nvert_d)break;
           nvars += nvert_d;
         }
         else{
-          fseek(stream, 4 + 4 * nvert_d + 4, SEEK_CUR);
+          fseek_m(stream, 4 + 4 * nvert_d + 4, SEEK_CUR);
         }
       }
       if(ntri_d > 0){
         if(time_frame == ALL_FRAMES || time_frame == iframe){
-          FORTREAD(vals + nvars, 4, ntri_d, stream);
-          if(returncode == 0)break;
-          file_size += (4 + 4 * ntri_d + 4);
+          FORTREAD_m(vals + nvars, 4, ntri_d, stream);
+          if(count_read!=ntri_d)break;
           nvars += ntri_d;
         }
         else{
-          fseek(stream, 4 + 4 * ntri_d + 4, SEEK_CUR);
+          fseek_m(stream, 4 + 4 * ntri_d + 4, SEEK_CUR);
         }
       }
     }
     if(time_frame==iframe){
-      *time_value = times[count];
+      if(time_value!=NULL)*time_value = times[count];
       break;
     }
     if(time_frame==ALL_FRAMES)count++;
   }
-  fclose(stream);
+#ifndef pp_BOUNDFRAME
+  fclose_m(stream);
+#endif
   return file_size;
 }
 
@@ -2800,14 +2464,14 @@ FILE_SIZE GetGeomData(char *filename, int ntimes, int nvals, float *times, int *
 FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int time_frame, float *time_value, int flag, int *errorcode){
   int ntimes_local;
   int i;
-  int nvals;
+  int nvals=0;
   int n;
   int error;
   FILE_SIZE return_filesize = 0;
   float total_time;
-  int *geom_offsets=NULL, geom_offset_flag;
-  int *cvals_offsets=NULL, *cvals_sizes=NULL;
-  int max_buffer_size=0;
+  int *geom_offsets = NULL, geom_offset_flag;
+  int *cvals_offsets = NULL, *cvals_sizes = NULL;
+  int max_buffer_size = 0;
   unsigned char *cbuffer = NULL;
 
   if(patchi->structured == YES)return 0;
@@ -2823,7 +2487,8 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     slicei->ntimes = 0;
     slicei->times = NULL;
   }
-  patchi->bounds.defined=0;
+  patchi->bounds.defined = 0;
+  have_boundary_arrival = 0;
 
   FREEMEMORY(patchi->geom_nstatics);
   FREEMEMORY(patchi->geom_ndynamics);
@@ -2835,6 +2500,13 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   FREEMEMORY(patchi->geom_ivals);
   FREEMEMORY(patchi->geom_times);
   FREEMEMORY(patchi->geom_times_map);
+#ifdef pp_BOUNDFRAME
+  if(load_flag != RELOAD){
+    FRAMEFree(patchi->frameinfo);
+    patchi->frameinfo = NULL;
+  }
+#endif
+
   if(load_flag==UNLOAD){
     plotstate = GetPlotState(DYNAMIC_PLOTS);
     if(patchi->boundary==1)UpdateBoundaryType();
@@ -2867,7 +2539,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     ntimes_local = GetGeomDataSize(patchi->file, &nvals, time_frame, cvals_offsets, cvals_sizes, geom_offsets, &geom_offset_flag, &max_buffer_size, &error);
   }
   if(max_buffer_size > 0){
-    NewMemory(( void ** )&cbuffer, max_buffer_size);
+    NewMemory((void **)&cbuffer, max_buffer_size);
     patchi->cbuffer = cbuffer;
   }
   else{
@@ -2918,9 +2590,9 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   if(current_script_command==NULL||NOT_LOADRENDER){
     PRINTF("Loading %s(%s)", patchi->file, patchi->label.shortlabel);
   }
-  filesize=GetGeomData(patchi->file, ntimes_local, nvals, patchi->geom_times,
+  filesize=GetGeomData(patchi, patchi->file, load_flag, ntimes_local, nvals, patchi->geom_times,
     patchi->geom_nstatics, patchi->geom_ndynamics, patchi->geom_vals, time_frame, time_value, geom_offsets, &error);
-  MakeTimesMap(patchi->geom_times, patchi->geom_times_map, ntimes_local);
+  MakeTimesMap(patchi->geom_times, &patchi->geom_times_map, ntimes_local);
 
   return_filesize += filesize;
   if(error == 1){
@@ -2929,6 +2601,36 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     return return_filesize;
   }
 
+  if(FileExistsOrig(patchi->bound_file)==0){
+    float *vals, valmin, valmax;
+
+    vals = patchi->geom_vals;
+    if(strcmp(patchi->label.shortlabel, "t_a") == 0){
+      valmin = 1.0;
+      valmax = 0.0;
+      for(i = 0;i < nvals;i++){
+        if(valmin > valmax){
+          if(vals[i] < TOA_LIMIT){
+            valmin = vals[i];
+            valmax = valmin;
+          }
+        }
+        else{
+          valmin = MIN(vals[i], valmin);
+          if(vals[i] < TOA_LIMIT)valmax = MAX(vals[i], valmax);
+        }
+      }
+    }
+    else{
+      valmin = vals[0];
+      valmax = valmin;
+      for(i = 1;i < nvals;i++){
+        valmin = MIN(vals[i], valmin);
+        valmax = MAX(vals[i], valmax);
+      }
+    }
+    WriteFileBounds(patchi->bound_file, valmin, valmax);
+  }
   patchi->ngeom_times = ntimes_local;
   patchi->geom_nvals = nvals;
   patchi->geom_ivals_static_offset[0] = 0;
@@ -2950,7 +2652,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
 
   if(slicei == NULL){
     if(colorlabelpatch != NULL){
-      for (n = 0; n < MAXRGB; n++){
+      for(n = 0; n < MAXRGB; n++){
         FREEMEMORY(colorlabelpatch[n]);
       }
       FREEMEMORY(colorlabelpatch);
@@ -2959,10 +2661,10 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
       ReadGeomData(patchi, NULL, UNLOAD, time_frame, time_value,  0, &error);
       return 0;
     }
-    for (n = 0; n < MAXRGB; n++){
+    for(n = 0; n < MAXRGB; n++){
       colorlabelpatch[n] = NULL;
     }
-    for (n = 0; n < nrgb; n++){
+    for(n = 0; n < global_scase.nrgb; n++){
       if(NewMemory((void **)&colorlabelpatch[n], 11) == 0){
         ReadGeomData(patchi, NULL, UNLOAD, time_frame, time_value, 0, &error);
         return 0;
@@ -2979,7 +2681,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     if(patchi->patch_filetype != PATCH_GEOMETRY_BOUNDARY && patchi->patch_filetype != PATCH_GEOMETRY_SLICE)convert = 0;
     GetBoundaryColors3(patchi, patchi->geom_vals, 0, patchi->geom_nvals, patchi->geom_ivals,
       &valmin, &valmax,
-      nrgb, colorlabelpatch, colorvaluespatch, boundarylevels256,
+      global_scase.nrgb, colorlabelpatch, colorvaluespatch, boundarylevels256,
       &patchi->extreme_min, &patchi->extreme_max, convert);
     if(cache_boundary_data==0){
       FREEMEMORY(patchi->geom_vals);
@@ -3008,15 +2710,22 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     slicei->valmax_slice    = qmax;
     if(slice_average_flag==1){
       int data_per_timestep, nvals2, ntimes;
-      float *vals, *times;
+      float *times, **qvalptrs;
 
       show_slice_average = 1;
-      vals = slicei->patchgeom->geom_vals;
       nvals2 = slicei->patchgeom->geom_nvals;
       times = patchi->geom_times;
       ntimes = patchi->ngeom_times;
       data_per_timestep = nvals2/ntimes;
-      if(TimeAverageData(vals, vals, nvals2, data_per_timestep, times, ntimes, slice_average_interval)==1){
+#ifdef pp_SLICEFRAME
+      qvalptrs = (float **)slicei->frameinfo->frameptrs;
+#else
+      NewMemory((void **)&qvalptrs, ntimes*sizeof(float *));
+      for(i = 0; i < ntimes; i++){
+        qvalptrs[i] = slicei->patchgeom->geom_vals + i*data_per_timestep;
+      }
+#endif
+      if(TimeAverageData(qvalptrs, qvalptrs, nvals2, data_per_timestep, times, ntimes, slice_average_interval)==1){
         show_slice_average = 0;
       }
     }
@@ -3024,7 +2733,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     slicei->valmax_slice    = qmax;
     slicei->globalmin_slice = qmin;
     slicei->globalmax_slice = qmax;
-    for (i = 0; i < 256; i++){
+    for(i = 0; i < 256; i++){
       slicei->qval256[i] = (qmin*(255 - i) + qmax*i) / 255;
     }
     UpdateSliceBounds();
@@ -3034,7 +2743,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     SliceBounds2Glui(slicefile_labelindex);
 
     GetSliceColors(patchi->geom_vals, patchi->geom_nvals, patchi->geom_ivals,
-      glui_slicemin, glui_slicemax, nrgb_full, nrgb,
+      glui_slicemin, glui_slicemax, nrgb_full, global_scase.nrgb,
       sb->colorlabels, sb->colorvalues, sb->levels256,
       &slicei->extreme_min, &slicei->extreme_max, 1
     );
@@ -3056,6 +2765,9 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
 
     if(patchi->boundary==1){
       bound_type = BOUND_PATCH;
+      from_read_boundary = 1;
+      int HaveBoundaryArrival(void);
+      have_boundary_arrival = HaveBoundaryArrival();
     }
     else{
       bound_type = BOUND_SLICE;
@@ -3067,7 +2779,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     if(force_bound_update == 1 || current_script_command != NULL)bound_update = 1;
     if(patchi->boundary == 1){
       if(bound_update==1||patch_bounds_defined==0 || BuildGbndFile(BOUND_PATCH) == 1){
-        GetGlobalPatchBounds(1,DONOT_SET_MINMAX_FLAG);
+        GetGlobalPatchBounds(1,DONOT_SET_MINMAX_FLAG,patchi->label.shortlabel);
         SetLoadedPatchBounds(NULL, 0);
         GLUIPatchBoundsCPP_CB(BOUND_DONTUPDATE_COLORS);
 #ifdef pp_RECOMPUTE_DEBUG
@@ -3077,7 +2789,7 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
     }
     else{
       if(bound_update==1||slice_bounds_defined==0|| BuildGbndFile(BOUND_SLICE) ==1){
-        GetGlobalSliceBounds(1, DONOT_SET_MINMAX_FLAG);
+        GetGlobalSliceBounds(1, DONOT_SET_MINMAX_FLAG,patchi->label.shortlabel);
         SetLoadedSliceBounds(NULL, 0);
 #ifdef pp_RECOMPUTE_DEBUG
         recompute = 1;
@@ -3125,53 +2837,22 @@ FILE_SIZE ReadGeomData(patchdata *patchi, slicedata *slicei, int load_flag, int 
   return return_filesize;
 }
 
-/* ------------------ GetGeomDataHeader ------------------------ */
-
-void GetGeomDataHeader(char *file, int *ntimes_local, int *nvals){
-  FILE *stream;
-  int one=1;
-  int nface_static,nface_dynamic;
-  float time_local;
-  int nt,nv;
-  int returncode=0;
-
-  stream = fopen(file,"r");
-  if(stream==NULL){
-    *ntimes_local=-1;
-    return;
-  }
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-  nt=-1;
-  nv=0;
-  for(;;){
-    FORTREADBR(&time_local,1,stream);
-    FORTREADBR(&nface_static,1,stream);
-    if(nface_static!=0)FSEEK(stream,4+nface_static*4+4,SEEK_CUR);
-    FORTREADBR(&nface_dynamic,1,stream);
-    if(nface_dynamic!=0)FSEEK(stream,4+nface_dynamic*4+4,SEEK_CUR);
-    nt++;
-    nv+=(nface_static+nface_dynamic);
-  }
-  *ntimes_local=nt;
-  *nvals=nv;
-  fclose(stream);
-}
 
 /* ------------------ SetupReadAllGeom ------------------------ */
 
 void SetupReadAllGeom(void){
   int i;
 
-  for(i = 0; i<ngeominfo; i++){
+  for(i = 0; i<global_scase.ngeominfo; i++){
     geomdata *geomi;
 
-    geomi = geominfo+i;
+    geomi = global_scase.geominfo+i;
     geomi->read_status = 0;
   }
-  for(i = 0; i<ncgeominfo; i++){
+  for(i = 0; i<global_scase.ncgeominfo; i++){
     geomdata *geomi;
 
-    geomi = cgeominfo+i;
+    geomi = global_scase.cgeominfo+i;
     geomi->read_status = 0;
   }
 }
@@ -3180,7 +2861,7 @@ void SetupReadAllGeom(void){
 
 void UpdateGeomTriangles(geomdata *geomi, int geom_type){
   geomlistdata *geomlisti;
-  tridata **connected_triangles;
+  tridata **connected_triangles=NULL;
   int ntris, nverts, nconnected_triangles = 0;
   int j;
 
@@ -3285,10 +2966,10 @@ void UpdateGeomTriangles(geomdata *geomi, int geom_type){
 void *ReadAllGeom(void *arg){
   int i;
 
-  for(i=0;i<ngeominfo;i++){
+  for(i=0;i<global_scase.ngeominfo;i++){
     geomdata *geomi;
 
-    geomi = geominfo + i;
+    geomi = global_scase.geominfo + i;
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     if(geomi->read_status!=0){
       THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
@@ -3297,15 +2978,15 @@ void *ReadAllGeom(void *arg){
     geomi->read_status = 1;
     THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
 
-    ReadGeom(geomi, LOAD, GEOM_GEOM, NULL);
+    ReadGeom(geomi, NULL, 0, LOAD, GEOM_GEOM, NULL);
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     geomi->read_status = 2;
     THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
   }
-  for(i = 0; i<ncgeominfo; i++){
+  for(i = 0; i<global_scase.ncgeominfo; i++){
     geomdata *geomi;
 
-    geomi = cgeominfo+i;
+    geomi = global_scase.cgeominfo+i;
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     if(geomi->read_status!=0){
       THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
@@ -3314,7 +2995,7 @@ void *ReadAllGeom(void *arg){
     geomi->read_status = 1;
     THREADcontrol(readallgeom_threads, THREAD_UNLOCK);
 
-    ReadGeom(geomi, LOAD, GEOM_CGEOM, NULL);
+    ReadGeom(geomi, NULL, 0, LOAD, GEOM_CGEOM, NULL);
     UpdateGeomTriangles(geomi, GEOM_STATIC);
     THREADcontrol(readallgeom_threads, THREAD_LOCK);
     geomi->read_status = 2;
@@ -3328,39 +3009,27 @@ void *ReadAllGeom(void *arg){
 void UpdateAllGeomTriangles(void){
   int i;
 
-  for(i = 0; i<ngeominfo; i++){
+  for(i = 0; i<global_scase.ngeominfo; i++){
     geomdata *geomi;
 
-    geomi = geominfo+i;
+    geomi = global_scase.geominfo+i;
     UpdateGeomTriangles(geomi, GEOM_STATIC);
   }
 }
 
-/* ------------------ InitGeomlist ------------------------ */
-
-void InitGeomlist(geomlistdata *geomlisti){
-  geomlisti->verts = NULL;
-  geomlisti->vertvals = NULL;
-  geomlisti->triangles = NULL;
-  geomlisti->triangleptrs = NULL;
-  geomlisti->connected_triangles = NULL;
-  geomlisti->nverts = 0;
-  geomlisti->ntriangles = 0;
-  geomlisti->norms_defined = 0;
-}
 
 /* ------------------ ReadGeom0 ------------------------ */
 
 FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_index){
-  FILE *stream;
+  FILE_m *stream;
   int one=1;
-  int returncode=0;
   int ntimes_local;
   int version;
   int nvertfacesvolumes[3];
   int nfloat_vals, nint_vals;
   int iframe, icount;
   FILE_SIZE return_filesize;
+  int count_read;
 
   FreeAllMemory(geomi->memory_id);
   geomi->geomlistinfo = NULL;
@@ -3376,27 +3045,46 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
 
   ReadGeomHeader(geomi,geom_frame_index,&ntimes_local);
   if(ntimes_local<0)return 0;
-  stream = fopen(geomi->file,"rb");
+  unsigned char *filebuffer=NULL;
+  int nfilebuffer=0;
+
+  filebuffer  = NULL;
+  nfilebuffer = 0;
+#ifdef pp_ISOFRAME
+  if(geomi->frameinfo != NULL && geomi->frameinfo->bufferinfo != NULL){
+    filebuffer  = geomi->frameinfo->bufferinfo->buffer;
+    nfilebuffer = geomi->frameinfo->bufferinfo->nbuffer;
+  }
+#endif
+  // header
+  // one
+  // version
+  // nfloats
+  // nfloat vals
+  // nints
+  // nint vals
+
+
+  stream = fopen_b(geomi->file, filebuffer, nfilebuffer, "rb");
   if(stream==NULL)return 0;
 
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-
-  FORTREAD(&version,4,1,stream);
+  FORTREAD_m(&one,4,1,stream);
+  FORTREAD_m(&version, 4, 1, stream);
   return_filesize = 2*(4+4+4);
 
-  FORTREAD(&nfloat_vals,4,1,stream);
+  FORTREAD_m(&nfloat_vals, 4, 1, stream);
   return_filesize += (4+4+4);
 
   if(nfloat_vals>0){
-    FSEEK(stream, 4+nfloat_vals*4+4, SEEK_CUR);
+    fseek_m(stream, 4+nfloat_vals*4+4, SEEK_CUR);
     return_filesize += 4+nfloat_vals*4+4;
   }
 
-  FORTREAD(&nint_vals,4,1,stream);
+  FORTREAD_m(&nint_vals, 4, 1, stream);
   return_filesize += (4+4+4);
 
   if(nint_vals>0){
-    FSEEK(stream, 4+nint_vals*4+4, SEEK_CUR);
+    fseek_m(stream, 4+nint_vals*4+4, SEEK_CUR);
     return_filesize += 4+nint_vals*4+4;
   }
 
@@ -3406,27 +3094,33 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
   geomi->geomlistinfo=geomi->geomlistinfo_0+1;
   NewMemoryMemID((void **)&geomi->times,ntimes_local*sizeof(float),geomi->memory_id);
 
+  // frame
+  // time
+  // nverts nfaces
+  // xyz 3*nverts
+  // ijk 3*ntris
+  // surf_ind ntris
   icount=-1;
   for(iframe=-1;iframe<ntimes_local;){
-    float times_local[2];
+    float times_local[2]={0.0, 0.0};
     geomlistdata *geomlisti;
     int nverts, ntris;
     int  skipframe;
-    vertdata *verts;
+    vertdata *verts=NULL;
 
     geomlisti = geomi->geomlistinfo+iframe;
     InitGeomlist(geomlisti);
     skipframe = 0;
 
     if(iframe>=0){
-
-      FORTREADBR(times_local,2,stream);
+      FORTREAD_m(times_local, 4, 2, stream);
+      if(count_read != 2)break;
       return_filesize += 4+4+4;
 
       icount++;
       if(geom_frame_index == NULL){
-        if(use_tload_begin == 1 && times_local[0]     < tload_begin)skipframe = 1;
-        if(use_tload_end   == 1 && times_local[0]     > tload_end)skipframe = 1;
+        if(use_tload_begin == 1 && times_local[0]     < global_scase.tload_begin)skipframe = 1;
+        if(use_tload_end   == 1 && times_local[0]     > global_scase.tload_end)skipframe = 1;
         if(tload_step      >  1 && icount%tload_step != 0)skipframe = 1;
         if(skipframe == 0)geomi->times[iframe] = times_local[0];
       }
@@ -3436,8 +3130,8 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
         if(skipframe == 0)geomi->currentframe = geomlisti;
       }
     }
-
-    FORTREADBR(nvertfacesvolumes,2,stream);
+    FORTREAD_m(nvertfacesvolumes, 4, 2, stream);
+    if(count_read != 2)break;
     return_filesize += (4+8+4);
 
     nverts=nvertfacesvolumes[0];
@@ -3446,30 +3140,37 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
       int file_offset = 0;
       if(nverts>0)file_offset += 4+3*nverts*4+4;
       if(ntris>0)file_offset += (4+3*ntris*4+4)+(4+ntris*4+4);
-      if(file_offset>0)FSEEK(stream, file_offset, SEEK_CUR);
+      if(file_offset>0)fseek_m(stream, file_offset, SEEK_CUR);
     }
     if(skipframe==0&&nverts>0){
       int ii;
       float *xyz=NULL;
       float *zORIG;
 
+#ifndef pp_ISOFRAME
       NewMemoryMemID((void **)&xyz,3*nverts*sizeof(float),    geomi->memory_id);
+#endif
       NewMemoryMemID((void **)&verts,nverts*sizeof(vertdata), geomi->memory_id);
       NewMemoryMemID((void **)&zORIG, nverts*sizeof(float),   geomi->memory_id);
       geomlisti->zORIG = zORIG;
       geomlisti->verts = verts;
       geomlisti->nverts=nverts;
 
-      FORTREADBR(xyz,3*nverts,stream);
+#ifdef pp_ISOFRAME
+      FORTREAD_mv((void **)&xyz, 4, 3*nverts, stream);
+#else
+      FORTREAD_m(xyz, 4, 3*nverts, stream);
+#endif
+      if(count_read != 3 * nverts)break;
       return_filesize += 4+3*nverts*4+4;
 
       for(ii=0;ii<nverts;ii++){
-        verts[ii].xyz[0]=xyz[3*ii];
-        verts[ii].xyz[1]=xyz[3*ii+1];
-        verts[ii].xyz[2]=xyz[3*ii+2];
+        memcpy(verts[ii].xyz, xyz + 3*ii, 3*sizeof(float));
         zORIG[ii] = xyz[3 * ii+2];
       }
+#ifndef pp_ISOFRAME
       FREEMEMORY(xyz);
+#endif
     }
     if(skipframe==0&&ntris>0){
       int *surf_ind=NULL,*ijk=NULL;
@@ -3478,49 +3179,65 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
       tridata *triangles;
 
       NewMemoryMemID((void **)&triangles,ntris*sizeof(tridata), geomi->memory_id);
+#ifndef pp_ISOFRAME
       NewMemoryMemID((void **)&ijk,3*ntris*sizeof(int),         geomi->memory_id);
       NewMemoryMemID((void **)&surf_ind,ntris*sizeof(int),      geomi->memory_id);
+#endif
       geomlisti->triangles=triangles;
       geomlisti->ntriangles=ntris;
 
-      FORTREADBR(ijk,3*ntris,stream);
+#ifdef pp_ISOFRAME
+      FORTREAD_mv((void **)&ijk, 4, 3*ntris, stream);
+#else
+      FORTREAD_m(ijk, 4, 3*ntris, stream);
+#endif
+      if(count_read != 3 * ntris)break;
       return_filesize += 4+3*ntris*4+4;
 
-      FORTREADBR(surf_ind,ntris,stream);
+#ifdef pp_ISOFRAME
+      FORTREAD_mv((void **)&surf_ind, 4, ntris, stream);
+#else
+      FORTREAD_m(surf_ind, 4, ntris, stream);
+#endif
+      if(count_read != ntris)break;
       return_filesize += 4+ntris*4+4;
 
-      if(type==GEOM_ISO)offset=nsurfinfo;
-      for(ii=0;ii<ntris;ii++){
-        surfdata *surfi;
+      if(type==GEOM_ISO)offset=global_scase.surfcoll.nsurfinfo;
+      if(verts != NULL){
+        for(ii = 0; ii < ntris; ii++){
+          surfdata *surfi;
 
-        triangles[ii].verts[0]=verts+ijk[3*ii]-1;
-        triangles[ii].verts[1]=verts+ijk[3*ii+1]-1;
-        triangles[ii].verts[2]=verts+ijk[3*ii+2]-1;
+          triangles[ii].verts[0] = verts + ijk[3 * ii] - 1;
+          triangles[ii].verts[1] = verts + ijk[3 * ii + 1] - 1;
+          triangles[ii].verts[2] = verts + ijk[3 * ii + 2] - 1;
 
-        surfi = surfinfo+CLAMP(surf_ind[ii]+offset, nsurfinfo+1, nsurfinfo+MAX_ISO_COLORS);
-        triangles[ii].geomsurf=surfi;
-        if(geomi->file2_tris!=NULL){
-          triangles[ii].geomobj = geomi->geomobjinfo + geomi->file2_tris[ii] - 1;
+          surfi = global_scase.surfcoll.surfinfo + CLAMP(surf_ind[ii] + offset, global_scase.surfcoll.nsurfinfo + 1, global_scase.surfcoll.nsurfinfo + MAX_ISO_COLORS);
+          triangles[ii].geomsurf = surfi;
+          if(geomi->file2_tris != NULL){
+            triangles[ii].geomobj = geomi->geomobjinfo + geomi->file2_tris[ii] - 1;
+          }
+          else{
+            triangles[ii].geomobj = NULL;
+          }
+          surfi->used_by_geom = 1;
+          triangles[ii].textureinfo = NULL;
         }
-        else{
-          triangles[ii].geomobj = NULL;
-        }
-        surfi->used_by_geom = 1;
-        triangles[ii].textureinfo=NULL;
       }
+#ifndef pp_ISOFRAME
       FREEMEMORY(ijk);
       FREEMEMORY(surf_ind);
+#endif
     }
 
     if(skipframe==0||geom_frame_index!=NULL){
       // add decimation code here
       iframe++;
     }
-    if(geom_frame_index==NULL&&use_tload_end == 1 && times_local[0] > tload_end)break;
+    if(geom_frame_index==NULL&&use_tload_end == 1 && times_local[0] > global_scase.tload_end)break;
   }
   geomi->loaded = 1;
   geomi->display=1;
-  fclose(stream);
+  fclose_b(stream);
   return return_filesize;
 }
 
@@ -3529,11 +3246,11 @@ FILE_SIZE ReadGeom0(geomdata *geomi, int load_flag, int type, int *geom_frame_in
 int InMesh(float *xyz){
   int i;
 
-  for(i = 0;i < nmeshes;i++){
+  for(i = 0;i < global_scase.meshescoll.nmeshes;i++){
     meshdata *meshi;
     float *boxmin, *boxmax;
 
-    meshi = meshinfo + i;
+    meshi = global_scase.meshescoll.meshinfo + i;
     boxmin = meshi->boxmin;
     boxmax = meshi->boxmax;
     if(xyz[0]<boxmin[0] || xyz[0]>boxmax[0])continue;
@@ -3561,7 +3278,7 @@ FILE_SIZE ReadGeom2(geomdata *geomi, int load_flag, int type){
   int returncode=0;
   int ntimes_local;
   int i;
-  vertdata *verts;
+  vertdata *verts=NULL;
   tridata *triangles;
   int version;
   int nvertfacesvolumes[3];
@@ -3708,7 +3425,7 @@ FILE_SIZE ReadGeom2(geomdata *geomi, int load_flag, int type){
       if(geomi->geomtype==GEOM_CGEOM){
         NewMemory((void **)&locations, ntris*sizeof(int));
         NewMemory((void **)&geom_ind,  ntris*sizeof(int));
-        texture_coords = NULL;
+        NewMemory((void **)&texture_coords, 6 * sizeof(float));
       }
       else{
         NewMemory((void **)&texture_coords,6*ntris*sizeof(float));
@@ -3742,142 +3459,149 @@ FILE_SIZE ReadGeom2(geomdata *geomi, int load_flag, int type){
       // compute texture coordinates
 
       if(geomi->is_terrain==1){
-        float xmin, xmax, ymin, ymax, zmin, zmax;
+        if(verts != NULL){
+          float xmin, xmax, ymin, ymax, zmin, zmax;
 
-        xmin = verts[0].xyz[0];
-        xmax = xmin;
-        ymin = verts[0].xyz[1];
-        ymax = ymin;
-        zmin = verts[0].xyz[2];
-        zmax = zmin;
+          xmin = verts[0].xyz[0];
+          xmax = xmin;
+          ymin = verts[0].xyz[1];
+          ymax = ymin;
+          zmin = verts[0].xyz[2];
+          zmax = zmin;
 
-        for(ii=1;ii<nverts;ii++){
-          float *xyz;
+          for(ii = 1; ii < nverts; ii++){
+            float *xyz;
 
-          xyz = verts[ii].xyz;
-          xmin = MIN(xmin,xyz[0]);
-          xmax = MAX(xmax,xyz[0]);
-          ymin = MIN(ymin,xyz[1]);
-          ymax = MAX(ymax,xyz[1]);
-          zmin = MIN(zmin,xyz[2]);
-          zmax = MAX(zmax,xyz[2]);
+            xyz = verts[ii].xyz;
+            xmin = MIN(xmin, xyz[0]);
+            xmax = MAX(xmax, xyz[0]);
+            ymin = MIN(ymin, xyz[1]);
+            ymax = MAX(ymax, xyz[1]);
+            zmin = MIN(zmin, xyz[2]);
+            zmax = MAX(zmax, xyz[2]);
+          }
+          if(zmax > zmin && xmax > xmin){
+            float xratio, yratio, zratio;
+
+            xratio = (xmax - xmin) / (xbarORIG - xbar0ORIG);
+            yratio = (ymax - ymin) / (ybarORIG - ybar0ORIG);
+            zratio = (zmax - zmin) / (zbarORIG - zbar0ORIG);
+
+            geomyfactor = MAX(xratio, zratio);
+            geomyfactor = MAX(1.0, geomyfactor);
+
+            geomzfactor = MAX(xratio, yratio);
+            geomzfactor = MAX(1.0, geomzfactor);
+
+            geom_xmin = xmin;
+            geom_xmax = xmax;
+            geom_ymin = ymin;
+            geom_ymax = ymax;
+            geom_zmin = zmin;
+            geom_zmax = zmax;
+            have_geom_factors = 1;
+          }
+
+          if(global_scase.terrain_texture_coll.terrain_textures != NULL){
+            float xfactor, yfactor;
+
+            xfactor = 1.0;
+            yfactor = 1.0;
+            if(ABS(xmax - xmin) > 0.0001)xfactor = 1.0 / (xmax - xmin);
+            if(ABS(ymax - ymin) > 0.0001)yfactor = 1.0 / (ymax - ymin);
+            for(ii = 0; ii < ntris; ii++){
+              float *text_coords;
+              int *tri_ind;
+              float *xy;
+              vertdata *vert;
+
+              text_coords = texture_coords + 6 * ii;
+              tri_ind = ijk + 3 * ii;
+
+              vert = verts + tri_ind[0] - 1;
+              xy = vert->xyz;
+              text_coords[0] = (xy[0] - xmin) * xfactor;
+              text_coords[1] = (xy[1] - ymin) * yfactor;
+
+              vert = verts + tri_ind[1] - 1;
+              xy = vert->xyz;
+              text_coords[2] = (xy[0] - xmin) * xfactor;
+              text_coords[3] = (xy[1] - ymin) * yfactor;
+
+              vert = verts + tri_ind[2] - 1;
+              xy = vert->xyz;
+              text_coords[4] = (xy[0] - xmin) * xfactor;
+              text_coords[5] = (xy[1] - ymin) * yfactor;
+            }
+          }
         }
-        if(zmax>zmin&&xmax>xmin){
-          float xratio, yratio, zratio;
-
-          xratio = (xmax-xmin)/(xbarORIG-xbar0ORIG);
-          yratio = (ymax-ymin)/(ybarORIG-ybar0ORIG);
-          zratio = (zmax-zmin)/(zbarORIG-zbar0ORIG);
-
-          geomyfactor = MAX(xratio,zratio);
-          geomyfactor = MAX(1.0,geomyfactor);
-
-          geomzfactor = MAX(xratio, yratio);
-          geomzfactor = MAX(1.0, geomzfactor);
-
-          geom_xmin = xmin;
-          geom_xmax = xmax;
-          geom_ymin = ymin;
-          geom_ymax = ymax;
-          geom_zmin = zmin;
-          geom_zmax = zmax;
-          have_geom_factors = 1;
-        }
-
-        if(terrain_textures!=NULL){
-          float xfactor, yfactor;
-
-          xfactor = 1.0;
-          yfactor = 1.0;
-          if(ABS(xmax-xmin)>0.0001)xfactor = 1.0/(xmax-xmin);
-          if(ABS(ymax-ymin)>0.0001)yfactor = 1.0/(ymax-ymin);
-          for(ii=0;ii<ntris;ii++){
+      }
+      else if(geomi->geomtype!=GEOM_CGEOM&&geomi->geomobjinfo!=NULL&&geomi->geomobjinfo->texture_mapping==TEXTURE_SPHERICAL){
+        if(verts != NULL){
+          for(ii = 0; ii < ntris; ii++){
             float *text_coords;
             int *tri_ind;
             float *xy;
             vertdata *vert;
 
-            text_coords = texture_coords + 6*ii;
-            tri_ind = ijk + 3*ii;
-
-            vert = verts+tri_ind[0]-1;
-            xy = vert->xyz;
-            text_coords[0] = (xy[0]-xmin)*xfactor;
-            text_coords[1] = (xy[1]-ymin)*yfactor;
-
-            vert = verts+tri_ind[1]-1;
-            xy = vert->xyz;
-            text_coords[2] = (xy[0]-xmin)*xfactor;
-            text_coords[3] = (xy[1]-ymin)*yfactor;
-
-            vert = verts+tri_ind[2]-1;
-            xy = vert->xyz;
-            text_coords[4] = (xy[0]-xmin)*xfactor;
-            text_coords[5] = (xy[1]-ymin)*yfactor;
-          }
-        }
-      }
-      else if(geomi->geomtype!=GEOM_CGEOM&&geomi->geomobjinfo!=NULL&&geomi->geomobjinfo->texture_mapping==TEXTURE_SPHERICAL){
-        for(ii = 0; ii<ntris; ii++){
-          float *text_coords;
-          int *tri_ind;
-          float *xy;
-          vertdata *vert;
-
 #define XYZ2AZ(x,y)     CLAMP(((atan2((y),(x))+PI)/(2.0*PI)), 0.0, 1.0)
 #define XYZ2ELEV(x,y,z) CLAMP(( (PI/2.0+atan2( (z), sqrt( (x)*(x)+(y)*(y) ) )) /PI ), 0.0, 1.0)
 
-          text_coords = texture_coords+6*ii;
-          tri_ind = ijk+3*ii;
+            text_coords = texture_coords + 6 * ii;
+            tri_ind = ijk + 3 * ii;
 
-          vert = verts+tri_ind[0]-1;
-          xy = vert->xyz;
-          text_coords[0] = XYZ2AZ(xy[0],xy[1]);
-          text_coords[1] = XYZ2ELEV(xy[0], xy[1], xy[2]);
+            vert = verts + tri_ind[0] - 1;
+            xy = vert->xyz;
+            text_coords[0] = XYZ2AZ(xy[0], xy[1]);
+            text_coords[1] = XYZ2ELEV(xy[0], xy[1], xy[2]);
 
-          vert = verts+tri_ind[1]-1;
-          xy = vert->xyz;
-          text_coords[2] = XYZ2AZ(xy[0], xy[1]);
-          text_coords[3] = XYZ2ELEV(xy[0], xy[1], xy[2]);
+            vert = verts + tri_ind[1] - 1;
+            xy = vert->xyz;
+            text_coords[2] = XYZ2AZ(xy[0], xy[1]);
+            text_coords[3] = XYZ2ELEV(xy[0], xy[1], xy[2]);
 
-          vert = verts+tri_ind[2]-1;
-          xy = vert->xyz;
-          text_coords[4] = XYZ2AZ(xy[0], xy[1]);
-          text_coords[5] = XYZ2ELEV(xy[0], xy[1], xy[2]);
+            vert = verts + tri_ind[2] - 1;
+            xy = vert->xyz;
+            text_coords[4] = XYZ2AZ(xy[0], xy[1]);
+            text_coords[5] = XYZ2ELEV(xy[0], xy[1], xy[2]);
+          }
         }
       }
       else if(geomi->geomtype!=GEOM_CGEOM&&geomi->geomobjinfo!=NULL&&geomi->geomobjinfo->texture_mapping==TEXTURE_RECTANGULAR){
-        for(ii = 0; ii<ntris; ii++){
-          float *text_coords;
-          int *tri_ind;
-          float *xy;
-          vertdata *vert;
+        if(verts != NULL){
+          for(ii = 0; ii < ntris; ii++){
+            float *text_coords;
+            int *tri_ind;
+            float *xy;
+            vertdata *vert;
 
 #define XYZ2X(x) ((x)-bounding_box[XMIN])/(bounding_box[XMAX]-bounding_box[XMIN])
 #define XYZ2Y(y) ((y)-bounding_box[YMIN])/(bounding_box[YMAX]-bounding_box[YMIN])
-          text_coords = texture_coords+6*ii;
-          tri_ind = ijk+3*ii;
+            text_coords = texture_coords + 6 * ii;
+            tri_ind = ijk + 3 * ii;
 
-          vert = verts+tri_ind[0]-1;
-          xy = vert->xyz;
-          text_coords[0] = XYZ2X(xy[0]);
-          text_coords[1] = XYZ2Y(xy[1]);
+            vert = verts + tri_ind[0] - 1;
+            xy = vert->xyz;
+            text_coords[0] = XYZ2X(xy[0]);
+            text_coords[1] = XYZ2Y(xy[1]);
 
-          vert = verts+tri_ind[1]-1;
-          xy = vert->xyz;
-          text_coords[2] = XYZ2X(xy[0]);
-          text_coords[3] = XYZ2Y(xy[1]);
+            vert = verts + tri_ind[1] - 1;
+            xy = vert->xyz;
+            text_coords[2] = XYZ2X(xy[0]);
+            text_coords[3] = XYZ2Y(xy[1]);
 
-          vert = verts+tri_ind[2]-1;
-          xy = vert->xyz;
-          text_coords[4] = XYZ2X(xy[0]);
-          text_coords[5] = XYZ2Y(xy[1]);
+            vert = verts + tri_ind[2] - 1;
+            xy = vert->xyz;
+            text_coords[4] = XYZ2X(xy[0]);
+            text_coords[5] = XYZ2Y(xy[1]);
+          }
         }
       }
 
       CheckMemory;
+     // assert(geomi->ngeomobj_offsets<=0 || ntris==geomi->ngeomobj_offsets);
       for(ii=0;ii<ntris;ii++){
-        surfdata *surfi;
+        surfdata *surfi=NULL;
         int k;
 
         for(k=0;k<3;k++){
@@ -3893,44 +3617,59 @@ FILE_SIZE ReadGeom2(geomdata *geomi, int load_flag, int type){
                           triangles[ii].tri_norm, NULL);
 
         CheckMemory;
-        surfi = surfinfo;
         triangles[ii].geomtype = type;
         switch(type){
         case GEOM_CGEOM:
-          surfi=surfinfo + CLAMP(surf_ind[ii],0,nsurfinfo-1);
+          surfi=global_scase.surfcoll.surfinfo + CLAMP(surf_ind[ii],0,global_scase.surfcoll.nsurfinfo-1);
           triangles[ii].insolid = locations[ii];
-          triangles[ii].geomobj = geominfo->geomobjinfo+geom_ind[ii]-1;
+          triangles[ii].geomobj = global_scase.geominfo->geomobjinfo+geom_ind[ii]-1;
           break;
         case GEOM_GEOM:
         case GEOM_ISO:
-          surfi=surfinfo + CLAMP(surf_ind[ii],0,nsurfinfo-1);
-          if(type==GEOM_ISO)surfi+=nsurfinfo;
+          surfi=global_scase.surfcoll.surfinfo + CLAMP(surf_ind[ii],0,global_scase.surfcoll.nsurfinfo-1);
+          if(type==GEOM_ISO)surfi+=global_scase.surfcoll.nsurfinfo;
           triangles[ii].insolid = surf_ind[ii];
           if(geomi->file2_tris!=NULL){
             triangles[ii].geomobj = geomi->geomobjinfo+geomi->file2_tris[ii]-1;
           }
           else{
-            triangles[ii].geomobj = NULL;
+            if(geomi->ngeomobj_offsets>0  && ii < geomi->ngeomobj_offsets && geomi->geomobj_offsets != NULL){
+              triangles[ii].geomobj = geomi->geomobjinfo + geomi->geomobj_offsets[ii];
+            }
+            else{
+              triangles[ii].geomobj = geomi->geomobjinfo;
+            }
           }
           break;
         case GEOM_SLICE:
         case GEOM_BOUNDARY:
-          surfi=surfinfo;
+          surfi=global_scase.surfcoll.surfinfo;
           triangles[ii].insolid = 0;
           break;
-	    default:
+	      default:
 	      assert(FFALSE);
 	      break;
         }
-        if(geomi->geomtype==GEOM_GEOM)surfi->used_by_geom = 1;
-        triangles[ii].geomsurf=surfi;
-        if(terrain_textures!=NULL&&geomi->is_terrain==1){
-          triangles[ii].textureinfo = terrain_textures;
+        switch(type){
+        case GEOM_CGEOM:
+        case GEOM_GEOM:
+        case GEOM_ISO:
+        case GEOM_SLICE:
+        case GEOM_BOUNDARY:
+          if(geomi->geomtype==GEOM_GEOM)surfi->used_by_geom = 1;
+          triangles[ii].geomsurf=surfi;
+          if(terrain_textures!=NULL&&geomi->is_terrain==1){
+            triangles[ii].textureinfo = terrain_textures;
+          }
+          else{
+            triangles[ii].textureinfo = surfi->textureinfo;
+          }
+          triangles[ii].outside_domain = OutSideDomain(triangles[ii].verts);
+          break;
+        default:
+	      assert(FFALSE);
+	      break;
         }
-        else{
-          triangles[ii].textureinfo = surfi->textureinfo;
-        }
-        triangles[ii].outside_domain = OutSideDomain(triangles[ii].verts);
       }
       FREEMEMORY(ijk);
       FREEMEMORY(surf_ind);
@@ -3982,137 +3721,6 @@ void ReorderFace(int *faces){
   VEC3EQ(faces,face_temp+2);
 }
 
-/* ------------------ CompareVerts2 ------------------------ */
-
-#define VERT_EPS 0.001
-
-int CompareVerts2(const void *arg1, const void *arg2){
-  vertdata *vert1, *vert2;
-  float *xyz1, *xyz2;
-
-
-  vert1 = *(vertdata **)arg1;
-  xyz1 = vert1->xyz;
-
-  vert2 = *(vertdata **)arg2;
-  xyz2 = vert2->xyz;
-
-  if(xyz1[0]<xyz2[0] - VERT_EPS)return -1;
-  if(xyz1[0]>xyz2[0] + VERT_EPS)return  1;
-
-  if(xyz1[1]<xyz2[1] - VERT_EPS)return -1;
-  if(xyz1[1]>xyz2[1] + VERT_EPS)return  1;
-
-  if(xyz1[2]<xyz2[2] - VERT_EPS)return -1;
-  if(xyz1[2]>xyz2[2] + VERT_EPS)return  1;
-  return 0;
-}
-
-/* ------------------ CompareEdges ------------------------ */
-
-int CompareEdges(const void *arg1, const void *arg2){
-  edgedata *edge1, *edge2;
-  int *v1, *v2;
-
-  edge1 = *(edgedata **)arg1;
-  edge2 = *(edgedata **)arg2;
-  v1 = edge1->vert_index;
-  v2 = edge2->vert_index;
-
-  if(v1[0]<v2[0])return -1;
-  if(v1[0]>v2[0])return 1;
-
-  if(v1[1]<v2[1])return -1;
-  if(v1[1]>v2[1])return 1;
-  return 0;
-}
-
-/* ------------------ CompareEdges2 ------------------------ */
-
-int CompareEdges2(edgedata *edge1, edgedata *edge2){
-  int *v1, *v2;
-
-  v1 = edge1->vert_index;
-  v2 = edge2->vert_index;
-
-  if(v1[0]<v2[0])return -1;
-  if(v1[0]>v2[0])return 1;
-
-  if(v1[1]<v2[1])return -1;
-  if(v1[1]>v2[1])return 1;
-  return 0;
-}
-
-/* ------------------ CompareFaces ------------------------ */
-
-int CompareFaces(const void *arg1, const void *arg2){
-  tridata *face1, *face2;
-  int *verts1, *verts2;
-  int v1[3], v2[3];
-
-  face1 = *(tridata **)arg1;
-  face2 = *(tridata **)arg2;
-  verts1 = face1->vert_index;
-  verts2 = face2->vert_index;
-
-  v1[0] = MIN(verts1[0], MIN(verts1[1], verts1[2]));
-  v1[2] = MAX(verts1[0], MAX(verts1[1], verts1[2]));
-  v1[1] = verts1[0]+verts1[1]+verts1[2]-v1[0]-v1[2];
-
-  v2[0] = MIN(verts2[0], MIN(verts2[1], verts2[2]));
-  v2[2] = MAX(verts2[0], MAX(verts2[1], verts2[2]));
-  v2[1] = verts2[0]+verts2[1]+verts2[2]-v2[0]-v2[2];
-
-  if(v1[0]<v2[0])return -1;
-  if(v1[0]>v2[0])return 1;
-
-  if(v1[1]<v2[1])return -1;
-  if(v1[1]>v2[1])return 1;
-
-  if(v1[2]<v2[2])return -1;
-  if(v1[2]>v2[2])return 1;
-  return 0;
-}
-
-/* ------------------ GetEdge ------------------------ */
-
-edgedata *GetEdge(edgedata *edges, int nedges, int iv1, int iv2){
-  int iresult;
-  edgedata ei, *elow, *emid, *ehigh;
-  int low, mid, high;
-  int ilow, ihigh;
-
-  ei.vert_index[0] = MIN(iv1, iv2);
-  ei.vert_index[1] = MAX(iv1, iv2);
-
-  elow = edges;
-  ehigh = edges + nedges - 1;
-
-  ilow = CompareEdges2(&ei, elow);
-  if(ilow < 0)return NULL;
-  if(ilow == 0)return elow;
-
-  ihigh = CompareEdges2(&ei, ehigh);
-  if(ihigh > 0)return NULL;
-  if(ihigh == 0)return ehigh;
-
-  low = 0;
-  high = nedges - 1;
-  while(high - low > 1){
-    mid = (low + high) / 2;
-    emid = edges + mid;
-    iresult = CompareEdges2(&ei, emid);
-    if(iresult == 0)return emid;
-    if(iresult > 0){
-      low = mid;
-    }
-    else{
-      high = mid;
-    }
-  }
-  return NULL;
-}
-
 /* ------------------ CancelUpdateTriangles ------------------------ */
 
 void CancelUpdateTriangles(void){
@@ -4121,207 +3729,22 @@ void CancelUpdateTriangles(void){
   cancel_update_triangles = 0;
 }
 
-/* ------------------ ClassifyGeom ------------------------ */
-
-void ClassifyGeom(geomdata *geomi,int *geom_frame_index){
-  int i, iend;
-
-  if(geomi->geomlistinfo==NULL)return;
-  iend = geomi->ntimes;
-  if(geom_frame_index!=NULL)iend=1;
-
-  for(i = -1; i<iend; i++){
-    geomlistdata *geomlisti;
-    int nverts, ntriangles;
-    int j;
-    vertdata *vertbase;
-
-
-    geomlisti = geomi->geomlistinfo+i;
-    if(i!=-1&&geom_frame_index!=NULL)geomlisti = geomi->geomlistinfo+(*geom_frame_index);
-
-    nverts=geomlisti->nverts;
-    ntriangles = geomlisti->ntriangles;
-    if(nverts==0||geomlisti->verts==NULL)continue;
-    vertbase = geomlisti->verts;
-    if(ntriangles > 0){
-      int nfacelist_index;
-      tridata **facelist_ptrs = NULL;
-
-      nfacelist_index = ntriangles;
-      NewMemory((void **)&facelist_ptrs, nfacelist_index*sizeof(tridata *));
-      for(j = 0; j < nfacelist_index; j++){
-        tridata *trij;
-        int *vert_index;
-
-        trij = geomlisti->triangles + j;
-        trij->exterior = 1;
-        facelist_ptrs[j] = trij;
-        vert_index = trij->vert_index;
-        vert_index[0] = trij->verts[0] - vertbase;
-        vert_index[1] = trij->verts[1] - vertbase;
-        vert_index[2] = trij->verts[2] - vertbase;
-      }
-      qsort(facelist_ptrs, nfacelist_index, sizeof(tridata *), CompareFaces);
-      for(j = 1; j < nfacelist_index; j++){
-        if(CompareFaces(facelist_ptrs + j, facelist_ptrs + j - 1) == 0){
-          tridata *trij, *trijm1;
-
-          trij = facelist_ptrs[j];
-          trij->exterior = 0;
-
-          trijm1 = facelist_ptrs[j - 1];
-          trijm1->exterior = 0;
-         }
-      }
-      FREEMEMORY(facelist_ptrs);
-    }
-    if(ntriangles > 0){
-      edgedata **edgelist_ptr, *edges, *edges2;
-      tridata *triangles;
-      int ii;
-      int ntris;
-      int nedges;
-      int nedgelist_index = 0;
-
-      ntris = geomlisti->ntriangles;
-      triangles = geomlisti->triangles;
-
-      NewMemory((void **)&edges, 3 * ntris * sizeof(edgedata));
-      NewMemory((void **)&edges2, 3 * ntris * sizeof(edgedata));
-
-      nedgelist_index = 3 * ntris;
-      NewMemory((void **)&edgelist_ptr, nedgelist_index * sizeof(edgedata *));
-
-      for(ii = 0; ii<ntris; ii++){
-        int i0, i1, i2;
-
-        i0 = triangles[ii].vert_index[0];
-        i1 = triangles[ii].vert_index[1];
-        i2 = triangles[ii].vert_index[2];
-
-        edges[3 * ii].vert_index[0] = MIN(i0, i1);
-        edges[3 * ii].vert_index[1] = MAX(i0, i1);
-
-        edges[3 * ii + 1].vert_index[0] = MIN(i1, i2);
-        edges[3 * ii + 1].vert_index[1] = MAX(i1, i2);
-
-        edges[3 * ii + 2].vert_index[0] = MIN(i2, i0);
-        edges[3 * ii + 2].vert_index[1] = MAX(i2, i0);
-
-        edgelist_ptr[3*ii]   = edges+3*ii;
-        edgelist_ptr[3*ii+1] = edges+3*ii+1;
-        edgelist_ptr[3*ii+2] = edges+3*ii+2;
-      }
-
-
-      // remove duplicate edges
-      qsort(edgelist_ptr, nedgelist_index, sizeof(edgedata *), CompareEdges);
-      nedges = 0;
-      edges2[nedges].vert_index[0] = edgelist_ptr[nedges]->vert_index[0];
-      edges2[nedges].vert_index[1] = edgelist_ptr[nedges]->vert_index[1];
-      nedges++;
-      for(ii = 1; ii < nedgelist_index; ii++){
-        if(CompareEdges(edgelist_ptr+ii - 1, edgelist_ptr+ii)==0)continue;
-        memcpy(edges2[nedges].vert_index, edgelist_ptr[ii]->vert_index, 2*sizeof(int));
-        nedges++;
-      }
-      if(nedges>0)ResizeMemory((void **)&edges2, nedges * sizeof(edgedata));
-      geomlisti->edges = edges2;
-      geomlisti->nedges = nedges;
-      FREEMEMORY(edges);
-      edges = edges2;
-
-      for(ii = 0; ii < nedges; ii++){
-        edges[ii].ntriangles = 0;
-      }
-
-      // count triangles associated with each edge
-
-      for(ii = 0; ii<ntris; ii++){
-        edgedata *edgei;
-        int *vi;
-
-        vi = triangles[ii].vert_index;
-        edgei = GetEdge(edges, nedges, vi[0], vi[1]);
-        if(edgei != NULL)edgei->ntriangles++;
-        edgei = GetEdge(edges, nedges, vi[1], vi[2]);
-        if(edgei != NULL)edgei->ntriangles++;
-        edgei = GetEdge(edges, nedges, vi[2], vi[0]);
-        if(edgei != NULL)edgei->ntriangles++;
-      }
-
-    }
-    if(nverts > 0){
-      int nvertlist_index = 0;
-      vertdata **vertlist_ptr, *verts;
-      int ii;
-
-      verts = geomlisti->verts;
-      nvertlist_index = nverts;
-      NewMemory((void **)&vertlist_ptr, nvertlist_index * sizeof(vertdata *));
-      for(ii = 0; ii < nvertlist_index; ii++){
-        vertlist_ptr[ii] = verts + ii;
-      }
-
-      qsort(vertlist_ptr, nvertlist_index, sizeof(vertdata *), CompareVerts2);
-      for(ii = 0; ii < nvertlist_index; ii++){
-        vertdata *vi;
-
-        vi = verts + ii;
-        vi->isdup = 0;
-      }
-      for(ii = 1; ii < nvertlist_index; ii++){
-        if(CompareVerts2(vertlist_ptr + ii - 1, vertlist_ptr + ii) == 0){
-          vertdata *v1, *v2;
-
-          v1 = vertlist_ptr[ii];
-          v2 = vertlist_ptr[ii-1];
-          v1->isdup = 1;
-          v2->isdup = 1;
-        }
-      }
-      FREEMEMORY(vertlist_ptr);
-    }
-  }
-}
-
 /* ------------------ ReadGeom ------------------------ */
 
-void ReadGeomFile2(geomdata *geomi){
-  FILE *stream;
-  int ntris, *tris;
-
-  if(geomi->file2==NULL)return;
-  stream = fopen(geomi->file2, "rb");
-  if(stream==NULL)return;
-  FSEEK(stream, 4, SEEK_CUR); fread(&ntris, 4, 1, stream); FSEEK(stream, 4, SEEK_CUR);
-  if(ntris<=0){
-    fclose(stream);
-    return;
-  }
-  NewMemory((void **)&tris, ntris*sizeof(int));
-  FSEEK(stream, 4, SEEK_CUR); fread(tris, 4, ntris, stream); FSEEK(stream, 4, SEEK_CUR);
-  geomi->file2_tris = tris;
-  geomi->nfile2_tris = ntris;
-  fclose(stream);
-}
-
-/* ------------------ ReadGeom ------------------------ */
-
-FILE_SIZE ReadGeom(geomdata *geomi, int load_flag, int type, int *geom_frame_index){
-  FILE *stream;
+FILE_SIZE ReadGeom(geomdata *geomi, unsigned char *buffer, int nbuffer, int load_flag, int type, int *geom_frame_index){
+  FILE_m *stream;
   int version;
-  int returncode=0;
   int one=0;
+  int count_read;
   FILE_SIZE return_filesize=0;
 
-  if(geomi->file==NULL)return 0;
-  stream = fopen(geomi->file,"rb");
-  if(stream==NULL)return 0;
-  FSEEK(stream,4,SEEK_CUR);fread(&one,4,1,stream);FSEEK(stream,4,SEEK_CUR);
-  FORTREAD(&version,4,1,stream);
-  fclose(stream);
+  if(geomi->file == NULL && buffer==NULL)return 0;
+  stream = fopen_b(geomi->file, buffer, nbuffer, "rb");
+  if(stream == NULL)return 0;
+  FORTREAD_m(&one,4,1,stream);
+  FORTREAD_m(&version, 4, 1, stream);
+  if(count_read!=1)fclose_b(stream);
+  fclose_b(stream);
   return_filesize = 2*(4+4+4);
 
   if(version<=1){
@@ -4421,8 +3844,8 @@ void DrawGeomVData(vslicedata *vd){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
-      if(auto_terrain==1)glTranslatef(0.0, 0.0, SCALE2FDS(0.01));
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
+      if(global_scase.auto_terrain==1)glTranslatef(0.0, 0.0, SCALE2FDS(0.01));
 
       glLineWidth(vectorlinewidth);
       glBegin(GL_LINES);
@@ -4572,17 +3995,19 @@ void DrawGeomVData(vslicedata *vd){
 
   /* ------------------ DrawGeomData ------------------------ */
 
-#define GEOMTEXTURE(index, vmin, vmax) ( \
+#define GEOMVAL(index) ( patchi->is_compressed==0 ? vals[(index)] : (float)cvals[(index)] )
+#define GEOMTEXTURE(index, vmin, vmax) ( CLAMP( (vals[(index)]-vmin)/(vmax-vmin),0.0,1.0) )
+#define GEOMTEXTURE2(geomval, vmin, vmax) ( \
         patchi->is_compressed==0 ? \
-        CLAMP( (vals[(index)]-vmin)/(vmax-vmin),0.0,1.0) : \
-        CLAMP( (float)cvals[(index)]/255.0,0.0,1.0) \
+        CLAMP( (geomval-vmin)/(vmax-vmin),0.0,1.0) : \
+        CLAMP( (float)geomval/255.0,0.0,1.0) \
         )
 
 void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
   int i;
   unsigned char *ivals, *cvals;
   int is_ccell = 0;
-  float *vals;
+  float *vals=NULL;
 
   int set_valmin, set_valmax;
   char *label;
@@ -4620,13 +4045,12 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
      show_slice_shaded[IN_SOLID_GLUI]==1||
      show_slice_shaded[IN_GAS_GLUI] == 1))
      ){
-    for(i = 0; i < 1; i++){
+    int nloops = 1;
+    if(vals == NULL)nloops = 0;
+    for(i = 0; i < nloops; i++){
       geomdata *geomi;
       geomlistdata *geomlisti;
       int ntris, j, enable_lighting;
-#ifdef pp_DECIMATE
-      int decimate;
-#endif
 
       geomi = patchi->geominfo;
       if(geomi == NULL || geomi->display == 0 || geomi->loaded == 0)continue;
@@ -4636,7 +4060,7 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
       else{
         geomlisti = geomi->geomlistinfo + geomi->itime;
       }
-      if(patchi->patch_filetype==PATCH_GEOMETRY_BOUNDARY&&geomdata_lighting==1){
+      if(patchi->patch_filetype==PATCH_GEOMETRY_BOUNDARY){
         enable_lighting = 1;
       }
       else{
@@ -4646,22 +4070,11 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
         UpdatePatchGeomTriangles(patchi, geom_type);
       }
       tridata *triangles;
+      int is_time_arrival = 0;
 
-#ifdef pp_DECIMATE
-      if(use_decimate_geom == 1 && patchi->blocknumber>=0 && meshinfo[patchi->blocknumber].dec_triangles != NULL){
-        triangles = meshinfo[patchi->blocknumber].dec_triangles;
-        ntris     = meshinfo[patchi->blocknumber].ndec_triangles;
-        decimate = 1;
-      }
-      else{
-        triangles = geomlisti->triangles;
-        ntris     = geomlisti->ntriangles;
-        decimate = 0;
-      }
-#else
+      if(strcmp(patchi->label.shortlabel, "t_a") == 0)is_time_arrival = 1;
       triangles = geomlisti->triangles;
       ntris     = geomlisti->ntriangles;
-#endif
       if(ntris == 0)continue;
 
       if(is_ccell==0&&flag == DRAW_TRANSPARENT&&use_transparency_data == 1 && patchi->patch_filetype == PATCH_GEOMETRY_SLICE)TransparentOn();
@@ -4679,36 +4092,33 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
       glBindTexture(GL_TEXTURE_1D, texture_slice_colorbar_id);
       glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,            iso_specular);
       glMaterialf(GL_FRONT_AND_BACK,  GL_SHININESS,           iso_shininess);
-      glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, block_ambient2);
+      glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, global_scase.color_defs.block_ambient2);
       glEnable(GL_COLOR_MATERIAL);
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0+boundaryoffset);
-      if(auto_terrain==1)glTranslatef(0.0, 0.0, slice_dz);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0+boundaryoffset);
+      if(global_scase.auto_terrain==1)glTranslatef(0.0, 0.0, slice_dz);
       glBegin(GL_TRIANGLES);
       if((patchi->patch_filetype!=PATCH_GEOMETRY_BOUNDARY&&smooth_iso_normal == 0)
-       ||(patchi->patch_filetype==PATCH_GEOMETRY_BOUNDARY&&geomdata_smoothnormals==0)
-        ){
+       ||patchi->patch_filetype==PATCH_GEOMETRY_BOUNDARY){
         for(j = 0; j < ntris; j++){
           float *xyzptr[3];
           tridata *trianglei;
+          int ival;
 
           trianglei = triangles + j;
           if(patchi->patch_filetype==PATCH_GEOMETRY_BOUNDARY){
-#ifdef pp_DECIMATE
-            if(decimate == 1){
-              rvals[0] = GEOMTEXTURE(trianglei->ival, ttmin, ttmax);
-            }
-            else{
-              rvals[0] = GEOMTEXTURE(j, ttmin, ttmax);
-            }
-#else
-            rvals[0] = GEOMTEXTURE(j, ttmin, ttmax);
-#endif
+            rvals[0] = GEOMVAL(j);
+            if(is_time_arrival == 1 && rvals[0] > TOA_LIMIT)continue;
+            rvals[0] = GEOMTEXTURE2(rvals[0], ttmin, ttmax);
+            ival = CLAMP(rvals[0] * 255.0, 0, 255);
+            if(rgb_patch[4*ival + 3] == 0.0)continue;
           }
           else if(patchi->patch_filetype==PATCH_GEOMETRY_SLICE){
             rvals[0] = GEOMTEXTURE(j, valmin, valmax);
+            ival = CLAMP(rvals[0] * 255.0, 0, 255);
+            if(rgb_slice[4*ival + 3] == 0.0)continue;
           }
           else{
             rvals[0] = (float)ivals[j]/255.0;
@@ -4857,27 +4267,13 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
       }
       tridata *triangles;
 
-
-#ifdef pp_DECIMATE
-      if(use_decimate_geom == 1 && patchi->blocknumber >= 0 && meshinfo[patchi->blocknumber].dec_triangles != NULL){
-        triangles = meshinfo[patchi->blocknumber].dec_triangles;
-        ntris = meshinfo[patchi->blocknumber].ndec_triangles;
-       // decimate = 1;
-      }
-      else{
-        triangles = geomlisti->triangles;
-        ntris = geomlisti->ntriangles;
-       // decimate = 0;
-      }
-#else
       triangles = geomlisti->triangles;
       ntris = geomlisti->ntriangles;
-#endif
       if(ntris == 0)continue;
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       if(patchi->patch_filetype == PATCH_GEOMETRY_BOUNDARY){
         glLineWidth(geomboundary_linewidth);
       }
@@ -5025,7 +4421,7 @@ void DrawGeomData(int flag, slicedata *sd, patchdata *patchi, int geom_type){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       if(patchi->patch_filetype == PATCH_GEOMETRY_BOUNDARY){
         glPointSize(geomboundary_pointsize);
       }
@@ -5150,13 +4546,11 @@ void DrawGeomValues(slicedata *sd, patchdata *patchi, int geom_type){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       for(j = 0; j<nvals; j++){
         tridata *trianglei;
         vertdata *verti;
         int draw_foreground;
-
-        draw_foreground = 0;
 
         int insolid;
 
@@ -5228,7 +4622,7 @@ void DrawCGeom(int flag, geomdata *cgeom){
   geomdata *geomi;
 
   if(HaveTerrainTexture(NULL) == 1)return;
-  if(show_geom_boundingbox==SHOW_BOUNDING_BOX_ALWAYS||geom_bounding_box_mousedown==1){
+  if(hide_scene==1 && mouse_down==1){
     if(flag==DRAW_OPAQUE&&have_geom_triangles==1){
       DrawGeomBoundingBox(NULL);
     }
@@ -5241,11 +4635,9 @@ void DrawCGeom(int flag, geomdata *cgeom){
   if(show_faces_shaded==1&&(geomi!=NULL&&geomi->display==1&&geomi->loaded==1)){
     for(i=0;i<1;i++){
       geomlistdata *geomlisti;
-      int ntris, j, enable_lighting;
+      int ntris, j;
 
       geomlisti = geomi->geomlistinfo-1;
-      enable_lighting = geomdata_lighting;
-
       ntris = geomlisti->ntriangles;
       if(ntris==0)continue;
       if(geom_force_transparent==1&&flag!=DRAW_TRANSPARENT)continue;
@@ -5254,20 +4646,15 @@ void DrawCGeom(int flag, geomdata *cgeom){
 
       glEnable(GL_NORMALIZE);
       glShadeModel(GL_SMOOTH);
-      if(enable_lighting==1){
-        ENABLE_LIGHTING;
-      }
-      else{
-        DISABLE_LIGHTING;
-      }
+      ENABLE_LIGHTING;
       glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, iso_specular);
       glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, iso_shininess);
-      glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, block_ambient2);
+      glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, global_scase.color_defs.block_ambient2);
       glEnable(GL_COLOR_MATERIAL);
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glBegin(GL_TRIANGLES);
       for(j = 0; j<ntris; j++){
         float *color, *xyzptr[3];
@@ -5302,8 +4689,10 @@ void DrawCGeom(int flag, geomdata *cgeom){
           }
         }
         if(geom_force_transparent==1)transparent_level_local = geom_transparency;
-        if(flag==DRAW_TRANSPARENT&&transparent_level_local>=1.0)continue;
-        if(flag!=DRAW_TRANSPARENT&&transparent_level_local<1.0)continue;
+        if(have_boundary_arrival == 0){
+          if(flag==DRAW_TRANSPARENT&&transparent_level_local>=1.0)continue;
+          if(flag!=DRAW_TRANSPARENT&&transparent_level_local<1.0)continue;
+        }
 
         if(lighting_on==1)glNormal3fv(trianglei->tri_norm);
         glColor4f(color[0], color[1], color[2], transparent_level_local);
@@ -5318,9 +4707,7 @@ void DrawCGeom(int flag, geomdata *cgeom){
       glEnd();
       glPopMatrix();
       glDisable(GL_COLOR_MATERIAL);
-      if(enable_lighting==1){
-        DISABLE_LIGHTING;
-      }
+      DISABLE_LIGHTING;
       if(flag==DRAW_TRANSPARENT&&use_transparency_data==1)TransparentOff();
     }
   }
@@ -5340,7 +4727,7 @@ void DrawCGeom(int flag, geomdata *cgeom){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glTranslatef(0.0, 0.0, geom_dz_offset);
       glLineWidth(geom_linewidth);
       glBegin(GL_LINES);
@@ -5418,7 +4805,7 @@ void DrawCGeom(int flag, geomdata *cgeom){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glLineWidth(geom_linewidth);
       glBegin(GL_LINES);
       for(j = 0; j<geomi->ncface_normals; j++){
@@ -5450,7 +4837,7 @@ void DrawCGeom(int flag, geomdata *cgeom){
 
       glPushMatrix();
       glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-      glTranslatef(-xbar0, -ybar0, -zbar0);
+      glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
       glTranslatef(0.0, 0.0, geom_dz_offset);
       glPointSize(geom_pointsize);
       glBegin(GL_POINTS);
@@ -5475,18 +4862,6 @@ void DrawCGeom(int flag, geomdata *cgeom){
   }
 }
 
-/* ------------------ CompareTransparentTriangles ------------------------ */
-
-int CompareTransparentTriangles(const void *arg1, const void *arg2){
-  tridata *tri, *trj;
-
-  tri = *(tridata **)arg1;
-  trj = *(tridata **)arg2;
-
-  if(tri->distance<trj->distance)return 1;
-  if(tri->distance>trj->distance)return -1;
-  return 0;
-}
 
 /* ------------------ GetGeomInfoPtrs ------------------------ */
 
@@ -5497,7 +4872,7 @@ void GetGeomInfoPtrs(int flag){
   if(flag==1){
     int count;
 
-    count = nisoinfo+ngeominfo;
+    count = global_scase.nisoinfo+global_scase.ngeominfo;
     if(count>0){
       NewMemory((void **)&gptr, count*sizeof(geomdata *));
     }
@@ -5509,10 +4884,10 @@ void GetGeomInfoPtrs(int flag){
 
   gptr = geominfoptrs;
   hide_geom = 0;
-  for(i = 0;i < npatchinfo;i++){
+  for(i = 0;i < global_scase.npatchinfo;i++){
     patchdata *patchi;
 
-    patchi = patchinfo + i;
+    patchi = global_scase.patchinfo + i;
     if(patchi->patch_filetype == PATCH_GEOMETRY_BOUNDARY && patchi->loaded == 1 && patchi->display == 1){
       hide_geom = 1;
       break;
@@ -5523,18 +4898,18 @@ void GetGeomInfoPtrs(int flag){
   // count size of geominfoptrs array
 
   ngeominfoptrs=0;
-  for(i=0;i<ngeominfo;i++){
+  for(i=0;i<global_scase.ngeominfo;i++){
     geomdata *geomi;
 
-    geomi = geominfo + i;
+    geomi = global_scase.geominfo + i;
     // hide geometry if we are displaying a boundary file over top of it
     if(geomi->loaded==1&&geomi->display==1&&geomi->geomtype==GEOM_GEOM&&hide_geom==0)ngeominfoptrs++;
   }
-  for(i=0;i<nisoinfo;i++){
+  for(i=0;i<global_scase.nisoinfo;i++){
     isodata *isoi;
     geomdata *geomi;
 
-    isoi = isoinfo + i;
+    isoi = global_scase.isoinfo + i;
     if(isoi->loaded==0||isoi->display==0)continue;
     geomi = isoi->geominfo;
     if(geomi==NULL)continue;
@@ -5544,17 +4919,17 @@ void GetGeomInfoPtrs(int flag){
 
   // put pointers into geominfoptrs array
 
-  for(i=0;i<ngeominfo;i++){
+  for(i=0;i<global_scase.ngeominfo;i++){
     geomdata *geomi;
 
-    geomi = geominfo + i;
+    geomi = global_scase.geominfo + i;
     if(geomi->loaded==1&&geomi->display==1&&geomi->geomtype==GEOM_GEOM&&hide_geom == 0)*gptr++=geomi;
   }
-  for(i=0;i<nisoinfo;i++){
+  for(i=0;i<global_scase.nisoinfo;i++){
     isodata *isoi;
     geomdata *geomi;
 
-    isoi = isoinfo + i;
+    isoi = global_scase.isoinfo + i;
     if(isoi->loaded==0||isoi->display==0)continue;
     geomi = isoi->geominfo;
     if(geomi==NULL||geomi->loaded==0||geomi->display==0)continue;
@@ -5587,7 +4962,7 @@ void ShowHideSortGeometry(int sort_geom, float *mm){
 
       // reject unwanted geometry
 
-      if(auto_terrain==1&&i==0)continue;
+      if(global_scase.auto_terrain==1&&i==0)continue;
       if(geomi->is_terrain==1)continue;
       have_geom_triangles = 1;
       if( (geomi->fdsblock == NOT_FDSBLOCK && geomi->geomtype!=GEOM_ISO)|| geomi->patchactive == 1)continue;
@@ -5604,8 +4979,8 @@ void ShowHideSortGeometry(int sort_geom, float *mm){
           if(geomi->currentframe != NULL)geomlisti = geomi->currentframe;
         }
         if(itime==1&&geomi->geomtype==GEOM_ISO){
-          if(use_tload_begin==1&&global_times[itimes]<tload_begin)continue;
-          if(use_tload_end==1&&global_times[itimes]>tload_end)continue;
+          if(use_tload_begin==1&&global_times[itimes]<global_scase.tload_begin)continue;
+          if(use_tload_end==1&&global_times[itimes]>global_scase.tload_end)continue;
         }
 
         for(j = 0; j < geomlisti->ntriangles; j++){
@@ -5626,9 +5001,12 @@ void ShowHideSortGeometry(int sort_geom, float *mm){
             if(tri->geomsurf!=NULL&&tri->geomsurf->transparent_level>=1.0)is_opaque = 1;
           }
           if(geom_force_transparent == 1)is_opaque = 0;
-          isurf = tri->geomsurf - surfinfo - nsurfinfo - 1;
+          isurf = tri->geomsurf - global_scase.surfcoll.surfinfo - global_scase.surfcoll.nsurfinfo - 1;
           tri->geomlisti = geomlisti;
-          if((geomi->geomtype==GEOM_ISO&&showlevels != NULL&&showlevels[isurf] == 0) || tri->geomsurf->transparent_level <= 0.0){
+          if(
+            (geomi->geomtype==GEOM_ISO&&showlevels != NULL&&showlevels[isurf] == 0) || 
+            (tri->geomsurf!=NULL&&tri->geomsurf->transparent_level <= 0.0)
+            ){
             continue;
           }
           if(iter == 1){
@@ -5669,8 +5047,7 @@ void ShowHideSortGeometry(int sort_geom, float *mm){
     if(iter == 0){
       CheckMemory;
       if(count_transparent == 0 && count_opaque == 0)return;
-      FREEMEMORY(alltriangles);
-      NewMemory((void **)&alltriangles, (count_opaque + count_transparent)*sizeof(tridata **));
+      NEWMEM(alltriangles, (count_opaque + count_transparent) * sizeof(tridata **));
       transparent_triangles = alltriangles;
       opaque_triangles = alltriangles + count_transparent;
     }
@@ -5680,162 +5057,4 @@ void ShowHideSortGeometry(int sort_geom, float *mm){
   if(sort_geom==1&&ntransparent_triangles>0){
     qsort((isotri **)transparent_triangles, (size_t)ntransparent_triangles, sizeof(tridata **), CompareTransparentTriangles);
   }
-}
-
-/* ------------------ InitGeom ------------------------ */
-
-void InitGeom(geomdata *geomi,int geomtype, int fdsblock, int have_cface_normals_arg, int block_number){
-  geomi->block_number = block_number;
-  geomi->file=NULL;
-  geomi->topo_file = NULL;
-  geomi->cache_defined = 0;
-  geomi->display=0;
-  geomi->loaded=0;
-  geomi->geomlistinfo_0=NULL;
-  geomi->surfgeom=NULL;
-  geomi->geomlistinfo=NULL;
-  geomi->currentframe = NULL;
-  geomi->times=NULL;
-  geomi->ntimes=0;
-  geomi->times=NULL;
-  geomi->timeslist=NULL;
-  geomi->float_vals=NULL;
-  geomi->int_vals=NULL;
-  geomi->nfloat_vals=0;
-  geomi->nint_vals=0;
-  geomi->geomtype = geomtype;
-  geomi->fdsblock = fdsblock;
-  geomi->is_terrain = 0;
-  geomi->file2_tris = NULL;
-  geomi->nfile2_tris = 0;
-  geomi->have_cface_normals = have_cface_normals_arg;
-  geomi->ncface_normals = 0;
-  geomi->cface_normals = NULL;
-}
-
-/* ------------------ RotateU2V ------------------------ */
-
-void RotateU2V(float *u, float *v, float *axis, float *angle){
-  float sum, cosangle, normu, normv;
-
-  /*
-  i  j  k
-  ux uy uz
-  vx vy vz
-  */
-
-  CROSS(axis, u, v);
-  sum = NORM3(axis);
-  normu = NORM3(u);
-  normv = NORM3(v);
-  if(sum>0.0&&normu>0.0&&normv>0.0){
-    axis[0] /= sum;
-    axis[1] /= sum;
-    axis[2] /= sum;
-    cosangle = CLAMP(DOT3(u, v) / (normu*normv), -1.0, 1.0);
-    *angle = acos(cosangle);
-  }
-  else{
-    axis[0] = 0.0;
-    axis[1] = 0.0;
-    axis[2] = 1.0;
-    *angle = 0.0;
-  }
-}
-
-/* ------------------ AngleAxis2Quat ------------------------ */
-
-void AngleAxis2Quat(float angle, float *axis, float *quat){
-  float sum;
-  float cosang, sinang;
-
-  // angle is in radians
-  // axis is a vector
-
-  sum = sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
-
-  if(sum>0.0){
-    cosang = cos(angle / 2.0);
-    sinang = sin(angle / 2.0);
-
-    quat[0] = cosang;
-    quat[1] = axis[0] * sinang / sum;
-    quat[2] = axis[1] * sinang / sum;
-    quat[3] = axis[2] * sinang / sum;
-  }
-  else{
-    quat[0] = 1.0;
-    quat[1] = 0.0;
-    quat[2] = 0.0;
-    quat[3] = 0.0;
-  }
-}
-
-/* ------------------ Quat2Rot------------------ */
-
-void Quat2Rot(float quat[4], float rot[16]){
-  float w=0.0, x=0.0, y=0.0, z=0.0, sum;
-
-  sum = sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3]);
-  if(sum!=0.0){
-    w = quat[0]/sum;
-    x = quat[1]/sum;
-    y = quat[2]/sum;
-    z = quat[3]/sum;
-  }
-
-  rot[0] = 1.0 - 2.0*y*y - 2.0*z*z;
-  rot[1] = 2.0*x*y + 2.0*w*z;
-  rot[2] = 2.0*x*z - 2.0*w*y;
-  rot[3] = 0.0;
-
-  rot[4] = 2.0*x*y - 2.0*w*z;
-  rot[5] = 1.0 - 2.0*x*x - 2.0*z*z;
-  rot[6] = 2.0*y*z + 2.0*w*x;
-  rot[7] = 0.0;
-
-  rot[8] = 2.0*x*z + 2.0*w*y;
-  rot[9] = 2.0*y*z - 2.0*w*x;
-  rot[10] = 1.0 - 2.0*x*x - 2.0*y*y;
-  rot[11] = 0.0;
-
-  rot[12] = 0.0;
-  rot[13] = 0.0;
-  rot[14] = 0.0;
-  rot[15] = 1.0;
-}
-
-/* ------------------ MultQuat ------------------------ */
-
-void MultQuat(float x[4], float y[4], float z[4]){
-  float z2[4];
-
-  z2[0] = x[0] * y[0] - x[1] * y[1] - x[2] * y[2] - x[3] * y[3];
-  z2[1] = x[0] * y[1] + x[1] * y[0] + x[2] * y[3] - x[3] * y[2];
-  z2[2] = x[0] * y[2] - x[1] * y[3] + x[2] * y[0] + x[3] * y[1];
-  z2[3] = x[0] * y[3] + x[1] * y[2] - x[2] * y[1] + x[3] * y[0];
-  z[0] = z2[0];
-  z[1] = z2[1];
-  z[2] = z2[2];
-  z[3] = z2[3];
-}
-
-/* ------------------ XYZ2AzElev ------------------------ */
-
-void XYZ2AzElev(float *xyz, float *azimuth, float *elevation){
-  float norm3;
-
-  // x = ||xyz||cos(az)*cos(elev)
-  // y = ||xyz||sin(az)*cos(elev)
-  // z = ||xyz||sin(elev)
-  // elev=asin(z/||xyz||)
-  // az=atan(y/x)
-  norm3 = NORM3(xyz);
-  if(norm3>0.00001&&ABS(xyz[2] / norm3) <= 1.0){
-    *elevation = RAD2DEG*asin(xyz[2] / norm3);
-  }
-  else{
-    *elevation = 0.0;
-  }
-  *azimuth = RAD2DEG*atan2(xyz[1], xyz[0]);
 }

@@ -18,6 +18,10 @@ typedef struct CommandlineArgs {
   bool print_version;
   bool update_bounds;
   bool large_case;
+  bool load_co2;
+  bool load_hrrpuv;
+  bool load_soot;
+  bool load_temp;
   bool no_graphics;
   /// @brief calculate slice file parameters
   bool update_slice;
@@ -39,7 +43,9 @@ typedef struct CommandlineArgs {
   /// @brief On Mac, turn on 2x scene scaling
   bool x2;
 #endif
-  /// @brief show startup timings
+  /// @brief show frame rates
+  bool trirates;
+  /// @brief show timings
   bool timings;
   bool convert_ini;
   bool convert_ssf;
@@ -52,14 +58,11 @@ typedef struct CommandlineArgs {
   bool no_slcf;
   bool show_help_summary;
   bool show_help_all;
-#ifdef pp_NOBOUNDS
   bool nobounds;
-#endif
   bool noblank;
   /// @brief check conversion between CIELabl and rgb color coordinates
   bool check_colorbar;
   /// @brief pre-calculate all FED slice files
-  bool fed;
   bool verbose;
   /// @brief show geometry bound boxes instead of geometry
   bool outline;

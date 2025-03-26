@@ -1,12 +1,10 @@
-
 # smvq
-add_executable(smvq smvq.c
-    ../shared/getdata.c
-    ../shared/dmalloc.c
+add_executable(smvq smvq.c)
+
+target_sources(smvq PRIVATE
     ../smokeview/menus.c
     ../smokeview/IOscript.c
     ../smokeview/IOshooter.c
-    ../shared/csphere.c
     ../smokeview/colortimebar.c
     ../smokeview/camera.c
     ../smokeview/IOgeometry.c
@@ -18,12 +16,8 @@ add_executable(smvq smvq.c
     ../smokeview/output.c
     ../smokeview/renderimage.c
     ../smokeview/renderhtml.c
-    ../shared/isobox.c
     ../smokeview/getdatabounds.c
     ../smokeview/readsmv.c
-    ../smokeview/scontour2d.c
-    ../shared/dmalloc.c
-    ../shared/compress.c
     ../smokeview/IOvolsmoke.c
     ../smokeview/IOsmoke.c
     ../smokeview/IOplot3d.c
@@ -37,26 +31,14 @@ add_executable(smvq smvq.c
     ../smokeview/callbacks.c
     ../smokeview/drawGeometry.c
     ../smokeview/skybox.c
-    ../shared/file_util.c
-    ../shared/string_util.c
     ../smokeview/startup.c
     ../smokeview/shaders.c
     ../smokeview/unit.c
-    ../shared/threader.c
-    ../shared/histogram.c
-    ../shared/translate.c
     ../smokeview/update.c
     ../smokeview/viewports.c
     ../smokeview/smv_geometry.c
     ../smokeview/showscene.c
     ../smokeview/infoheader.c
-    ../shared/md5.c
-    ../shared/sha1.c
-    ../shared/sha256.c
-    ../shared/stdio_m.c
-    ../shared/stdio_buffer.c
-    ../shared/getdata.c
-    ../shared/color2rgb.c
     ../smokeview/colortable.c
     ../smokeview/command_args.c
 
@@ -78,9 +60,10 @@ target_include_directories(smvq PRIVATE
     ../shared
     ../glew
     ../smokeview
-    ../glui_v2_1_beta
-    ../glui_gl
 )
+
+target_include_directories(smvq PRIVATE)
+target_link_libraries(smvq PRIVATE libsmv)
 
 find_package(json-c CONFIG)
 if (NOT json-c_FOUND)
@@ -108,84 +91,31 @@ if (NOT json-c_FOUND)
 else()
     target_link_libraries(smvq PRIVATE json-c::json-c)
 endif()
-
-# These include directories are an existing workaround that would be good to
-# remove.Because of this custom code and the potential conflict with native libs
-# this needs to be early in the include order.
 if (WIN32)
-    target_include_directories(smvq PRIVATE ../glut_gl)
-else()
-    target_include_directories(smvq PRIVATE ../glui_gl)
-endif ()
+    find_package(unofficial-getopt-win32 REQUIRED)
+    target_link_libraries(smvq PRIVATE unofficial::getopt-win32::getopt)
+    # if (BUILD_SHARED_LIBS)
+    #     install(IMPORTED_RUNTIME_ARTIFACTS unofficial::getopt-win32::getopt)
+    # endif()
+endif()
+
+## BEGIN OLD STUFF
 # GLUI can be provided natively, but there are modifications in the code
 # vendored with Smokeview that we rely on. Because of this custom code and the
 # potential conflict with native libs this needs to be early in the include order.
+target_include_directories(smvq PRIVATE ../glui_gl)
+target_link_libraries(smvq PRIVATE GLEW::GLEW)
 target_link_libraries(smvq PRIVATE glui_static)
 target_include_directories(smvq PRIVATE ../glui_v2_1_beta)
-if(WIN32)
-    if (PThreads4W_FOUND)
-        target_link_libraries(smvq PRIVATE PThreads4W::PThreads4W)
-    else()
-        target_include_directories(smvq PRIVATE ../pthreads)
-        target_link_libraries(smvq PRIVATE pthread_static)
-    endif()
-endif()
-# Selecting which GLUT version to use is the most platform-dependent part of the
-# build.
 if (MACOSX)
-    add_definitions(-Dpp_NOQUARTZ)
     target_link_libraries(smvq PRIVATE "-framework OpenGL" "-framework GLUT")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
 elseif (GLUT_FOUND)
     target_link_libraries(smvq PRIVATE GLUT::GLUT)
 else()
-    target_link_libraries(smvq PRIVATE glut32_static)
+    target_link_libraries(smvq PRIVATE glut32)
 endif ()
-if (GLEW_FOUND)
-    target_link_libraries(smvq PRIVATE GLEW::GLEW)
-    # This line is a hack to work around the fact the code includes "glew.h"
-    # rather than <GL/glew.h>
-    target_include_directories(smvq PRIVATE ${GLEW_INCLUDE_DIRS}/GL)
-else()
-    target_sources(smvq PRIVATE
-        ../glew/glew.c
-    )
-    target_include_directories(smvq PRIVATE ../glew)
-endif()
-if (JPEG_FOUND)
-    target_link_libraries(smvq PRIVATE JPEG::JPEG)
-else()
-    target_link_libraries(smvq PRIVATE jpeg_static)
-endif()
-if (PNG_FOUND)
-    target_link_libraries(smvq PRIVATE PNG::PNG)
-else()
-    target_link_libraries(smvq PRIVATE png_static)
-endif()
-if (ZLIB_FOUND)
-    target_link_libraries(smvq PRIVATE ZLIB::ZLIB)
-else()
-    target_link_libraries(smvq PRIVATE zlib_static)
-endif()
-if (LIBGD_FOUND)
-    target_link_libraries(smvq PRIVATE PkgConfig::LIBGD)
-else()
-    target_link_libraries(smvq PRIVATE gd_static)
-endif()
-target_link_libraries(smvq PRIVATE OpenGL::GL OpenGL::GLU)
+## END OLD STUFF
 
-
-if (WIN32)
-    target_include_directories(smvq PRIVATE ../pthreads)
-    find_package(unofficial-getopt-win32 REQUIRED)
-    target_link_libraries(smvq PRIVATE unofficial::getopt-win32::getopt)
-endif()
-if ((NOT MACOSX) AND UNIX)
-    target_link_libraries(smvq PRIVATE m)
-endif()
-if (LINUX)
-    add_definitions(-Dpp_LINUX)
-    target_link_libraries(smvq PRIVATE pthread X11 Xmu GLU GL m stdc++)
-endif()
-
+target_link_libraries(smvq PUBLIC json-c::json-c)
 install(TARGETS smvq)

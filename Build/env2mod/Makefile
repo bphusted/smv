@@ -24,16 +24,6 @@ else
 endif
 GITINFO=-Dpp_GITHASH=\"$(GIT_HASH)\" -Dpp_GITDATE=\""$(GIT_DATE)\""
 
-ifeq ($(shell echo "check_quotes"),"check_quotes")
-  INTEL_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\intel_compversion)
-  GNU_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\gnu_compversion)
-else
-  INTEL_COMPVERSION := $(shell ../../../Utilities/Scripts/intel_compversion.sh)
-  GNU_COMPVERSION := $(shell ../../../Utilities/Scripts/gnu_compversion.sh)
-endif
-INTEL_COMPINFO=-Dpp_COMPVER=\"$(INTEL_COMPVERSION)\"
-GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
-
 # Definition of the object variables
 
 obj = file_util.o md5.o sha1.o sha256.o dmalloc.o string_util.o stdio_buffer.o env2mod.o main.o
@@ -54,7 +44,7 @@ no_target:
 
 # ------------- intel win 64 ----------------
 
-intel_win_64 : CFLAGS    = -Od -D WIN32 /nologo $(GITINFO) $(INTEL_COMPINFO)
+intel_win_64 : CFLAGS    = -Od -I $(SOURCE_DIR)/pthreads -D X64 -D WIN32 /nologo $(GITINFO) $(INTEL_COMPINFO)
 intel_win_64 : CC        = $(I_CC)
 intel_win_64 : exe       = env2mod_win_64.exe
 
@@ -113,16 +103,6 @@ gnu_osx_64 : exe       = env2mod_osx_64
 
 gnu_osx_64 : $(obj)
 	$(CPP) -o $(bin)/$(exe) $(obj) $(LFLAGS)
-
-# ------------- intel osx 64 ----------------
-
-intel_osx_64 : CFLAGS    = -O2 -m64 -D pp_OSX $(GITINFO) $(INTEL_COMPINFO)
-intel_osx_64 : LFLAGS    = -m64
-intel_osx_64 : CC        = icc
-intel_osx_64 : exe       = env2mod_osx_64
-
-intel_osx_64 : $(obj)
-	$(CC) -o $(bin)/$(exe) $(LFLABS) $(obj)
 
 .PHONY : clean
 clean:

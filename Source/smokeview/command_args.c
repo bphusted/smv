@@ -8,7 +8,7 @@
 #include <string.h>
 
 #include "options.h"
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "command_args.h"
 
 /* ------------------ CLE_Message ------------------------ */
@@ -51,11 +51,9 @@ CommandlineArgs ParseCommandlineNew(int argc, char **argv, char *message,
     strcpy(args.prog, argv[0]);
   }
   int i;
-#ifdef pp_OSX_1X
 #ifdef pp_OSX_HIGHRES
   args.x1 = true;
   args.x2 = false;
-#endif
 #endif
   for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-ini") == 0) {
@@ -99,6 +97,8 @@ CommandlineArgs ParseCommandlineNew(int argc, char **argv, char *message,
       args.stereo = true;
     } else if (strcmp(argv[i], "-big") == 0) {
       args.big = true;
+    } else if(strcmp(argv[i], "-trirates") == 0) {
+      args.trirates = true;
     } else if (strcmp(argv[i], "-timings") == 0) {
       args.timings = true;
     } else if (strcmp(argv[i], "-lang") == 0) {
@@ -200,14 +200,10 @@ CommandlineArgs ParseCommandlineNew(int argc, char **argv, char *message,
     } else if (strcmp(argv[i], "-noblank") == 0) {
       args.noblank = true;
     }
-#ifdef pp_NOBOUNDS
     else if(strcmp(argv[i], "-nobounds") == 0) {
       args.nobounds = true;
     }
-#endif
-    else if (strcmp(argv[i], "-fed") == 0) {
-      args.fed = true;
-    } else if (strcmp(argv[i], "-verbose") == 0) {
+    else if (strcmp(argv[i], "-verbose") == 0) {
       args.verbose = true;
     } else if (strcmp(argv[i], "-outline") == 0) {
       args.outline = true;
@@ -220,17 +216,17 @@ CommandlineArgs ParseCommandlineNew(int argc, char **argv, char *message,
       i++;
       sscanf(argv[i],"%f",&args.max_mem_GB);
       if(args.max_mem_GB<0.0)args.max_mem_GB = 0.0;
-    } 
+    }
     else if(strcmp(argv[i], "-x0") == 0) {
       args.have_x0 = true;
       i++;
       sscanf(argv[i],"%i",&args.x0);
-    } 
+    }
     else if(strcmp(argv[i], "-y0") == 0) {
       args.have_y0 = true;
       i++;
       sscanf(argv[i],"%i",&args.y0);
-    } 
+    }
     else if(strcmp(argv[i], "-X0") == 0) {
       args.have_X0 = true;
       i++;
@@ -245,7 +241,20 @@ CommandlineArgs ParseCommandlineNew(int argc, char **argv, char *message,
       args.geominfo = true;
     } else if (strcmp(argv[i], "-fast") == 0) {
       args.fast = true;
-    } else if(strcmp(argv[i], "-full") == 0) {
+    }
+    else if(strcmp(argv[i], "-load_co2") == 0) {
+      args.load_co2 = true;
+    }
+    else if(strcmp(argv[i], "-load_hrrpuv") == 0) {
+      args.load_hrrpuv = true;
+    }
+    else if(strcmp(argv[i], "-load_soot") == 0) {
+      args.load_soot = true;
+    }
+    else if(strcmp(argv[i], "-load_temp") == 0) {
+      args.load_temp = true;
+    }
+    else if(strcmp(argv[i], "-full") == 0) {
       args.full = true;
     } else if (strcmp(argv[i], "-blank") == 0) {
       args.blank = true;

@@ -4,13 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "string_util.h"
 #include "translate.h"
 
 /* ------------------ CompareTrdata ------------------------ */
 
-int CompareTrdata( const void *arg1, const void *arg2 ){
+int CompareTrdata(const void *arg1, const void *arg2){
   trdata *tri, *trj;
 
   tri = (trdata *)arg1;

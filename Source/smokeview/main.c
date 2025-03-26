@@ -7,9 +7,12 @@
 #include <sys/stat.h>
 #include GLUT_H
 
+#include "file_util.h"
 #include "string_util.h"
 #include "smokeviewvars.h"
 #include "command_args.h"
+#include "IOscript.h"
+#include "IOvolsmoke.h"
 
 #ifdef WIN32
 #include <direct.h>
@@ -22,50 +25,18 @@
 
 #include <assert.h>
 
-/* ------------------ IsInstallBinDir ------------------------ */
-
-int IsInstallBinDir(char *bindir){
-  char smvfile[1024];
-
-  if(bindir == NULL)return 0;
-  strcpy(smvfile, bindir);
-  strcat(smvfile, dirseparator);
-  strcat(smvfile, ".smokeview_bin");
-  return FileExistsOrig(smvfile);
-}
-
-/* ------------------ SetBinDirAlways ------------------------ */
-
-void SetBinDirAlways(char *new_bindir){
-  char savedir[1024], new_bindir_local[1024];
-
-  GETCWD(savedir, 1024);
-  CHDIR(new_bindir);
-  GETCWD(new_bindir_local, 1024);
-  CHDIR(savedir);
-  FREEMEMORY(smokeview_bindir);
-  NewMemory((void **)&smokeview_bindir, strlen(new_bindir_local) + 2);
-  strcpy(smokeview_bindir, new_bindir_local);
-  if(smokeview_bindir[strlen(smokeview_bindir) - 1] != dirseparator[0])strcat(smokeview_bindir, dirseparator);
-}
-
-/* ------------------ SetBinDir ------------------------ */
-
-int SetBinDir(char *new_bindir){
-  if(IsInstallBinDir(new_bindir) == 1){
-    SetBinDirAlways(new_bindir);
-    return 1;
-  }
-  return 0;
-}
-
 /* ------------------ Usage ------------------------ */
 
-void Usage(char *prog,int option){
-  PRINTF("%s\n", release_title);
+void Usage(int option){
+  char githash[100];
+  char gitdate[100];
+
+  GetGitInfo(githash, gitdate);    // get githash
+
+  PRINTF("\nsmokeview [options] casename\n");
+  PRINTF("%s - %s\n\n", githash, __DATE__);
   PRINTF("%s\n\n", _("Visualize fire/smoke flow simulations."));
-  PRINTF("Usage: %s [options] casename", prog);
-  PRINTF("\n\n");
+  PRINTF("options:\n");
   PRINTF("%s\n", _(" casename       - project id (file names without the extension)"));
   PRINTF("%s\n", _(" -bindir dir    - specify location of smokeview bin directory"));
   PRINTF("%s\n", _(" -ini           - output smokeview parameter values to smokeview.ini"));
@@ -86,11 +57,14 @@ void Usage(char *prog,int option){
     PRINTF("%s\n", _(" -fast          - assume slice files exist in order to reduce startup time,"));
     PRINTF("%s\n", _("                  don't compute blanking arrays"));
     PRINTF("%s\n", _(" -full          - full startup - check if files exist"));
-    PRINTF("%s\n", _(" -fed           - pre-calculate all FED slice files"));
     PRINTF("%s\n", _(" -geominfo      - output information about geometry triangles"));
     PRINTF("%s\n", _(" -info            generate casename.slcf and casename.viewpoint files containing slice file and viewpiont info"));
     PRINTF("%s\n", _(" -lang xx       - where xx is de, es, fr, it for German, Spanish, French or Italian"));
     PRINTF("%s\n", _(" -large         - take some shortcuts when reading in large geometry cases"));
+    PRINTF("%s\n", _(" -load_co2      - load 3D smoke of type co2 at startup "));
+    PRINTF("%s\n", _(" -load_hrrpuv   - load 3D smoke of type hrrpuv at startup "));
+    PRINTF("%s\n", _(" -load_soot     - load 3D smoke of type soot at startup "));
+    PRINTF("%s\n", _(" -load_temp     - load 3D smoke of type temperature at startup "));
     PRINTF("%s\n", _(" -make_movie    - open the movie generating dialog box"));
     PRINTF("%s\n", _(" -max_mem mem   - specify maximum memory used in GB"));
     PRINTF("%s\n", _(" -outline       - show geometry bound boxes instead of geometry"));
@@ -111,7 +85,8 @@ void Usage(char *prog,int option){
     PRINTF("%s\n", _(" -smoke3d       - only show 3D smoke"));
     PRINTF("%s\n", _(" -startframe n  - start rendering at frame n"));
     PRINTF("%s\n", _(" -stereo        - activate stereo mode"));
-    PRINTF("%s\n", _(" -timings       - show startup timings"));
+    PRINTF("%s\n", _(" -timings       - show timings"));
+    PRINTF("%s\n", _(" -trirates      - show triangle display rates"));
     PRINTF("%s\n", _(" -update_slice  - calculate slice file parameters"));
     PRINTF("%s\n", _(" -update        - equivalent to -update_bounds and -update_slice"));
     PRINTF("%s\n", _(" -update_ini case.ini - update case.ini to the current format"));
@@ -126,29 +101,19 @@ void Usage(char *prog,int option){
 
 char *ProcessCommandLine(CommandlineArgs *args);
 
-char *ParseCommandline(int argc, char **argv) {
+char *ParseCommandline(int argc, char **argv){
   enum CommandLineError error;
-  char *return_val;
   char message[256];
 
   CommandlineArgs args = ParseCommandlineNew(argc, argv, message, &error);
-  if (error != CLE_OK) {
+  if(error != CLE_OK){
     const char *msg = CLE_Message(error, message);
-    if (msg != NULL) {
+    if(msg != NULL){
       fprintf(stderr, "%s\n", msg);
     }
     SMV_EXIT(0);
   }
-  return_val = ProcessCommandLine(&args);
-  if(args.bindir == NULL){
-    have_bindir_arg = 0;
-  }
-  else{
-    have_bindir_arg = 1;
-    SetBinDirAlways(args.bindir);
-    if(smokeview_bindir[strlen(smokeview_bindir) - 1] != dirseparator[0])strcat(smokeview_bindir, dirseparator);
-  }
-  return return_val;
+  return ProcessCommandLine(&args);
 }
 
 /// @brief Once the commandline arguments ahve been parsed, they can be passed
@@ -156,7 +121,7 @@ char *ParseCommandline(int argc, char **argv) {
 /// @param args The args which were previously parsed. All commandline arguments
 /// are parsed into @ref CommandlineArgs.
 /// @return The iput file name (the SMV file).
-char *ProcessCommandLine(CommandlineArgs *args) {
+char *ProcessCommandLine(CommandlineArgs *args){
   int len_casename;
   size_t len_memory;
   char *argi, *smv_ext;
@@ -202,34 +167,34 @@ char *ProcessCommandLine(CommandlineArgs *args) {
     dialogY0 = args->Y0;
     have_dialogY0 = 1;
   }
-  if (args->csv) {
+  if(args->csv){
     update_csv_load = 1;
   }
   if(args->max_mem){
     max_mem_GB = args->max_mem_GB;
   }
-  if (args->ini) {
+  if(args->ini){
     InitCameraList();
     InitOpenGL(NO_PRINT);
-    UpdateRGBColors(COLORBAR_INDEX_NONE);
+    UpdateRGBColors(colorbar_select_index);
     InitStartupDirs();
     WriteIni(GLOBAL_INI, NULL);
     SMV_EXIT(0);
   }
-  if (args->ng_ini) {
+  if(args->ng_ini){
     InitCameraList();
     use_graphics = 0;
-    UpdateRGBColors(COLORBAR_INDEX_NONE);
+    UpdateRGBColors(colorbar_select_index);
     InitStartupDirs();
     WriteIni(GLOBAL_INI, NULL);
     SMV_EXIT(0);
   }
-  if (args->print_version) {
+  if(args->print_version){
     show_version = 1;
   }
   strcpy(SMVFILENAME, "");
-  if (args->input_file != NULL) {
-    if (strlen(args->input_file) > MAX_SMV_FILENAME_BUFFER-1) {
+  if(args->input_file != NULL){
+    if(strlen(args->input_file) > MAX_SMV_FILENAME_BUFFER-1){
       fprintf(stderr, "*** Error: input filename exceeds maximum length of %d\n", MAX_SMV_FILENAME_BUFFER-1);
       SMV_EXIT(1);
     }
@@ -246,14 +211,14 @@ char *ProcessCommandLine(CommandlineArgs *args) {
 #endif
   len_casename = (int)strlen(argi);
   CheckMemory;
-  FREEMEMORY(fdsprefix);
+  FREEMEMORY(global_scase.fdsprefix);
   len_memory = len_casename + strlen(".part") + 100;
-  NewMemory((void **)&fdsprefix, (unsigned int)len_memory);
-  STRCPY(fdsprefix, argi);
+  NewMemory((void **)&global_scase.fdsprefix, (unsigned int)len_memory);
+  STRCPY(global_scase.fdsprefix, argi);
 
-  if(fdsprefix!=NULL&&strlen(fdsprefix)>0){
+  if(global_scase.fdsprefix!=NULL&&strlen(global_scase.fdsprefix)>0){
     NewMemory((void **)&filename_local, (unsigned int)len_memory+4);
-    strcpy(filename_local, fdsprefix);
+    strcpy(filename_local, global_scase.fdsprefix);
     strcat(filename_local, ".smv");
   }
   else{
@@ -266,6 +231,23 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       NewMemory((void **)&filename_local, (unsigned int)filelength);
       OpenSMVFile(filename_local, filelength, &openfile);
       if(openfile == 1 && ResizeMemory((void **)&filename_local, strlen(filename_local) + 1) != 0){
+        char *dirlast = NULL, *caselast = NULL;
+
+        FREEMEMORY(smokeview_casedir);
+        FREEMEMORY(global_scase.fdsprefix);
+        NewMemory((void **)&smokeview_casedir, strlen(filename_local) + 1);
+        NewMemory((void **)&global_scase.fdsprefix, strlen(filename_local) + 1);
+        strcpy(smokeview_casedir, filename_local);
+        dirlast = strrchr(smokeview_casedir, '\\');
+        if(dirlast != NULL){
+          strcpy(filename_local, dirlast + 1);
+          strcpy(global_scase.fdsprefix, filename_local);
+          caselast = strrchr(global_scase.fdsprefix, '.');
+          if(caselast != NULL)caselast[0] = 0;
+          dirlast[1] = 0;
+          len_casename = strlen(filename_local);
+        }
+        CHDIR(smokeview_casedir);
       }
       else{
         FREEMEMORY(filename_local);
@@ -274,13 +256,13 @@ char *ProcessCommandLine(CommandlineArgs *args) {
 #endif
     if(filename_local==NULL)return NULL;
   }
-  strcpy(movie_name, fdsprefix);
-  strcpy(render_file_base, fdsprefix);
-  strcpy(html_file_base, fdsprefix);
+  strcpy(movie_name, global_scase.fdsprefix);
+  strcpy(render_file_base, global_scase.fdsprefix);
+  strcpy(html_file_base, global_scase.fdsprefix);
   smv_ext = strstr(html_file_base, ".smv");
   if(smv_ext!=NULL)*smv_ext = 0;
-  FREEMEMORY(trainer_filename);
-  FREEMEMORY(test_filename);
+  FREEMEMORY(global_scase.paths.trainer_filename);
+  FREEMEMORY(global_scase.paths.test_filename);
 
   strcpy(input_filename_ext, "");
 
@@ -298,143 +280,145 @@ char *ProcessCommandLine(CommandlineArgs *args) {
         strcmp(input_filename_ext, ".smt") == 0)
         ){
         c_ext[0] = 0;
-        STRCPY(fdsprefix, argi);
-        strcpy(movie_name, fdsprefix);
-        strcpy(render_file_base, fdsprefix);
-        FREEMEMORY(trainer_filename);
-        NewMemory((void **)&trainer_filename, (unsigned int)(len_casename + 7));
-        STRCPY(trainer_filename, argi);
-        STRCAT(trainer_filename, ".svd");
-        FREEMEMORY(test_filename);
-        NewMemory((void **)&test_filename, (unsigned int)(len_casename + 7));
-        STRCPY(test_filename, argi);
-        STRCAT(test_filename, ".smt");
+        STRCPY(global_scase.fdsprefix, argi);
+        strcpy(movie_name, global_scase.fdsprefix);
+        strcpy(render_file_base, global_scase.fdsprefix);
+        FREEMEMORY(global_scase.paths.trainer_filename);
+        NewMemory((void **)&global_scase.paths.trainer_filename, (unsigned int)(len_casename + 7));
+        STRCPY(global_scase.paths.trainer_filename, argi);
+        STRCAT(global_scase.paths.trainer_filename, ".svd");
+        FREEMEMORY(global_scase.paths.test_filename);
+        NewMemory((void **)&global_scase.paths.test_filename, (unsigned int)(len_casename + 7));
+        STRCPY(global_scase.paths.test_filename, argi);
+        STRCAT(global_scase.paths.test_filename, ".smt");
       }
     }
   }
 
-  FREEMEMORY(log_filename);
-  NewMemory((void **)&log_filename, len_casename + strlen(".smvlog") + 1);
-  STRCPY(log_filename, fdsprefix);
-  STRCAT(log_filename, ".smvlog");
+  FREEMEMORY(global_scase.paths.log_filename);
+  NewMemory((void **)&global_scase.paths.log_filename, len_casename + strlen(".smvlog") + 1);
+  STRCPY(global_scase.paths.log_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.log_filename, ".smvlog");
 
-  FREEMEMORY(caseini_filename);
-  NewMemory((void **)&caseini_filename, len_casename + strlen(".ini") + 1);
-  STRCPY(caseini_filename, fdsprefix);
-  STRCAT(caseini_filename, ".ini");
+  FREEMEMORY(global_scase.paths.caseini_filename);
+  NewMemory((void **)&global_scase.paths.caseini_filename, len_casename + strlen(".ini") + 1);
+  STRCPY(global_scase.paths.caseini_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.caseini_filename, ".ini");
 
-  FREEMEMORY(expcsv_filename);
-  NewMemory((void **)&expcsv_filename, len_casename + strlen("_exp.csv") + 1);
-  STRCPY(expcsv_filename, fdsprefix);
-  STRCAT(expcsv_filename, "_exp.csv");
+#ifdef pp_FRAME
+  FREEMEMORY(global_scase.paths.frametest_filename);
+  NewMemory((void **)&global_scase.paths.frametest_filename, len_casename + strlen(".tst") + 1);
+  STRCPY(global_scase.paths.frametest_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.frametest_filename, ".tst");
+#endif
 
-  FREEMEMORY(stepcsv_filename);
-  NewMemory(( void ** )&stepcsv_filename, len_casename + strlen("_steps.csv") + 1);
-  STRCPY(stepcsv_filename, fdsprefix);
-  STRCAT(stepcsv_filename, "_steps.csv");
+  FREEMEMORY(global_scase.paths.fedsmv_filename);
+  NewMemory((void **)&global_scase.paths.fedsmv_filename, len_casename + strlen(".fedsmv") + 1);
+  STRCPY(global_scase.paths.fedsmv_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.fedsmv_filename, ".fedsmv");
 
-  FREEMEMORY(dEcsv_filename);
-  NewMemory(( void ** )&dEcsv_filename, len_casename + strlen("_dE.csv") + 1);
-  STRCPY(dEcsv_filename, fdsprefix);
-  STRCAT(dEcsv_filename, "_dE.csv");
+  FREEMEMORY(global_scase.paths.expcsv_filename);
+  NewMemory((void **)&global_scase.paths.expcsv_filename, len_casename + strlen("_exp.csv") + 1);
+  STRCPY(global_scase.paths.expcsv_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.expcsv_filename, "_exp.csv");
 
-  FREEMEMORY(html_filename);
-  NewMemory((void **)&html_filename, len_casename+strlen(".html")+1);
-  STRCPY(html_filename, fdsprefix);
-  STRCAT(html_filename, ".html");
+  FREEMEMORY(global_scase.paths.stepcsv_filename);
+  NewMemory((void **)&global_scase.paths.stepcsv_filename, len_casename + strlen("_steps.csv") + 1);
+  STRCPY(global_scase.paths.stepcsv_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.stepcsv_filename, "_steps.csv");
 
-  FREEMEMORY(smv_orig_filename);
-  NewMemory((void **)&smv_orig_filename, len_casename+strlen(".smo")+1);
-  STRCPY(smv_orig_filename, fdsprefix);
-  STRCAT(smv_orig_filename, ".smo");
+  FREEMEMORY(global_scase.paths.dEcsv_filename);
+  NewMemory((void **)&global_scase.paths.dEcsv_filename, len_casename + strlen("_dE.csv") + 1);
+  STRCPY(global_scase.paths.dEcsv_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.dEcsv_filename, "_dE.csv");
 
-  FREEMEMORY(hrr_filename);
-  NewMemory((void **)&hrr_filename, len_casename+strlen("_hrr.csv")+1);
-  STRCPY(hrr_filename, fdsprefix);
-  STRCAT(hrr_filename, "_hrr.csv");
+  FREEMEMORY(global_scase.paths.html_filename);
+  NewMemory((void **)&global_scase.paths.html_filename, len_casename+strlen(".html")+1);
+  STRCPY(global_scase.paths.html_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.html_filename, ".html");
 
-  FREEMEMORY(htmlvr_filename);
-  NewMemory((void **)&htmlvr_filename, len_casename+strlen("_vr.html")+1);
-  STRCPY(htmlvr_filename, fdsprefix);
-  STRCAT(htmlvr_filename, "_vr.html");
+  FREEMEMORY(global_scase.paths.smv_orig_filename);
+  NewMemory((void **)&global_scase.paths.smv_orig_filename, len_casename+strlen(".smo")+1);
+  STRCPY(global_scase.paths.smv_orig_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.smv_orig_filename, ".smo");
 
-  FREEMEMORY(htmlobst_filename);
-  NewMemory((void **)&htmlobst_filename, len_casename+strlen("_obst.json")+1);
-  STRCPY(htmlobst_filename, fdsprefix);
-  STRCAT(htmlobst_filename, "_obst.json");
+  FREEMEMORY(global_scase.paths.hrr_filename);
+  NewMemory((void **)&global_scase.paths.hrr_filename, len_casename+strlen("_hrr.csv")+1);
+  STRCPY(global_scase.paths.hrr_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.hrr_filename, "_hrr.csv");
 
-  FREEMEMORY(htmlslicenode_filename);
-  NewMemory((void **)&htmlslicenode_filename, len_casename+strlen("_slicenode.json")+1);
-  STRCPY(htmlslicenode_filename, fdsprefix);
-  STRCAT(htmlslicenode_filename, "_slicenode.json");
+  FREEMEMORY(global_scase.paths.htmlvr_filename);
+  NewMemory((void **)&global_scase.paths.htmlvr_filename, len_casename+strlen("_vr.html")+1);
+  STRCPY(global_scase.paths.htmlvr_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.htmlvr_filename, "_vr.html");
 
-  FREEMEMORY(htmlslicecell_filename);
-  NewMemory((void **)&htmlslicecell_filename, len_casename+strlen("_slicecell.json")+1);
-  STRCPY(htmlslicecell_filename, fdsprefix);
-  STRCAT(htmlslicecell_filename, "_slicecell.json");
+  FREEMEMORY(global_scase.paths.htmlobst_filename);
+  NewMemory((void **)&global_scase.paths.htmlobst_filename, len_casename+strlen("_obst.json")+1);
+  STRCPY(global_scase.paths.htmlobst_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.htmlobst_filename, "_obst.json");
 
-  FREEMEMORY(event_filename);
-  NewMemory((void **)&event_filename, len_casename+strlen("_events.csv")+1);
-  STRCPY(event_filename, fdsprefix);
-  STRCAT(event_filename, "_events.csv");
+  FREEMEMORY(global_scase.paths.htmlslicenode_filename);
+  NewMemory((void **)&global_scase.paths.htmlslicenode_filename, len_casename+strlen("_slicenode.json")+1);
+  STRCPY(global_scase.paths.htmlslicenode_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.htmlslicenode_filename, "_slicenode.json");
+
+  FREEMEMORY(global_scase.paths.htmlslicecell_filename);
+  NewMemory((void **)&global_scase.paths.htmlslicecell_filename, len_casename+strlen("_slicecell.json")+1);
+  STRCPY(global_scase.paths.htmlslicecell_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.htmlslicecell_filename, "_slicecell.json");
+
+  FREEMEMORY(global_scase.paths.event_filename);
+  NewMemory((void **)&global_scase.paths.event_filename, len_casename+strlen("_events.csv")+1);
+  STRCPY(global_scase.paths.event_filename, global_scase.fdsprefix);
+  STRCAT(global_scase.paths.event_filename, "_events.csv");
 
   if(filename_local==NULL){
     NewMemory((void **)&filename_local, (unsigned int)(len_casename+6));
-    STRCPY(filename_local, fdsprefix);
+    STRCPY(filename_local, global_scase.fdsprefix);
     STRCAT(filename_local, ".smv");
   }
   {
     char scriptbuffer[1024];
 
-    STRCPY(scriptbuffer, fdsprefix);
+    STRCPY(scriptbuffer, global_scase.fdsprefix);
     STRCAT(scriptbuffer, ".ssf");
     if(default_script == NULL&&FILE_EXISTS(scriptbuffer) == YES){
       default_script = InsertScriptFile(scriptbuffer);
     }
   }
   if(filename_local!= NULL){
-    FREEMEMORY(fds_filein);
-    NewMemory((void **)&fds_filein, strlen(fdsprefix) + 6);
-    STRCPY(fds_filein, fdsprefix);
-    STRCAT(fds_filein, ".fds");
-    if(FILE_EXISTS(fds_filein) == NO){
-      FREEMEMORY(fds_filein);
+    FREEMEMORY(global_scase.paths.fds_filein);
+    NewMemory((void **)&global_scase.paths.fds_filein, strlen(global_scase.fdsprefix) + 6);
+    STRCPY(global_scase.paths.fds_filein, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.fds_filein, ".fds");
+    if(FILE_EXISTS(global_scase.paths.fds_filein) == NO){
+      FREEMEMORY(global_scase.paths.fds_filein);
     }
   }
-  if(ffmpeg_command_filename == NULL){
-    NewMemory((void **)&ffmpeg_command_filename, (unsigned int)(len_casename + 12));
-    STRCPY(ffmpeg_command_filename, fdsprefix);
-    STRCAT(ffmpeg_command_filename, "_ffmpeg");
+  if(global_scase.paths.ffmpeg_command_filename == NULL){
+    NewMemory((void **)&global_scase.paths.ffmpeg_command_filename, (unsigned int)(len_casename + 12));
+    STRCPY(global_scase.paths.ffmpeg_command_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.ffmpeg_command_filename, "_ffmpeg");
 #ifdef WIN32
-    STRCAT(ffmpeg_command_filename,".bat");
+    STRCAT(global_scase.paths.ffmpeg_command_filename,".bat");
 #else
-    STRCAT(ffmpeg_command_filename,".sh");
+    STRCAT(global_scase.paths.ffmpeg_command_filename,".sh");
 #endif
   }
-  if(fed_filename == NULL){
-    STRCPY(fed_filename_base, fdsprefix);
-    STRCAT(fed_filename_base, ".fed_smv");
-    fed_filename = GetFileName(smokeview_scratchdir, fed_filename_base, NOT_FORCE_IN_DIR);
+  if(global_scase.paths.smvzip_filename == NULL){
+    NewMemory((void **)&global_scase.paths.smvzip_filename, (unsigned int)(len_casename + strlen(".smvzip") + 1));
+    STRCPY(global_scase.paths.smvzip_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.smvzip_filename, ".smvzip");
   }
-  if(stop_filename == NULL){
-    NewMemory((void **)&stop_filename, (unsigned int)(len_casename + strlen(".stop") + 1));
-    STRCPY(stop_filename, fdsprefix);
-    STRCAT(stop_filename, ".stop");
+  if(global_scase.paths.sliceinfo_filename == NULL){
+    NewMemory((void **)&global_scase.paths.sliceinfo_filename, strlen(global_scase.fdsprefix) + strlen(".sinfo") + 1);
+    STRCPY(global_scase.paths.sliceinfo_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.sliceinfo_filename, ".sinfo");
   }
-  if(smvzip_filename == NULL){
-    NewMemory((void **)&smvzip_filename, (unsigned int)(len_casename + strlen(".smvzip") + 1));
-    STRCPY(smvzip_filename, fdsprefix);
-    STRCAT(smvzip_filename, ".smvzip");
-  }
-  if(sliceinfo_filename == NULL){
-    NewMemory((void **)&sliceinfo_filename, strlen(fdsprefix) + strlen(".sinfo") + 1);
-    STRCPY(sliceinfo_filename, fdsprefix);
-    STRCAT(sliceinfo_filename, ".sinfo");
-  }
-  if(deviceinfo_filename==NULL){
-    NewMemory((void **)&deviceinfo_filename, strlen(fdsprefix)+strlen("_device.info")+1);
-    STRCPY(deviceinfo_filename, fdsprefix);
-    STRCAT(deviceinfo_filename, "_device.info");
+  if(global_scase.paths.deviceinfo_filename==NULL){
+    NewMemory((void **)&global_scase.paths.deviceinfo_filename, strlen(global_scase.fdsprefix)+strlen("_device.info")+1);
+    STRCPY(global_scase.paths.deviceinfo_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.deviceinfo_filename, "_device.info");
   }
 
   // if smokezip created part2iso files then concatenate .smv entries found in the .isosmv file
@@ -443,27 +427,27 @@ char *ProcessCommandLine(CommandlineArgs *args) {
   {
     FILE *stream_iso = NULL;
 
-    NewMemory((void **)&iso_filename, len_casename + strlen(".isosmv") + 1);
-    STRCPY(iso_filename, fdsprefix);
-    STRCAT(iso_filename, ".isosmv");
-    stream_iso = fopen(iso_filename, "r");
+    NewMemory((void **)&global_scase.paths.iso_filename, len_casename + strlen(".isosmv") + 1);
+    STRCPY(global_scase.paths.iso_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.iso_filename, ".isosmv");
+    stream_iso = fopen(global_scase.paths.iso_filename, "r");
     if(stream_iso != NULL){
       fclose(stream_iso);
     }
     else{
-      FREEMEMORY(iso_filename);
+      FREEMEMORY(global_scase.paths.iso_filename);
     }
   }
 
-  if(trainer_filename == NULL){
-    NewMemory((void **)&trainer_filename, (unsigned int)(len_casename + 6));
-    STRCPY(trainer_filename, fdsprefix);
-    STRCAT(trainer_filename, ".svd");
+  if(global_scase.paths.trainer_filename == NULL){
+    NewMemory((void **)&global_scase.paths.trainer_filename, (unsigned int)(len_casename + 6));
+    STRCPY(global_scase.paths.trainer_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.trainer_filename, ".svd");
   }
-  if(test_filename == NULL){
-    NewMemory((void **)&test_filename, (unsigned int)(len_casename + 6));
-    STRCPY(test_filename, fdsprefix);
-    STRCAT(test_filename, ".svd");
+  if(global_scase.paths.test_filename == NULL){
+    NewMemory((void **)&global_scase.paths.test_filename, (unsigned int)(len_casename + 6));
+    STRCPY(global_scase.paths.test_filename, global_scase.fdsprefix);
+    STRCAT(global_scase.paths.test_filename, ".svd");
   }
 
 #ifdef pp_OSX_HIGHRES
@@ -518,10 +502,13 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       PRINTF("stereo option activated\n");
     }
     if(args->big){
-      show_geom_boundingbox = SHOW_BOUNDING_BOX_MOUSE_DOWN;
+      hide_scene = 1;
     }
     if(args->timings){
       show_timings = 1;
+    }
+    if(args->trirates){
+      show_trirates = 1;
     }
     if(args->lang != NULL){
         FREEMEMORY(tr_name);
@@ -565,36 +552,31 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       isotest = 1;
     }
     if(args->smoke3d){
-      smoke3d_only = 1;
+      parse_opts.smoke3d_only = 1;
     }
     if(args->no_slcf){
-    handle_slice_files = 0;
+    parse_opts.handle_slice_files = 0;
     }
     if(args->show_help_summary){
-      Usage(args->prog,HELP_SUMMARY);
+      Usage(HELP_SUMMARY);
       SMV_EXIT(0);
     }
     if(args->show_help_all){
-      Usage(args->prog,HELP_ALL);
+      Usage(HELP_ALL);
       SMV_EXIT(0);
     }
     if(args->noblank){
-      iblank_set_on_commandline = 1;
-      use_iblank = 0;
+      global_scase.iblank_set_on_commandline = 1;
+      global_scase.use_iblank = 0;
     }
-#ifdef pp_NOBOUNDS
     if(args->nobounds){
       no_bounds = 1;
-    }
-#endif
-    if(args->fed){
-      compute_fed = 1;
     }
     if(args->verbose){
       verbose_output = 1;
     }
     if(args->outline){
-      show_geom_boundingbox = SHOW_BOUNDING_BOX_ALWAYS;
+      hide_scene = 1;
     }
     if(args->make_movie){
       open_movie_dialog = 1;
@@ -602,23 +584,41 @@ char *ProcessCommandLine(CommandlineArgs *args) {
     if(args->geominfo){
       print_geominfo = 1;
     }
+    if(args->load_co2){
+      loadfiles_commandline[0]          = 1;
+      loadfiles_commandline[LOAD_3DCO2] = 1;
+    }
+    if(args->load_hrrpuv){
+      loadfiles_commandline[0]             = 1;
+      loadfiles_commandline[LOAD_3DHRRPUV] = 1;
+      loadfiles_commandline[LOAD_3DTEMP]   = 0;
+    }
+    if(args->load_soot){
+      loadfiles_commandline[0]           = 1;
+      loadfiles_commandline[LOAD_3DSOOT] = 1;
+    }
+    if(args->load_temp){
+      loadfiles_commandline[0]             = 1;
+      loadfiles_commandline[LOAD_3DTEMP]   = 1;
+      loadfiles_commandline[LOAD_3DHRRPUV] = 0;
+    }
     if(args->fast){
-      fast_startup = 1;
-      lookfor_compressed_files = 0;
+      parse_opts.fast_startup = 1;
+      parse_opts.lookfor_compressed_files = 0;
     }
     if(args->full){
-      fast_startup = 0;
-      lookfor_compressed_files = 1;
+      parse_opts.fast_startup = 0;
+      parse_opts.lookfor_compressed_files = 1;
     }
     if(args->blank){
-      iblank_set_on_commandline = 1;
-      use_iblank = 1;
+      global_scase.iblank_set_on_commandline = 1;
+      global_scase.use_iblank = 1;
     }
     if(args->gversion){
       vis_title_gversion = 1;
     }
     if(args->redirect){
-      LOG_FILENAME = fopen(log_filename, "w");
+      LOG_FILENAME = fopen(global_scase.paths.log_filename, "w");
       if(LOG_FILENAME != NULL){
         redirect = 1;
         SetStdOut(LOG_FILENAME);
@@ -643,7 +643,7 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       from_commandline = 1;
       use_iso_threads=0;
       strcpy(luascript_filename, "");
-      strncpy(luascript_filename, fdsprefix, MAX_LUASCRIPT_FILENAME_BUFFER-5);
+      strncpy(luascript_filename, global_scase.fdsprefix, MAX_LUASCRIPT_FILENAME_BUFFER-5);
       strcat(luascript_filename, ".lua");
       runluascript = 1;
     }
@@ -672,6 +672,9 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       make_volrender_script = 1;
     }
     if(args->script!=NULL||args->htmlscript!=NULL){
+      char scriptbuffer[MAX_SCRIPT_FILENAME_BUFFER];
+      scriptfiledata *sfd;
+
       bool is_htmlscript = args->htmlscript!=NULL;
       if(is_htmlscript){
         use_graphics = 0;
@@ -679,32 +682,34 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       }
       from_commandline = 1;
       use_iso_threads=0;
-        char scriptbuffer[MAX_SCRIPT_FILENAME_BUFFER];
-        scriptfiledata *sfd;
-        if (args->script != NULL) {
-          if (strlen(args->script) > MAX_SCRIPT_FILENAME_BUFFER-1) {
-            fprintf(stderr, "*** Error: script filename exceeds maximum length of %d\n", MAX_SCRIPT_FILENAME_BUFFER-1);
-            SMV_EXIT(1);
-          }
+      if(args->script != NULL){
+        if(strlen(args->script) < MAX_SCRIPT_FILENAME_BUFFER){
           strcpy(scriptbuffer, args->script);
-        } else {
-          if (strlen(args->htmlscript) > MAX_SCRIPT_FILENAME_BUFFER-1) {
-            fprintf(stderr, "*** Error: luascript filename exceeds maximum length of %d\n", MAX_SCRIPT_FILENAME_BUFFER-1);
-            SMV_EXIT(1);
-          }
+        }
+        else{
+          fprintf(stderr, "*** Error: script filename exceeds maximum length of %d\n", MAX_SCRIPT_FILENAME_BUFFER-1);
+          SMV_EXIT(1);
+        }
+      } else{
+        if(strlen(args->htmlscript) < MAX_SCRIPT_FILENAME_BUFFER){
           strcpy(scriptbuffer, args->htmlscript);
         }
-        sfd = InsertScriptFile(scriptbuffer);
-        if(sfd != NULL)default_script = sfd;
-        if(!is_htmlscript){
-          runscript = 1;
+        else{
+          fprintf(stderr, "*** Error: luascript filename exceeds maximum length of %d\n", MAX_SCRIPT_FILENAME_BUFFER-1);
+          SMV_EXIT(1);
         }
+      }
+      sfd = InsertScriptFile(scriptbuffer);
+      if(sfd != NULL)default_script = sfd;
+      if(!is_htmlscript){
+        runscript = 1;
+      }
     }
 #ifdef pp_LUA
     if(args->luascript != NULL){
       from_commandline = 1;
       use_iso_threads=0;
-      if (strlen(args->luascript) > MAX_LUASCRIPT_FILENAME_BUFFER-1) {
+      if(strlen(args->luascript) > MAX_LUASCRIPT_FILENAME_BUFFER-1){
         fprintf(stderr, "*** Error: luascript filename exceeds maximum length of %d\n", MAX_SMV_FILENAME_BUFFER-1);
         SMV_EXIT(1);
       }
@@ -716,10 +721,10 @@ char *ProcessCommandLine(CommandlineArgs *args) {
       noexit = 1;
     }
     if(args->setup){
-      setup_only = 1;
+      parse_opts.setup_only = 1;
     }
     if(args->bindir != NULL){
-      SetBinDirAlways(args->bindir);
+      SetSmvRootOverride(args->bindir);
     }
     if(args->casedir){
       NewMemory((void **)&smokeview_casedir, strlen(args->casedir) +2);
@@ -731,25 +736,25 @@ char *ProcessCommandLine(CommandlineArgs *args) {
   if(update_ssf == 1){
     int len_prefix = 0;
 
-    len_prefix = strlen(fdsprefix);
+    len_prefix = strlen(global_scase.fdsprefix);
 
     FREEMEMORY(ssf_from);
     NewMemory((void **)&ssf_from, len_prefix + 4 + 1);
-    strcpy(ssf_from, fdsprefix);
+    strcpy(ssf_from, global_scase.fdsprefix);
     strcat(ssf_from, ".ssf");
 
     FREEMEMORY(ssf_to);
     NewMemory((void **)&ssf_to, len_prefix + 4 + 1);
-    strcpy(ssf_to, fdsprefix);
+    strcpy(ssf_to, global_scase.fdsprefix);
     strcat(ssf_to, ".ssf");
   }
   if(make_volrender_script == 1){
 
     NewMemory((void **)&volrender_scriptname, (unsigned int)(len_casename + 14 + 1));
-    STRCPY(volrender_scriptname, fdsprefix);
+    STRCPY(volrender_scriptname, global_scase.fdsprefix);
     STRCAT(volrender_scriptname, "_volrender.ssf");
 
-    InitVolrenderScript(fdsprefix, NULL, vol_startframe0, vol_skipframe0);
+    InitVolrenderScript(global_scase.fdsprefix, NULL, vol_startframe0, vol_skipframe0);
   }
   return filename_local;
 }
@@ -787,7 +792,6 @@ int CheckSMVFile(char *file, char *subdir){
 
 int main(int argc, char **argv){
   int return_code;
-  char *progname;
 
   START_TIMER(timer_startup);
   // uncomment following block of code to test crash detection
@@ -825,75 +829,20 @@ int main(int argc, char **argv){
 
   ParseCommonOptions(argc, argv);
   if(show_help==1){
-    Usage("smokeview", HELP_SUMMARY);
+    Usage(HELP_SUMMARY);
     return 1;
   }
   if(show_help==2){
-    Usage("smokeview", HELP_ALL);
+    Usage(HELP_ALL);
     return 1;
   }
 
-  progname=argv[0];
-  strcpy(smokeview_progname, progname);
-  GetProgFullPath(smokeview_progname, 1024);
   smv_filename = ParseCommandline(argc, argv);
 
-  prog_fullpath = progname;
-  if(smokeview_bindir==NULL){
-    smokeview_bindir = GetProgDir(progname, &smokeviewpath);
-  }
-  int valid_bindir;
-
-  valid_bindir = have_bindir_arg;
-  if(valid_bindir == 0&&smokeview_bindir!=NULL&&IsInstallBinDir(smokeview_bindir)==0){
-    char new_bindir[1024];
-    char *bins[] = {"bot","Bundlebot","smv","for_bundle"};
-    int i;
-
-    strcpy(new_bindir, smokeview_bindir);
-    for(i = 0; i < 4; i++){
-      strcat(new_bindir, dirseparator);
-      strcat(new_bindir, "..");
-    }
-    for(i = 0; i < 4; i++){
-      strcat(new_bindir, dirseparator);
-      strcat(new_bindir, bins[i]);
-    }
-    strcat(new_bindir, dirseparator);
-    if(IsInstallBinDir(new_bindir) == 1){
-      char savedir[1024];
-
-      FreeMemory(smokeview_bindir);
-      GETCWD(savedir, 1024);
-      CHDIR(new_bindir);
-      GETCWD(new_bindir, 1024);
-      CHDIR(savedir);
-      NewMemory((void **)&smokeview_bindir, strlen(new_bindir)+2);
-      strcpy(smokeview_bindir, new_bindir);
-      valid_bindir = 1;
-    }
-  }
-#ifdef WIN32
-  if(valid_bindir == 0){
-    char new_bindir[1024];
-
-    strcpy(new_bindir, "C:\\Program Files\\firemodels\\SMV6\\");
-    valid_bindir = SetBinDir(new_bindir);
-  }
-  if(valid_bindir == 0){
-    char new_bindir[1024];
-
-    strcpy(new_bindir, "C:\\Program Files\\firemodels\\SMV7");
-    valid_bindir = SetBinDir(new_bindir);
-  }
-#endif
-  if(smv_filename == NULL){
+  if(smv_filename == NULL && show_version == 1){
+    InitStartupDirs();
     DisplayVersionInfo("Smokeview ");
     SMV_EXIT(0);
-  }
-  if(show_version==1 || smv_filename==NULL){
-    PRINTVERSION("smokeview", argv[0]);
-    return 1;
   }
   if(CheckSMVFile(smv_filename, smokeview_casedir)==0){
     SMV_EXIT(1);
@@ -901,11 +850,12 @@ int main(int argc, char **argv){
   MakeFireColors(fire_temp_min, fire_temp_max, nfire_colors);
 
   InitTextureDir();
-  InitColorbarsDir();
   InitScriptErrorFiles();
-  smokezippath= GetSmokeZipPath(smokeview_bindir);
-  DisplayVersionInfo("Smokeview ");
+  char *smv_bindir = GetSmvRootDir();
+  smokezippath= GetSmokeZipPath(smv_bindir);
+  FREEMEMORY(smv_bindir);
   InitStartupDirs();
+  DisplayVersionInfo("Smokeview ");
   SetupGlut(argc,argv);
   START_TIMER(startup_time);
 
@@ -929,5 +879,6 @@ int main(int argc, char **argv){
   PRINTF("Startup time: %.1f s\n", startup_time);
 
   glutMainLoop();
+  FreeVars();
   return 0;
 }

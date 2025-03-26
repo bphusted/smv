@@ -85,20 +85,20 @@
 //*** hash output
 
 #ifdef pp_HASH
-#define PRINTVERSION(a,b) PRINTversion(a,b,hash_option)
+#define PRINTVERSION(a) PRINTversion(a,hash_option)
 #else
-#define PRINTVERSION(a,b) PRINTversion(a)
+#define PRINTVERSION(a) PRINTversion(a)
 #endif
 
 // debugging macros
 
 #ifdef pp_TRACE
 #define BTRACE \
-  printf("entering, file: %s, line: %d\n",__FILE__,__LINE__)
+  fprintf(stderr, "entering, file: %s, line: %d\n",__FILE__,__LINE__)
 #define TTRACE \
-  printf("in, file: %s, line: %d\n",__FILE__,__LINE__)
+  fprintf(stderr, "in, file: %s, line: %d\n",__FILE__,__LINE__)
 #define ETRACE \
-  printf("leaving, file: %s, line: %d\n",__FILE__,__LINE__)
+  fprintf(stderr, "leaving, file: %s, line: %d\n",__FILE__,__LINE__)
 #else
 #define BTRACE
 #define TTRACE
@@ -144,10 +144,6 @@
 #undef  GLUT_H
 #define GLUT_H <GLUT/glut.h>
 #endif
-#ifdef pp_QUARTZ
-#undef  GLUT_H
-#define GLUT_H <GL/glut.h>
-#endif
 
 #define GL_H <GL/gl.h>
 #ifdef pp_OSX
@@ -159,6 +155,30 @@
 #ifdef pp_OSX
 #undef  GLU_H
 #define GLU_H <OpenGL/glu.h>
+#endif
+
+#ifndef START_TIMER
+#define START_TIMER(a) a = (float)clock()/(float)CLOCKS_PER_SEC
+#endif
+
+#ifndef STOP_TIMER
+#define STOP_TIMER(a) a = (float)clock()/(float)CLOCKS_PER_SEC - a
+#endif
+
+#ifndef CUM_TIMER
+#define CUM_TIMER(a,b) b += ((float)clock()/(float)CLOCKS_PER_SEC - a)
+#endif
+
+#ifndef INIT_PRINT_TIMER
+#define INIT_PRINT_TIMER(timer)   float timer;START_TIMER(timer)
+#endif
+
+#ifndef PRINT_TIMER
+#define PRINT_TIMER(timer, label) PrintTime(__FILE__, __LINE__, &timer, label, 1)
+#endif
+
+#ifndef PRINT_CUM_TIMER
+#define PRINT_CUM_TIMER(timer, label) PrintTime(__FILE__, __LINE__, &timer, label, 0)
 #endif
 
 #include "lint.h"

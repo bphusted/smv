@@ -20,16 +20,6 @@ else
 endif
 GITINFO=-Dpp_GITHASH=\"$(GIT_HASH)\" -Dpp_GITDATE=\""$(GIT_DATE)\""
 
-ifeq ($(shell echo "check_quotes"),"check_quotes")
-  INTEL_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\intel_compversion)
-  GNU_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\gnu_compversion)
-else
-  INTEL_COMPVERSION := $(shell ../../../Utilities/Scripts/intel_compversion.sh)
-  GNU_COMPVERSION := $(shell ../../../Utilities/Scripts/gnu_compversion.sh)
-endif
-INTEL_COMPINFO=-Dpp_COMPVER=\"$(INTEL_COMPVERSION)\"
-GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
-
 # Definition of the object variables
 
 obj =    main.o
@@ -78,12 +68,3 @@ intel_linux_64 : exe       = getdate_linux_64
 
 intel_linux_64 : $(obj)
 	$(CC) -o $(bin)/$(exe) $(obj) 
-
-# ------------- intel osx 64 ----------------
-
-intel_osx_64 : CFLAGS    = -O2 -m64 $(GITINFO) $(INTEL_COMPINFO)
-intel_osx_64 : CC        = icc
-intel_osx_64 : exe       = getdate_osx_64
-
-intel_osx_64 : $(obj)
-	$(CC) -o $(bin)/$(exe) -m64 $(obj)

@@ -10,10 +10,8 @@
 #define SMOKE_GREEN 52
 #define SMOKE_BLUE 53
 #define SMOKE_GRAY 56
-#ifndef UPDATE_SMOKEFIRE_COLORS
 #define UPDATE_SMOKEFIRE_COLORS 54
-#endif
-#define UPDATE_SMOKEFIRE_COLORS2 61
+#define UPDATE_CO2_COLORS 61
 #define UPDATE_SMOKEFIRE_COLORS_COMMON 62
 #define CO2SMOKE 63
 #define UPDATE_SMOKECOLORS 4
@@ -34,7 +32,6 @@
 #define SMOKE_RTHICK 8
 #endif
 #define SAVE_SETTINGS_SMOKE 9
-#define SMOKETEST 11
 #define VOL_SMOKE 13
 #define VOL_NGRID 18
 #define SMOKE_OPTIONS 19
@@ -56,14 +53,12 @@
 #define LOAD_TIMEFRAME 58
 #define SMOKE3D_LOAD_INCREMENTAL 18
 #define CO2_COLOR 71
-#define SMOKE_SKIP 74
-#define SMOKE_SKIP_XYZ 86
+#define SMOKE_SKIP_XYZ 107
+#define SMOKE_SKIP_XY  108
+#define SMOKE_SKIP_X   109
+#define SMOKE_SKIP_Y   110
+#define SMOKE_SKIP_Z   111
 #define SMOKE_BLACK 75
-#ifdef pp_SMOKE16
-#define SMOKE_LOAD16 101
-#define SMOKE_SHOW16 102
-#define SMOKE_SHOW8  103
-#endif
 #define SMOKE_DELTA_PAR 76
 #define SMOKE_NEW 77
 #define SMOKE_DELTA_MULTIPLE 78
@@ -83,5 +78,27 @@
 #define VOLTEST_DEPTH 102
 #define VOLTEST_UPDATE 103
 #define FORCE_ALPHA_OPAQUE 104
+#define SMOKE_FRAME_INC 113
+#define REFRESH_FIRE       114
+
+//*** glui_smoke.cpp headers
+
+EXTERNCPP void GLUIGetPixelsPerTriangle(void);
+EXTERNCPP void GLUIForceAlphaOpaque(void);
+EXTERNCPP void GLUI3dSmokeSetup(int main_window);
+EXTERNCPP void GLUISmoke3dCB(int var);
+EXTERNCPP void GLUIUpdateCO2ColorbarList(int value);
+EXTERNCPP void GLUIUpdateFireColorbarList(void);
+EXTERNCPP void GLUIUpdateFreeze(int val);
+EXTERNCPP void GLUIUpdateLoadTimeVal(float val);
+EXTERNCPP void GLUIUpdateTimeFrameBounds(float time_min, float time_max);
+EXTERNCPP void GLUIUpdateLoadFrameVal(int frames);
+EXTERNCPP void GLUIUpdateLoadFrameMax(int max_frames);
+EXTERNCPP void GLUISmoke3dCB(int var);
+EXTERNCPP void GLUIUpdateFireAlpha(void);
+EXTERNCPP void GLUIUpdateSmoke3dFlags(void);
+EXTERNCPP void GLUICreateVolTourList(void);
+EXTERNCPP void GLUIDeleteVolTourList(void);
+
 #endif
 

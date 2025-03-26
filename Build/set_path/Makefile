@@ -21,16 +21,6 @@ else
 endif
 GITINFO=-Dpp_GITHASH=\"$(GIT_HASH)\" -Dpp_GITDATE=\""$(GIT_DATE)\""
 
-ifeq ($(shell echo "check_quotes"),"check_quotes")
-  INTEL_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\intel_compversion)
-  GNU_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\gnu_compversion)
-else
-  INTEL_COMPVERSION := $(shell ../../../Utilities/Scripts/intel_compversion.sh)
-  GNU_COMPVERSION := $(shell ../../../Utilities/Scripts/gnu_compversion.sh)
-endif
-INTEL_COMPINFO=-Dpp_COMPVER=\"$(INTEL_COMPVERSION)\"
-GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
-
 # Definition of the object variables
 
 obj = main.o string_util.o dmalloc.o file_util.o  md5.o sha1.o sha256.o stdio_buffer.o
@@ -51,9 +41,9 @@ no_target:
 
 # ********  rules for each platform supported *************
 
-# ------------- intel osx 64 ----------------
+# ------------- intel win 64 ----------------
 
-intel_win_64 : CFLAGS    = -D WIN32 -O2 /nologo $(GITINFO) $(INTEL_COMPINFO)
+intel_win_64 : CFLAGS    = -I $(SOURCE_DIR)/pthreads -D X64 -D WIN32 -O2 /nologo $(GITINFO) $(INTEL_COMPINFO)
 intel_win_64 : CC        = $(I_CC)
 intel_win_64 : CPP       = $(I_CC)
 intel_win_64 : exe       = set_path_win_64.exe

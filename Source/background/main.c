@@ -13,7 +13,7 @@
 #include "string_util.h"
 #include "background.h"
 #include "datadefs.h"
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "file_util.h"
 
 #ifdef WIN32
@@ -48,24 +48,18 @@ void Sleep(int ticks){
 
 /* ------------------ Usage ------------------------ */
 
-void Usage(char *prog, int option){
-  char prog_version[100];
+void Usage(int option){
   char githash[100];
   char gitdate[100];
   char pp[] = "%";
 
-  GetProgVersion(prog_version);  // get version (ie 5.x.z)
   GetGitInfo(githash, gitdate);    // get githash
 
   printf("\n");
-  printf("background %s(%s) - %s\n", prog_version, githash, __DATE__);
-  printf("  Runs a program in the background when resources are available\n\nUsage:\n\n");
-  printf("  %s", prog);
-
-  printf(" [-d delay time (s) -h -u max_usage -v] prog [arguments]\n\n");
-
-  printf("where\n\n");
-
+  printf("background [-d delay time (s) -h -u max_usage -v] prog [arguments]\n");
+  printf("%s %s\n\n", githash, __DATE__);
+  printf("Runs a program in the background when resources are available\n\n");
+  printf("options:\n");
   printf("  -d dtime  - wait dtime seconds before running prog in the background\n");
   printf("  -m max    - wait to run prog until memory usage is less than max (25-100%s)\n", pp);
   printf("  -u max    - wait to run prog until cpu usage is less than max (25-100%s)\n", pp);
@@ -129,17 +123,17 @@ int main(int argc, char **argv){
 #endif
 
   if(argc==1){
-    PRINTVERSION("background ", argv[0]);
+    PRINTVERSION("background ");
     return 1;
   }
 
   ParseCommonOptions(argc, argv);
   if(show_help!=0){
-    Usage("background",show_help);
+    Usage(show_help);
     return 1;
   }
   if(show_version==1){
-    PRINTVERSION("background", argv[0]);
+    PRINTVERSION("background");
     return 1;
   }
 
@@ -215,7 +209,7 @@ int main(int argc, char **argv){
             break;
           default:
             printf("Unknown option: %s\n",arg);
-            Usage(argv[0],HELP_ALL);
+            Usage(HELP_ALL);
             return 1;
         }
       }
@@ -579,7 +573,7 @@ int get_ncores(void){
 
 /* ------------------ get_host_ncores ------------------------ */
 
-int get_host_ncores(char *host){
+int get_host_ncores(char *hosta){
   FILE *stream;
   char buffer[1024];
   char command[1024];
@@ -587,12 +581,12 @@ int get_host_ncores(char *host){
   int ncores=0;
 
   strcpy(localfile,"/tmp/cpuinfo.");
-  strcat(localfile,host);
+  strcat(localfile,hosta);
   strcat(localfile,".");
   strcat(localfile,pid);
 
   strcpy(command,"ssh ");
-  strcat(command,host);
+  strcat(command,hosta);
   strcat(command," cat /proc/cpuinfo >");
   strcat(command,localfile);
 
@@ -620,7 +614,7 @@ int get_host_ncores(char *host){
 
 /* ------------------ get_host_load ------------------------ */
 
-float get_host_load(char *host){
+float get_host_load(char *host_arg){
   FILE *stream;
   char buffer[1024];
   char command[1024];
@@ -628,12 +622,12 @@ float get_host_load(char *host){
   float load1;
 
   strcpy(localfile,"/tmp/loadavg.");
-  strcat(localfile,host);
+  strcat(localfile,host_arg);
   strcat(localfile,".");
   strcat(localfile,pid);
 
   strcpy(command,"ssh ");
-  strcat(command,host);
+  strcat(command,host_arg);
   strcat(command," cat /proc/loadavg >");
   strcat(command,localfile);
 
@@ -674,11 +668,11 @@ float get_load(void){
 
 /* ------------------ cpuusage_host ------------------------ */
 
-unsigned char cpuusage_host(char *host, int ncores){
+unsigned char cpuusage_host(char *hostb, int ncores){
   float load;
   unsigned char usage;
 
-  load = get_host_load(host);
+  load = get_host_load(hostb);
   if(load>ncores)load=ncores;
   usage = 100*(load/(float)ncores);
   return usage;

@@ -8,6 +8,8 @@
 #include <math.h>
 
 #include "smokeviewvars.h"
+#include "glui_bounds.h"
+#include "glui_motion.h"
 
 #define LOAD_SMOKE 100
 #define LOAD_TEMP 101
@@ -209,10 +211,10 @@ void TrainerCB(int var){
         rotation_type = EYE_CENTERED;
         HandleRotationType(ROTATION_2AXIS);
       }
-      for(i = 0;i < ntourinfo;i++){
+      for(i = 0;i < global_scase.tourcoll.ntourinfo;i++){
         tourdata *touri;
 
-        touri = tourinfo + i;
+        touri = global_scase.tourcoll.tourinfo + i;
         touri->display = 0;
       }
       viewtourfrompath = 1;
@@ -344,10 +346,10 @@ extern "C" void GLUITrainerSetup(int main_window){
     int i;
     LIST_trainerpath->add_item(-1,_("Manual"));
     LIST_trainerpath->add_item(-2,"-");
-    for(i=0;i<ntourinfo;i++){
+    for(i=0;i<global_scase.tourcoll.ntourinfo;i++){
       tourdata *touri;
 
-      touri = tourinfo + i;
+      touri = global_scase.tourcoll.tourinfo + i;
       LIST_trainerpath->add_item(i,touri->menulabel);
     }
   }

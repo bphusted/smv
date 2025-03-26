@@ -8,6 +8,7 @@
 #include <math.h>
 
 #include "smokeviewvars.h"
+#include "glui_motion.h"
 
 GLUI *glui_clip=NULL;
 
@@ -84,11 +85,11 @@ void ClipCB(int var){
     GLUIUpdateShowRotationCenter();
     break;
   case CLIP_MESH:
-    if(clip_mesh == 0){
+    if(global_scase.clip_mesh == 0){
       SetClipControls(DEFAULT_VALS);
     }
     else{
-      SetClipControls(clip_mesh);
+      SetClipControls(global_scase.clip_mesh);
     }
     break;
   case SAVE_SETTINGS_CLIP:
@@ -142,8 +143,7 @@ void ClipCB(int var){
       CHECKBOX_clip_xmax->enable();
       CHECKBOX_clip_ymax->enable();
       CHECKBOX_clip_zmax->enable();
-      show_bothsides_blockages = 1;
-      updatefaces = 1;
+      global_scase.updatefaces = 1;
     }
     else{
       SPINNER_clip_xmin->disable();
@@ -159,8 +159,14 @@ void ClipCB(int var){
       CHECKBOX_clip_xmax->disable();
       CHECKBOX_clip_ymax->disable();
       CHECKBOX_clip_zmax->disable();
+      global_scase.updatefaces = 1;
+    }
+ // draw both sides of blockage faces if clipping is on or if the case has removeable blokcages
+    if(clip_mode != CLIP_OFF || global_scase.have_removable_obsts == 1){
+      show_bothsides_blockages = 1;
+    }
+    else{
       show_bothsides_blockages = 0;
-      updatefaces = 1;
     }
     break;
   case SPINNER_xlower:
@@ -229,7 +235,7 @@ void SetClipControls(int val){
     clipinfo.ymax = yclip_max;
     clipinfo.zmax = zclip_max;
   }
-  if(val >= 1 && val <= nmeshes){
+  if(val >= 1 && val <= global_scase.meshescoll.nmeshes){
     meshdata *meshi;
     float *xplt, *yplt, *zplt;
 
@@ -239,7 +245,7 @@ void SetClipControls(int val){
     dyclip = (ybarORIG - ybar0ORIG) / 1000.0;
     dzclip = (zbarORIG - zbar0ORIG) / 1000.0;
 
-    meshi = meshinfo + val - 1;
+    meshi = global_scase.meshescoll.meshinfo + val - 1;
 
     xplt = meshi->xplt_orig;
     yplt = meshi->yplt_orig;
@@ -334,11 +340,11 @@ extern "C" void GLUIClipSetup(int main_window){
     SetClipControls(INI_VALS);  // clip vals from ini file
   }
   else{
-    if(clip_mesh==0){
+    if(global_scase.clip_mesh==0){
       SetClipControls(DEFAULT_VALS);  // clip vals from global scene
     }
     else{
-      SetClipControls(clip_mesh);  // clip vals from mesh clip_mesh
+      SetClipControls(global_scase.clip_mesh);  // clip vals from mesh clip_mesh
     }
   }
 

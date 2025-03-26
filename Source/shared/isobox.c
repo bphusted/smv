@@ -11,9 +11,9 @@
 #endif
 #include <math.h>
 #include <stdio.h>
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #define IN_ISOBOX
-#include "isodefs.h"
+#include "isobox.h"
 #include "datadefs.h"
 
 #define GAS 1
@@ -918,7 +918,7 @@ int GetIsoSurface(isosurface *surface,
 
 /* ------------------ CompareIsoNodes ------------------------ */
 
-int CompareIsoNodes( const void *arg1, const void *arg2 ){
+int CompareIsoNodes(const void *arg1, const void *arg2){
   sortdata *sdi, *sdj;
   unsigned short *vi, *vj;
 
@@ -937,7 +937,7 @@ int CompareIsoNodes( const void *arg1, const void *arg2 ){
 
 /* ------------------ ComputeRank ------------------------ */
 
-int ComputeRank( const void *arg1, const void *arg2 ){
+int ComputeRank(const void *arg1, const void *arg2){
   rankdata *rdi, *rdj;
   int sorti, sortj;
 
@@ -952,7 +952,7 @@ int ComputeRank( const void *arg1, const void *arg2 ){
 
 /* ------------------ OrderClosestNodes ------------------------ */
 
-int OrderClosestNodes( const void *arg1, const void *arg2 ){
+int OrderClosestNodes(const void *arg1, const void *arg2){
   orderdata *oi, *oj;
   int ii, jj;
 
@@ -1232,7 +1232,6 @@ int CompressIsoSurface(isosurface *surface, int reduce_triangles,
   }
 
   for(i=0;i<nvertices;i++){vertexmap[i]=i;}
-  nn=0;
   sumx=0; sumy = 0; sumz = 0; sumt=0;
 
   /* average nodes */
@@ -1325,7 +1324,7 @@ int UpdateIsosurface(isosurface *surface,
                       int nvert,
                       const int *triangles,
                       int ntriangles){
-  int n,ns, noldvert, *is;
+  int n,ns, noldvert=0, *is;
   float *xs=NULL, *ys=NULL, *zs=NULL, *ts=NULL;
   int *cn=NULL;
 
@@ -1830,7 +1829,7 @@ void CCIsoSurfaceT2File(char *isofile, float *t, float *data, int *data2flag, fl
                    float *yplt, int *ny,
                    float *zplt, int *nz,
                    int *reduce_triangles, int *error
-                   ){
+                  ){
   isosurface surface;
   int i;
   FILE *isostream=NULL;

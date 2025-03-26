@@ -7,7 +7,12 @@
 #include GLUT_H
 
 #include "smokeviewvars.h"
+#include "glui_bounds.h"
+#include "string_util.h"
 #include "IOscript.h"
+#include "viewports.h"
+
+#include "colorbars.h"
 
 /* ------------------ UpdateTimeLabels ------------------------ */
 
@@ -46,7 +51,7 @@ void UpdateTimeLabels(void){
       dt = current_script_command->fval5;
     }
     else{
-      if(nglobal_times>1){
+      if(global_times!=NULL && nglobal_times>1){
         dt = global_times[1]-global_times[0];
       }
       else{
@@ -78,12 +83,12 @@ void UpdateTimeLabels(void){
     }
   }
 
-  if(hrrptr!=NULL&&global_times!=NULL&&vis_hrr_label==1){
+  if(global_scase.hrrptr!=NULL&&global_times!=NULL&&vis_hrr_label==1){
     float hrr;
     int itime;
 
-    itime = GetInterval(global_times[itimes], timeptr->vals, timeptr->nvals);
-    hrr = hrrptr->vals[itime];
+    itime = GetInterval(global_times[itimes], global_scase.timeptr->vals, global_scase.timeptr->nvals);
+    hrr = global_scase.hrrptr->vals[itime];
     if(hrr<1.0){
       sprintf(hrrlabel,"HRR: %4.1f W",hrr*1000.0);
     }
@@ -107,7 +112,7 @@ void DrawTimebar(float xleft, float xright, float ybot, float ytop){
   if(xright<=xleft)return;
   DISABLE_LIGHTING;
 
-  glLineWidth(linewidth);
+  glLineWidth(global_scase.linewidth);
   glBegin(GL_LINE_LOOP);
   glColor4fv(timebarcolor);
   glVertex2f(xleft,ybot);
@@ -156,10 +161,10 @@ void DrawSelectColorbar(void){
   colorbardata *cbi;
 
   if(show_firecolormap==0){
-    cbi = colorbarinfo + colorbartype;
+    cbi = colorbars.colorbarinfo + colorbartype;
   }
   else{
-    cbi = colorbarinfo+fire_colorbar_index;
+    cbi = colorbars.colorbarinfo+colorbars.fire_colorbar_index;
   }
 
   glPointSize(20.0f);
@@ -184,10 +189,10 @@ void DrawColorbarPathRGB(void){
   int ncolors;
 
   if(show_firecolormap==0){
-    cbi = colorbarinfo + colorbartype;
+    cbi = colorbars.colorbarinfo + colorbartype;
   }
   else{
-    cbi = colorbarinfo+fire_colorbar_index;
+    cbi = colorbars.colorbarinfo+colorbars.fire_colorbar_index;
   }
   glPointSize(5.0);
   glBegin(GL_POINTS);
@@ -268,7 +273,7 @@ void DrawColorbarPathRGB(void){
     if(fontindex==SCALED_FONT)ScaleFont3D();
     glPushMatrix();
     glScalef(SCALE2SMV(1.0),SCALE2SMV(1.0),SCALE2SMV(1.0));
-    glTranslatef(-xbar0,-ybar0,-zbar0);
+    glTranslatef(-global_scase.xbar0,-global_scase.ybar0,-global_scase.zbar0);
     int skip = 1;
     if(cbi->nnodes > 16)skip = cbi->nnodes / 16;
     for(i=0;i<cbi->nnodes;i+=skip){
@@ -300,7 +305,7 @@ void DrawColorbarPathRGB(void){
 
       if(have_fire==HRRPUV_index&&smoke_render_option==RENDER_SLICE){
         vval_min=global_hrrpuv_min;
-        vval_cutoff=global_hrrpuv_cutoff;
+        vval_cutoff=global_scase.global_hrrpuv_cutoff;
         vval_max=global_hrrpuv_max;
       }
       else{
@@ -379,36 +384,6 @@ void DrawColorbarPathRGB(void){
   }
 }
 
-/* ------------------ Rgb2Lab ------------------------ */
-
-void Rgb2Lab(unsigned char *rgb_arg, float *lab){
-  float frgb_arg[3];
-
-  frgb_arg[0] = (float)rgb_arg[0];
-  frgb_arg[1] = (float)rgb_arg[1];
-  frgb_arg[2] = (float)rgb_arg[2];
-  FRgb2Lab(frgb_arg, lab);
-}
-
-/* ------------------ Rgbf2Lab ------------------------ */
-
-void Rgbf2Lab(float *rgbf_arg, float *lab){
-  float frgb_arg[3];
-
-  frgb_arg[0] = rgbf_arg[0] * 255.0;
-  frgb_arg[1] = rgbf_arg[1] * 255.0;
-  frgb_arg[2] = rgbf_arg[2] * 255.0;
-  FRgb2Lab(frgb_arg, lab);
-}
-
-/* ------------------ Lab2XYZ ------------------------ */
-
-void Lab2XYZ(float *xyz, float *lab){
-  xyz[0] = lab[0] / 100.0;
-  xyz[1] = (lab[1] + 87.9) / 183.28;
-  xyz[2] = (lab[2] + 126.39) / 211.11;
-}
-
 /* ------------------ DrawColorbarPathCIELab ------------------------ */
 
 void DrawColorbarPathCIELab(void){
@@ -416,10 +391,10 @@ void DrawColorbarPathCIELab(void){
   colorbardata *cbi;
 
   if(show_firecolormap == 0){
-    cbi = colorbarinfo + colorbartype;
+    cbi = colorbars.colorbarinfo + colorbartype;
   }
   else{
-    cbi = colorbarinfo + fire_colorbar_index;
+    cbi = colorbars.colorbarinfo + colorbars.fire_colorbar_index;
   }
   glPointSize(5.0);
   glBegin(GL_POINTS);
@@ -495,7 +470,7 @@ void DrawColorbarPathCIELab(void){
   if(fontindex == SCALED_FONT)ScaleFont3D();
   glPushMatrix();
   glScalef(SCALE2SMV(1.0), SCALE2SMV(1.0), SCALE2SMV(1.0));
-  glTranslatef(-xbar0, -ybar0, -zbar0);
+  glTranslatef(-global_scase.xbar0, -global_scase.ybar0, -global_scase.zbar0);
   int skip = 1;
   if(cbi->nnodes > 16)skip = cbi->nnodes / 16;
   for(i = 0;i < cbi->nnodes;i+=skip){
@@ -569,559 +544,21 @@ void DrawColorbarPathCIELab(void){
   }
   glEnd();
 }
-
-/* ------------------ GetColorbar ------------------------ */
-
-colorbardata *GetColorbar(char *menu_label){
-  int i;
-
-  for(i=0;i<ncolorbars;i++){
-    colorbardata *cb;
-
-    cb = colorbarinfo + i;
-    if(strcmp(cb->menu_label,menu_label)==0)return cb;
-  }
-  return NULL;
-}
-
 /* ------------------ UpdateCurrentColorbar ------------------------ */
-#define FILE_UPDATE 6
+
 void UpdateCurrentColorbar(colorbardata *cb){
-  int jj=0,fed_loaded=0;
-
   current_colorbar = cb;
-  if(current_colorbar != NULL&&strcmp(current_colorbar->menu_label, "FED") == 0){
-    is_fed_colorbar = 1;
-  }
-  else{
-    is_fed_colorbar = 0;
-  }
-  for(jj=0;jj<nslice_loaded;jj++){
-    slicedata *slicej;
-    int j;
-
-    j = slice_loaded_list[jj];
-    slicej = sliceinfo + j;
-    if(slicej->display==0)continue;
-    if(slicej->is_fed==1){
-      fed_loaded=1;
-      break;
-    }
-  }
-  if(is_fed_colorbar==1&&fed_loaded==1)GLUISliceBoundCB(FILE_UPDATE);
 }
 
-/* ------------------ AdjustColorBar ------------------------ */
-
-void AdjustColorBar(colorbardata *cbi){
-  int i;
-
-  cbi->node_dist[0] = 0.0;
-  for(i = 1;i < cbi->nnodes;i++){
-    unsigned char *rgb1_local, *rgb2_local;
-    float lab1[3], lab2[3], dist;
-
-    rgb2_local = cbi->node_rgb + 3*i;
-    rgb1_local = rgb2_local - 3;
-    Rgb2Lab(rgb1_local, lab1);
-    Rgb2Lab(rgb2_local, lab2);
-    float dx, dy, dz;
-
-    DDIST3(lab1, lab2, dist);
-    cbi->node_dist[i] = cbi->node_dist[i - 1] + dist;
-  }
-
-  float total_dist;
-  int nnodes;
-
-  total_dist = cbi->node_dist[cbi->nnodes - 1];
-  nnodes = cbi->node_index[cbi->nnodes - 1];
-
-  if(total_dist > 0.0){
-    for(i = 1;i < cbi->nnodes - 1;i++){
-      int inode;
-
-      inode = nnodes * (cbi->node_dist[i] / total_dist);
-      cbi->node_index[i] = inode;
-    }
-  }
-  cbi->adjusted = 1;
-  update_colorbar_dialog = 1;
-}
-
-/* ------------------ IsColorbarSplit ------------------------ */
-
-int IsColorbarSplit(colorbardata *cbi){
-  int i;
-
-  for(i = 0;i < cbi->nnodes - 1;i++){
-    if(cbi->node_index[i] + 1 == cbi->node_index[i + 1])return 1;
-    if(cbi->node_index[i]     == cbi->node_index[i + 1])return 1;
-  }
-  return 0;
-}
-
-/* ------------------ AdjustColorBarLab ------------------------ */
-
-void AdjustColorBarLab(colorbardata *cbi){
-  if(cbi->can_adjust==0||IsColorbarSplit(cbi)==1)return;
-  AdjustColorBar(cbi);
-}
-
-/* ------------------ FRgb2Lab ------------------------ */
-
-void FRgb2Lab(float *rgb_arg, float *lab){
-
-  // Convert RGB values to XYZ
-  float var_R = rgb_arg[0] / 255.0f;
-  float var_G = rgb_arg[1] / 255.0f;
-  float var_B = rgb_arg[2] / 255.0f;
-
-  if(var_R > 0.04045f) {
-    var_R = pow((var_R + 0.055f) / 1.055f, 2.4f);
-  }
-  else {
-    var_R /= 12.92f;
-  }
-  if(var_G > 0.04045f) {
-    var_G = pow((var_G + 0.055f) / 1.055f, 2.4f);
-  }
-  else {
-    var_G /= 12.92f;
-  }
-  if(var_B > 0.04045f) {
-    var_B = pow((var_B + 0.055f) / 1.055f, 2.4f);
-  }
-  else {
-    var_B /= 12.92f;
-  }
-
-  var_R *= 100.0f;
-  var_G *= 100.0f;
-  var_B *= 100.0f;
-
-  float X = var_R * 0.4124f + var_G * 0.3576f + var_B * 0.1805f;
-  float Y = var_R * 0.2126f + var_G * 0.7152f + var_B * 0.0722f;
-  float Z = var_R * 0.0193f + var_G * 0.1192f + var_B * 0.9505f;
-
-  // Convert XYZ to CIELAB
-  float var_X = X / 95.047f;
-  float var_Y = Y / 100.0f;
-  float var_Z = Z / 108.883f;
-
-  if(var_X > 0.008856f) {
-    var_X = pow(var_X, 1.0f / 3.0f);
-  }
-  else {
-    var_X = (7.787f * var_X) + (16.0f / 116.0f);
-  }
-  if(var_Y > 0.008856f) {
-    var_Y = pow(var_Y, 1.0f / 3.0f);
-  }
-  else {
-    var_Y = (7.787f * var_Y) + (16.0f / 116.0f);
-  }
-  if(var_Z > 0.008856f) {
-    var_Z = pow(var_Z, 1.0f / 3.0f);
-  }
-  else {
-    var_Z = (7.787f * var_Z) + (16.0f / 116.0f);
-  }
-
-  lab[0] = (116.0f * var_Y) - 16.0f;
-  lab[1] = 500.0f * (var_X - var_Y);
-  lab[2] = 200.0f * (var_Y - var_Z);
-}
-
-/* ------------------ Rgb2Dist ------------------------ */
-
-void Rgb2Dist(colorbardata *cbi){
-  int i;
-
-  float total_dist, *colorbar_dist;
-  int jstart, *dist_ind;
-
-  colorbar_dist = cbi->colorbar_dist;
-  dist_ind   = cbi->dist_ind;
-
-  colorbar_dist[0]     = 0.0;
-  for(i = 1;i < 256;i++){
-    float dist_lab, lab2[3], *rgb1f, *rgb2f, lab1[3];
-    float dx, dy, dz;
-
-    rgb1f = cbi->colorbar_rgb + 3*(i - 1);
-    rgb2f = cbi->colorbar_rgb + 3*i;
-    Rgbf2Lab(rgb1f, lab1);
-    Rgbf2Lab(rgb2f, lab2);
-    DDIST3(lab1, lab2, dist_lab);
-    colorbar_dist[i] = colorbar_dist[i - 1] + dist_lab;
-  }
-  total_dist = colorbar_dist[255];
-
-  dist_ind[0] = 1;
-  dist_ind[255] = 1;
-  for(i=1;i<255;i++){
-    dist_ind[i] = 0;
-  }
-  jstart = 0;
-  for(i = 1;i < 16;i++){
-    float val;
-    int j;
-
-    val = (float)i* total_dist / 16.0;
-    for(j=jstart;j<255;j++){
-      if(colorbar_dist[j]<=val&&val<= colorbar_dist[j+1]){
-        dist_ind[j] = 1;
-        jstart = j;
-        break;
-      }
-    }
-  }
-}
-
-/* ------------------ Lab2Rgb ------------------------ */
-
-void Lab2Rgb(unsigned char *rgb_arg, float *frgb_arg, float *lab){
-  float L, a, b;
-
-  L = lab[0];
-  a = lab[1];
-  b = lab[2];
-
-  // Convert CIELAB to XYZ
-  float var_Y = (L + 16.0f) / 116.0f;
-  float var_X = a / 500.0f + var_Y;
-  float var_Z = var_Y - b / 200.0f;
-
-  if(pow(var_Y, 3.0f) > 0.008856f) {
-    var_Y = pow(var_Y, 3.0f);
-  }
-  else {
-    var_Y = (var_Y - 16.0f / 116.0f) / 7.787f;
-  }
-  if(pow(var_X, 3.0f) > 0.008856f) {
-    var_X = pow(var_X, 3.0f);
-  }
-  else {
-    var_X = (var_X - 16.0f / 116.0f) / 7.787f;
-  }
-  if(pow(var_Z, 3.0f) > 0.008856f) {
-    var_Z = pow(var_Z, 3.0f);
-  }
-  else {
-    var_Z = (var_Z - 16.0f / 116.0f) / 7.787f;
-  }
-
-  float X = var_X * 0.95047f;
-  float Y = var_Y;
-  float Z = var_Z * 1.08883f;
-
-  // Convert XYZ to RGB
-  float var_R =  X * 3.2406f - Y * 1.5372f - Z * 0.4986f;
-  float var_G = -X * 0.9689f + Y * 1.8758f + Z * 0.0415f;
-  float var_B =  X * 0.0557f - Y * 0.2040f + Z * 1.0570f;
-
-  if(var_R > 0.0031308f) {
-    var_R = 1.055f * pow(var_R, 1.0f / 2.4f) - 0.055f;
-  }
-  else {
-    var_R *= 12.92f;
-  }
-  if(var_G > 0.0031308f) {
-    var_G = 1.055f * pow(var_G, 1.0f / 2.4f) - 0.055f;
-  }
-  else {
-    var_G *= 12.92f;
-  }
-  if(var_B > 0.0031308f) {
-    var_B = 1.055f * pow(var_B, 1.0f / 2.4f) - 0.055f;
-  }
-  else {
-    var_B *= 12.92f;
-  }
-
-  frgb_arg[0] = CLAMP(var_R * 255.0f, 0.0, 255.0f);
-  frgb_arg[1] = CLAMP(var_G * 255.0f, 0.0, 255.0f);
-  frgb_arg[2] = CLAMP(var_B * 255.0f, 0.0, 255.0f);
-  rgb_arg[0] = (unsigned char)CLAMP(frgb_arg[0] + 0.5, 0, 255);
-  rgb_arg[1] = (unsigned char)CLAMP(frgb_arg[1] + 0.5, 0, 255);
-  rgb_arg[2] = (unsigned char)CLAMP(frgb_arg[2] + 0.5, 0, 255);
-}
-
-// matches following website
-// http://colormine.org/convert/rgb-to-lab
-
-/* ------------------ CheckLab ------------------------ */
-void CheckLab(void){
-  int i, diff;
-  int hist[256];
-  float sum=0.0;
-  float *labxyz;
-  unsigned char *labrgb, *lab_check_rgb255;
-
-  for(i = 0;i < 256;i++){
-    hist[i] = 0;
-  }
-
-  NewMemory((void **)&lab_check_xyz, 3 * 17*17*17 * sizeof(float));
-  NewMemory((void **)&lab_check_rgb255, 3 * 17*17*17);
-  labxyz = lab_check_xyz;
-  labrgb = lab_check_rgb255;
-  for(i = 0; i < 256; i++){
-    int j;
-
-    printf("i=%i\n", i);
-    for(j = 0; j < 256; j++){
-      int k;
-
-      for(k = 0; k < 256; k++){
-        unsigned char rgbval[3], rgbnew[3];
-        float lab[3], lab2[3], dist2, frgb[3];
-
-        rgbval[0] = (unsigned char)k;
-        rgbval[1] = (unsigned char)j;
-        rgbval[2] = (unsigned char)i;
-        Rgb2Lab(rgbval, lab);
-        Lab2Rgb(rgbnew, frgb, lab);
-        Rgb2Lab(rgbnew, lab2);
-        diff = ABS(rgbval[0] - rgbnew[0]);
-        diff = MAX(diff, ABS(rgbval[1] - rgbnew[1]));
-        diff = MAX(diff, ABS(rgbval[2] - rgbnew[2]));
-        dist2 = ABS(lab2[0]-lab[0]);
-        dist2 = MAX(dist2, ABS(lab2[1] - lab[1]));
-        dist2 = MAX(dist2, ABS(lab2[2] - lab[2]));
-        sum += dist2;
-        hist[diff]++;
-      }
-    }
-  }
-  for(i = 0; i <= 256; i+=16){
-    int j;
-
-    for(j = 0; j <= 256; j+=16){
-      int k;
-
-      for(k = 0; k<=256; k+=16){
-        unsigned char rgbval[3];
-        float lab[3];
-
-        rgbval[0] = MIN(( unsigned char )k,255);
-        rgbval[1] = MIN(( unsigned char )j,255);
-        rgbval[2] = MIN(( unsigned char )i,255);
-        Rgb2Lab(rgbval, lab);
-        memcpy(labxyz, lab, 3 * sizeof(float));
-        memcpy(labrgb, rgbval, 3);
-        labxyz += 3;
-        labrgb += 3;
-      }
-    }
-  }
-  for(i = 0;i < 256;i++){
-    printf("%i ", hist[i]);
-  }
-  printf("\n");
-  printf("lab avg diff=%f\n", sum / (float)(256 * 256 * 256));
-  FREEMEMORY(lab_check_xyz);
-  FREEMEMORY(lab_check_rgb255);
-}
-
-/* ------------------ GetColorDist ------------------------ */
-
-void GetColorDist(colorbardata *cbi, int option, float *min, float *max){
-  int i;
-
-  for(i = 1; i < 255;i++){
-    cbi->colorbar_dist_delta[i - 1] = cbi->colorbar_dist[i] - cbi->colorbar_dist[i - 1];
-  }
-  *min = cbi->colorbar_dist_delta[0];
-  *max = *min;
-  for(i = 1; i < 255 - 1; i++){
-    *min = MIN(*min, cbi->colorbar_dist_delta[i]);
-    *max = MAX(*max, cbi->colorbar_dist_delta[i]);
-  }
-}
-
-/* ------------------ RemapColorbar ------------------------ */
-
-unsigned char SetAlpha(unsigned char *node_rgb){
-  if(
-    (node_rgb[0] ==   0 && node_rgb[1] ==   1 && node_rgb[2] ==   2) ||
-    (node_rgb[0] == 253 && node_rgb[1] == 254 && node_rgb[2] == 255)
-    ){
-    return 0;
-  }
-  return 255;
-}
-
-/* ------------------ RemapColorbar ------------------------ */
-
-void RemapColorbar(colorbardata *cbi){
-  int i;
-  float *colorbar_rgb;
-  unsigned char *node_rgb;
-  unsigned char *colorbar_alpha;
-  float *colorbar_lab;
-  int interp;
-
-  interp = cbi->interp;
-  CheckMemory;
-  colorbar_rgb   = cbi->colorbar_rgb;
-  node_rgb       = cbi->node_rgb;
-  colorbar_lab   = cbi->colorbar_lab;
-  colorbar_alpha = cbi->colorbar_alpha;
-
-  AdjustColorBarLab(cbi);
-
-  for(i=0;i<cbi->node_index[0];i++){
-    colorbar_rgb[0+3*i] = node_rgb[0]/255.0;
-    colorbar_rgb[1+3*i] = node_rgb[1]/255.0;
-    colorbar_rgb[2+3*i] = node_rgb[2]/255.0;
-    colorbar_alpha[i]   = SetAlpha(node_rgb);
-  }
-  for(i=0;i<cbi->nnodes-1;i++){
-    int i1,i2,j;
-    float lab1[3], lab2[3];
-
-    i1 = cbi->node_index[i];
-    i2 = cbi->node_index[i+1];
-    if(i2==i1)continue;
-    node_rgb = cbi->node_rgb+3*i;
-    Rgb2Lab(node_rgb,   lab1);
-    Rgb2Lab(node_rgb+3, lab2);
-    for(j=i1;j<i2;j++){
-      float factor;
-
-      factor = (float)(j-i1)/(float)(i2-i1);
-      float *labj;
-
-      labj  = colorbar_lab + 3*j;
-      labj[0]=MIX(factor,lab2[0],lab1[0]);
-      labj[1]=MIX(factor,lab2[1],lab1[1]);
-      labj[2]=MIX(factor,lab2[2],lab1[2]);
-      if(interp==INTERP_LAB){
-        unsigned char rgb_val[3];
-        float frgb[3];
-
-        Lab2Rgb(rgb_val, frgb, labj);
-        colorbar_rgb[0+3*j] = frgb[0]/255.0;
-        colorbar_rgb[1+3*j] = frgb[1]/255.0;
-        colorbar_rgb[2+3*j] = frgb[2]/255.0;
-      }
-      else{
-        colorbar_rgb[0+3*j]=MIX(factor,node_rgb[3],node_rgb[0])/255.0;
-        colorbar_rgb[1+3*j]=MIX(factor,node_rgb[4],node_rgb[1])/255.0;
-        colorbar_rgb[2+3*j]=MIX(factor,node_rgb[5],node_rgb[2])/255.0;
-      }
-      colorbar_alpha[j]=SetAlpha(node_rgb);
-    }
-  }
-  node_rgb = cbi->node_rgb+3*(cbi->nnodes-1);
-  for(i=cbi->node_index[cbi->nnodes-1];i<256;i++){
-    colorbar_rgb[0+3*i] = node_rgb[0]/255.0;
-    colorbar_rgb[1+3*i] = node_rgb[1]/255.0;
-    colorbar_rgb[2+3*i] = node_rgb[2]/255.0;
-    colorbar_alpha[i]   = SetAlpha(node_rgb);
-  }
-  if(show_extreme_mindata==1){
-    colorbar_rgb[0]=rgb_below_min[0];
-    colorbar_rgb[1]=rgb_below_min[1];
-    colorbar_rgb[2]=rgb_below_min[2];
-  }
-  if(show_extreme_maxdata==1){
-    colorbar_rgb[0+3*255]=rgb_above_max[0];
-    colorbar_rgb[1+3*255]=rgb_above_max[1];
-    colorbar_rgb[2+3*255]=rgb_above_max[2];
-  }
-  Rgb2Dist(cbi);
-  CheckMemory;
-}
-
-/* ------------------ ReadCSVColorbar ------------------------ */
-
-void ReadCSVColorbar(colorbardata *cbptr, char *dir, char *file, char *colorbar_type, int type){
-  FILE *stream;
-  int i,n=0;
-  char fullfile[1024];
-  char buffer[255];
-  char *field1;
-  int have_name = 0;
-
-  if(file == NULL || strlen(file) == 0)return;
-  if(dir == NULL  || strlen(dir) == 0)return;
-  strcpy(fullfile, dir);
-  strcat(fullfile, dirseparator);
-  strcat(fullfile, file);
-  stream = fopen(fullfile, "r");
-  if(stream == NULL)return;
-  if(fgets(buffer, 255, stream) == NULL){
-    fclose(stream);
-    return;
-  }
-
-  strcpy(cbptr->menu_label, file);
-  cbptr->nodehilight = 0;
-
-  field1 = strtok(buffer, ",");
-  if(field1 != NULL && isalpha(field1[0])!=0){
-    char *field2;
-
-    have_name = 1;
-    field2 = strtok(NULL, ",");
-    if(field2 != NULL){
-      strcpy(cbptr->menu_label, field2);
-      TrimBack(cbptr->menu_label);
-    }
-  }
-  rewind(stream);
-  if(have_name == 1){
-    fgets(buffer, 255, stream);
-    TrimBack(buffer);
-  }
-  for(;;){
-    if(fgets(buffer, 255, stream) == NULL)break;
-    n++;
-  }
-  rewind(stream);
-  int *rgbs, *rgbscopy;
-  NewMemory((void **)&rgbs, 3 * n * sizeof(int));
-  rgbscopy = rgbs;
-
-  if(have_name == 1){
-    fgets(buffer, 255, stream);
-    TrimBack(buffer);
-  }
-  for(i=0;i<n;i++){
-    char *crgb;
-
-    if(fgets(buffer, 255, stream) == NULL)break;
-    TrimBack(buffer);
-    crgb = strtok(buffer, ",");
-    sscanf(crgb, "%i", rgbscopy);
-    crgb = strtok(NULL, ",");
-    sscanf(crgb, "%i", rgbscopy+1);
-    crgb = strtok(NULL, ",");
-    sscanf(crgb, "%i", rgbscopy+2);
-    cbptr->node_rgb[3 * i + 0] = (unsigned char)CLAMP(rgbscopy[0], 0, 255);
-    cbptr->node_rgb[3 * i + 1] = (unsigned char)CLAMP(rgbscopy[1], 0, 255);
-    cbptr->node_rgb[3 * i + 2] = (unsigned char)CLAMP(rgbscopy[2], 0, 255);
-    cbptr->node_index[i] = i;
-    strcpy(cbptr->colorbar_type, colorbar_type);
-    cbptr->type = type;
-    rgbscopy += 3;
-  }
-  cbptr->nnodes = n;
-  fclose(stream);
-}
-
-/* ------------------ InitDefaultColorbars ------------------------ */
+/* ------------------ UpdateColorbarOrig ------------------------ */
 
 void UpdateColorbarOrig(void){
   int i;
 
-  for(i = 0;i < ncolorbars;i++){
+  for(i = 0;i < colorbars.ncolorbars;i++){
     colorbardata *cbi;
 
-    cbi = colorbarinfo + i;
+    cbi = colorbars.colorbarinfo + i;
     cbi->nnodes_orig = cbi->nnodes;
     memcpy(cbi->node_index_orig, cbi->node_index, cbi->nnodes*sizeof(int));
     memcpy(cbi->node_rgb_orig,   cbi->node_rgb,   cbi->nnodes*sizeof(int));
@@ -1144,8 +581,8 @@ int CompareColorbars(const void *arg1, const void *arg2){
 
   i = (int *)arg1;
   j = (int *)arg2;
-  cbi = colorbarinfo + *i;
-  cbj = colorbarinfo + *j;
+  cbi = colorbars.colorbarinfo + *i;
+  cbj = colorbars.colorbarinfo + *j;
   if(cbi->type<cbj->type)return -1;
   if(cbi->type>cbj->type)return 1;
   return STRCMP(cbi->menu_label, cbj->menu_label);
@@ -1161,37 +598,37 @@ void SortColorBars(void){
   strcpy(toggle_label1, "");
   if(index_colorbar1 >= 0){
     colorbardata *cbt1;
-    cbt1 = colorbarinfo + index_colorbar1;
+    cbt1 = colorbars.colorbarinfo + index_colorbar1;
     strcpy(toggle_label1,cbt1->menu_label);
   }
   strcpy(toggle_label2, "");
   if(index_colorbar2 >= 0){
     colorbardata *cbt2;
 
-    cbt2 = colorbarinfo + index_colorbar2;
+    cbt2 = colorbars.colorbarinfo + index_colorbar2;
     strcpy(toggle_label2, cbt2->menu_label);
   }
   strcpy(label_edit, "");
   if(colorbartype >= 0){
     colorbardata *cbt1;
-    cbt1 = colorbarinfo + colorbartype;
+    cbt1 = colorbars.colorbarinfo + colorbartype;
     strcpy(label_edit, cbt1->menu_label);
   }
   strcpy(label_bound, "");
   if(colorbartype >= 0){
     colorbardata *cbt1;
-    cbt1 = colorbarinfo + colorbartype;
+    cbt1 = colorbars.colorbarinfo + colorbartype;
     strcpy(label_bound, cbt1->menu_label);
   }
 
   FREEMEMORY(colorbar_list_sorted);
-  NewMemory((void **)&colorbar_list_sorted, ncolorbars*sizeof(int));
+  NewMemory((void **)&colorbar_list_sorted, colorbars.ncolorbars*sizeof(int));
   FREEMEMORY(colorbar_list_inverse);
-  NewMemory((void **)&colorbar_list_inverse, ncolorbars*sizeof(int));
-  for(i=0; i<ncolorbars; i++){
+  NewMemory((void **)&colorbar_list_inverse, colorbars.ncolorbars*sizeof(int));
+  for(i=0; i<colorbars.ncolorbars; i++){
     colorbardata *cbi;
 
-    cbi = colorbarinfo + i;
+    cbi = colorbars.colorbarinfo + i;
     cbi->type = CB_OTHER;
     if(strcmp(cbi->colorbar_type, "rainbow")==0)cbi->type      = CB_RAINBOW;
     if(strcmp(cbi->colorbar_type, "linear")==0)cbi->type       = CB_LINEAR;
@@ -1202,48 +639,49 @@ void SortColorBars(void){
     if(strcmp(cbi->colorbar_type, "user defined")==0)cbi->type = CB_USER;
     colorbar_list_sorted[i] = i;
   }
-  qsort((colorbardata *)colorbar_list_sorted, (size_t)ncolorbars, sizeof(int), CompareColorbars);
-  for(i=0; i<ncolorbars; i++){
+  qsort((colorbardata *)colorbar_list_sorted, (size_t)colorbars.ncolorbars, sizeof(int), CompareColorbars);
+  for(i=0; i<colorbars.ncolorbars; i++){
     colorbar_list_inverse[colorbar_list_sorted[i]] = i;
   }
 
   colorbardata *cb;
 
-  bw_colorbar_index = -1;
-  cb = GetColorbar("black->white");
-  if(cb != NULL)bw_colorbar_index = cb - colorbarinfo;
+  colorbars.bw_colorbar_index = -1;
+  cb = GetColorbar(&colorbars, "black->white");
+  if(cb != NULL)colorbars.bw_colorbar_index = cb - colorbars.colorbarinfo;
 
-  cb = GetColorbar("fire");
-  fire_colorbar_index=cb-colorbarinfo;
+  // TODO: what if there is no "fire" colorbar
+  cb = GetColorbar(&colorbars, "fire");
+  colorbars.fire_colorbar_index=cb-colorbars.colorbarinfo;
   fire_colorbar=cb;
 
-  cb = GetColorbar("fire line (level set)");
-  levelset_colorbar=cb-colorbarinfo;
+  cb = GetColorbar(&colorbars, "fire line (level set)");
+  levelset_colorbar=cb-colorbars.colorbarinfo;
 
-  split_colorbar_index = -1;
-  cb = GetColorbar("split");
+  colorbars.split_colorbar_index = -1;
+  cb = GetColorbar(&colorbars, "split");
   split_colorbar=cb;
-  if(cb != NULL)split_colorbar_index = cb - colorbarinfo;
+  if(cb != NULL)colorbars.split_colorbar_index = cb - colorbars.colorbarinfo;
 
-  cb = GetColorbar("CO2");
-  co2_colorbar_index = cb - colorbarinfo;
+  cb = GetColorbar(&colorbars, "CO2");
+  colorbars.co2_colorbar_index = cb - colorbars.colorbarinfo;
 
   colorbartype       = colorbartype_default;
-  iso_colorbar_index = colorbartype_default;
+  colorbars.iso_colorbar_index = colorbartype_default;
   cb = NULL;
-  if(strlen(toggle_label1)>0)cb = GetColorbar(toggle_label1);
-  if(cb!=NULL)index_colorbar1 = cb - colorbarinfo;
+  if(strlen(toggle_label1)>0)cb = GetColorbar(&colorbars, toggle_label1);
+  if(cb!=NULL)index_colorbar1 = cb - colorbars.colorbarinfo;
 
   cb = NULL;
-  if(strlen(toggle_label2) > 0)cb = GetColorbar(toggle_label2);
-  if(cb != NULL)index_colorbar2 = cb - colorbarinfo;
+  if(strlen(toggle_label2) > 0)cb = GetColorbar(&colorbars, toggle_label2);
+  if(cb != NULL)index_colorbar2 = cb - colorbars.colorbarinfo;
   cb = NULL;
-  if(strlen(label_edit) > 0)cb = GetColorbar(label_edit);
-  if(cb != NULL)colorbartype = cb - colorbarinfo;
+  if(strlen(label_edit) > 0)cb = GetColorbar(&colorbars, label_edit);
+  if(cb != NULL)colorbartype = cb - colorbars.colorbarinfo;
 
   cb = NULL;
-  if(strlen(label_bound) > 0)cb = GetColorbar(label_bound);
-  if(cb != NULL)colorbartype= cb - colorbarinfo;
+  if(strlen(label_bound) > 0)cb = GetColorbar(&colorbars, label_bound);
+  if(cb != NULL)colorbartype= cb - colorbars.colorbarinfo;
 }
 
 /* ------------------ UpdateColorbarDialogs ------------------------ */
@@ -1267,17 +705,17 @@ int AddColorbar(int icolorbar){
   colorbardata *cb_to, *cb_from;
   char cb_label[255];
 
-  ncolorbars++;
+  colorbars.ncolorbars++;
   CheckMemory;
-  ResizeMemory((void **)&colorbarinfo, ncolorbars * sizeof(colorbardata));
-  UpdateCurrentColorbar(colorbarinfo + colorbartype);
+  ResizeMemory((void **)&colorbars.colorbarinfo, colorbars.ncolorbars * sizeof(colorbardata));
+  UpdateCurrentColorbar(colorbars.colorbarinfo + colorbartype);
 
-  cb_from = colorbarinfo + icolorbar;
+  cb_from = colorbars.colorbarinfo + icolorbar;
   CheckMemory;
 
   // new colorbar
 
-  cb_to = colorbarinfo + ncolorbars - 1;
+  cb_to = colorbars.colorbarinfo + colorbars.ncolorbars - 1;
 
   memcpy(cb_to, cb_from, sizeof(colorbardata));
   strcpy(cb_to->menu_label, cb_from->menu_label);
@@ -1286,755 +724,19 @@ int AddColorbar(int icolorbar){
   strcpy(cb_to->colorbar_type, "user defined");
   cb_to->interp = INTERP_LAB;
   cb_to->can_adjust = 1;
-  RemapColorbar(cb_to);
+  RemapColorbar(cb_to, show_extreme_mindata, rgb_below_min,
+                show_extreme_maxdata, rgb_above_max);
   UpdateColorbarDialogs();
 
   colorbardata *cbnew;
 
-  cbnew = GetColorbar(cb_label);
+  cbnew = GetColorbar(&colorbars, cb_label);
   if(cbnew != NULL){
-    colorbartype = cbnew - colorbarinfo;
+    colorbartype = cbnew - colorbars.colorbarinfo;
   }
   GLUISetColorbarListEdit(colorbartype);
   GLUISetColorbarListBound(colorbartype);
   return colorbartype;
-}
-
-/* ------------------ InitDefaultColorbars ------------------------ */
-
-void InitDefaultColorbars(int nini){
-  int i;
-  colorbardata *cbi;
-  int ncolorbars_dirlist;
-
-  ndefaultcolorbars = 0;
-
-  filelistdata *linear_filelist=NULL, *circular_filelist=NULL, *rainbow_filelist=NULL, *divergent_filelist = NULL;
-  filelistdata *user_filelist = NULL, *colorbars_dirlist = NULL;
-
-  ncolorbars_dirlist  = GetFileListSize(colorbars_dir,           "*",     DIR_MODE);
-  nuser_filelist      = GetFileListSize(colorbars_user_dir,      "*.csv", FILE_MODE);
-  nlinear_filelist    = GetFileListSize(colorbars_linear_dir,    "*.csv", FILE_MODE);
-  ncircular_filelist  = GetFileListSize(colorbars_circular_dir,  "*.csv", FILE_MODE);
-  nrainbow_filelist   = GetFileListSize(colorbars_rainbow_dir,   "*.csv", FILE_MODE);
-  ndivergent_filelist = GetFileListSize(colorbars_divergent_dir, "*.csv", FILE_MODE);
-
-  MakeFileList(colorbars_dir,           "*",     ncolorbars_dirlist,  NO, &colorbars_dirlist,  DIR_MODE);
-  MakeFileList(colorbars_user_dir,      "*.csv", nuser_filelist,      NO, &user_filelist,      FILE_MODE);
-  MakeFileList(colorbars_linear_dir,    "*.csv", nlinear_filelist,    NO, &linear_filelist,    FILE_MODE);
-  MakeFileList(colorbars_circular_dir,  "*.csv", ncircular_filelist,  NO, &circular_filelist,  FILE_MODE);
-  MakeFileList(colorbars_rainbow_dir,   "*.csv", nrainbow_filelist,   NO, &rainbow_filelist,   FILE_MODE);
-  MakeFileList(colorbars_divergent_dir, "*.csv", ndivergent_filelist, NO, &divergent_filelist, FILE_MODE);
-
-  ndefaultcolorbars+=nlinear_filelist + ncircular_filelist + nrainbow_filelist + ndivergent_filelist + nuser_filelist;
-
-  ndefaultcolorbars+=19;
-
-  FREEMEMORY(colorbarinfo);
-  ncolorbars=ndefaultcolorbars;
-  NewMemory((void **)&colorbarinfo,(ncolorbars+nini)*sizeof(colorbardata));
-  NewMemory(( void ** )&colorbarcopyinfo, (ncolorbars + nini) * sizeof(colorbardata));
-  UpdateCurrentColorbar(colorbarinfo + colorbartype);
-
-  for(i=0;i<ncolorbars;i++){
-    cbi = colorbarinfo + i;
-    cbi->can_adjust = 1;
-    cbi->adjusted   = 0;
-  }
-  update_colorbar_dialog = 0;
-
-  cbi = colorbarinfo;
-
-  // rainbow colorbar
-
-  strcpy(cbi->menu_label,"Rainbow");
-  cbi->nnodes=5;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=255;
-
-  cbi->node_index[1]=64;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=192;
-  cbi->node_rgb[5]=192;
-
-  cbi->node_index[2]=128;
-  cbi->node_rgb[6]=0;
-  cbi->node_rgb[7]=255;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=192;
-  cbi->node_rgb[9]=192;
-  cbi->node_rgb[10]=192;
-  cbi->node_rgb[11]=0;
-
-  cbi->node_index[4]=255;
-  cbi->node_rgb[12]=255;
-  cbi->node_rgb[13]=0;
-  cbi->node_rgb[14]=0;
-  strcpy(cbi->colorbar_type, "rainbow");
-  cbi++;
-
-  // original rainbow colorbar
-
-  strcpy(cbi->menu_label, "Rainbow_orig");
-  cbi->nnodes=5;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=255;
-
-  cbi->node_index[1]=64;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=255;
-  cbi->node_rgb[5]=255;
-
-  cbi->node_index[2]=128;
-  cbi->node_rgb[6]=0;
-  cbi->node_rgb[7]=255;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=192;
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=255;
-  cbi->node_rgb[11]=0;
-
-  cbi->node_index[4]=255;
-  cbi->node_rgb[12]=255;
-  cbi->node_rgb[13]=0;
-  cbi->node_rgb[14]=0;
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // Rainbow 2 colorbar
-
-  strcpy(cbi->menu_label,"Rainbow 2");
-  cbi->nnodes=12;
-  cbi->nodehilight=0;
- 
-  cbi->node_index[0]=0;	
-  cbi->node_rgb[0]=4;	
-  cbi->node_rgb[1]=0;	
-  cbi->node_rgb[2]=108;
-  
-  cbi->node_index[1]=20;	
-  cbi->node_rgb[3]=6;	
-  cbi->node_rgb[4]=3;	
-  cbi->node_rgb[5]=167;
-  
-  cbi->node_index[2]=60;	
-  cbi->node_rgb[6]=24;	
-  cbi->node_rgb[7]=69;	
-  cbi->node_rgb[8]=240;
-  
-  cbi->node_index[3]=70;	
-  cbi->node_rgb[9]=31;	
-  cbi->node_rgb[10]=98;	
-  cbi->node_rgb[11]=214;
-  
-  cbi->node_index[4]=80;	
-  cbi->node_rgb[12]=5;	
-  cbi->node_rgb[13]=125;	
-  cbi->node_rgb[14]=170;
-  
-  cbi->node_index[5]=96;	
-  cbi->node_rgb[15]=48;	
-  cbi->node_rgb[16]=155;	
-  cbi->node_rgb[17]=80;
-  
-  cbi->node_index[6]=112;	
-  cbi->node_rgb[18]=82;	
-  cbi->node_rgb[19]=177;	
-  cbi->node_rgb[20]=8;
-  
-  cbi->node_index[7]=163;	
-  cbi->node_rgb[21]=240;	
-  cbi->node_rgb[22]=222;	
-  cbi->node_rgb[23]=3;
-  
-  cbi->node_index[8]=170;	
-  cbi->node_rgb[24]=249;	
-  cbi->node_rgb[25]=214;	
-  cbi->node_rgb[26]=7;
-  
-  cbi->node_index[9]=200;	
-  cbi->node_rgb[27]=252;	
-  cbi->node_rgb[28]=152;	
-  cbi->node_rgb[29]=22;
-  
-  cbi->node_index[10]=230;	
-  cbi->node_rgb[30]=254;	
-  cbi->node_rgb[31]=67;	
-  cbi->node_rgb[32]=13;
-  
-  cbi->node_index[11]=255;	
-  cbi->node_rgb[33]=215;	
-  cbi->node_rgb[34]=5;	
-  cbi->node_rgb[35]=13;
-  strcpy(cbi->colorbar_type, "deprecated");
-  cbi++;
-
-  // yellow/red
-
-  strcpy(cbi->menu_label,"yellow->red");
-  cbi->nnodes=2;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=255;
-  cbi->node_rgb[1]=255;
-  cbi->node_rgb[2]=0;
-
-  cbi->node_index[1]=255;
-  cbi->node_rgb[3]=255;
-  cbi->node_rgb[4]=0;
-  cbi->node_rgb[5]=0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // blue/green/red
-
-  strcpy(cbi->menu_label,"blue->green->red");
-  cbi->nnodes=3;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=255;
-
-  cbi->node_index[1]=128;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=255;
-  cbi->node_rgb[5]=0;
-
-  cbi->node_index[2]=255;
-  cbi->node_rgb[6]=255;
-  cbi->node_rgb[7]=0;
-  cbi->node_rgb[8]=0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // blue/yellow/white
-
-  strcpy(cbi->menu_label, "blue->yellow->white");
-  cbi->nnodes = 4;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0]  =   0;
-  cbi->node_rgb[0]    =   0;
-  cbi->node_rgb[1]    = 151;
-  cbi->node_rgb[2]    = 255;
-
-  cbi->node_index[1]  = 113;
-  cbi->node_rgb[3]    = 255;
-  cbi->node_rgb[4]    =   0;
-  cbi->node_rgb[5]    =   0;
-
-  cbi->node_index[2]  = 212;
-  cbi->node_rgb[6]    = 255;
-  cbi->node_rgb[7]    = 255;
-  cbi->node_rgb[8]    =   0;
-
-  cbi->node_index[3]  = 255;
-  cbi->node_rgb[9]    = 255;
-  cbi->node_rgb[10]   = 255;
-  cbi->node_rgb[11]   = 255;
-  strcpy(cbi->colorbar_type, "deprecated");
-  cbi++;
-
-  // blue->red split
-
-  strcpy(cbi->menu_label,"blue->red split");
-  cbi->nnodes=4;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=255;
-
-  cbi->node_index[1]=127;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=255;
-  cbi->node_rgb[5]=255;
-
-  cbi->node_index[2]=128;
-  cbi->node_rgb[6]=255;
-  cbi->node_rgb[7]=255;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=255;
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=0;
-  cbi->node_rgb[11]=0;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "divergent");
-  cbi++;
-
-  // black->white
-
-  strcpy(cbi->menu_label,"black->white");
-
-  cbi->nnodes=2;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=0;
-
-  cbi->node_index[1]=255;
-  cbi->node_rgb[3] =255;
-  cbi->node_rgb[4]=255;
-  cbi->node_rgb[5]=255;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // FED
-
-  strcpy(cbi->menu_label,"FED");
-
-  cbi->nnodes=6;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=96;
-  cbi->node_rgb[1]=96;
-  cbi->node_rgb[2]=255;
-
-  cbi->node_index[1]=26; // 0.295276,0.307087
-  cbi->node_rgb[3]=96;
-  cbi->node_rgb[4]=96;
-  cbi->node_rgb[5]=255;
-
-  cbi->node_index[2]=26;
-  cbi->node_rgb[6]=255;
-  cbi->node_rgb[7]=255;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=85; // 0.992126,1.003937
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=255;
-  cbi->node_rgb[11]=0;
-
-  cbi->node_index[4]=85;
-  cbi->node_rgb[12]=255;
-  cbi->node_rgb[13]=155;
-  cbi->node_rgb[14]=0;
-
-  cbi->node_index[5]=255;
-  cbi->node_rgb[15]=255;
-  cbi->node_rgb[16]=155;
-  cbi->node_rgb[17]=0;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // fire (original)
-
-  strcpy(cbi->menu_label,"fire");
-
-  cbi->nnodes=4;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=0;
-
-  cbi->node_index[1]=127;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=0;
-  cbi->node_rgb[5]=0;
-
-  cbi->node_index[2]=128;
-  cbi->node_rgb[6]=255;
-  cbi->node_rgb[7]=128;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=255;
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=128;
-  cbi->node_rgb[11]=0;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // fire 2
-
-  strcpy(cbi->menu_label,"fire 2");
-
-  cbi->nnodes=10;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=0;
-
-  cbi->node_index[1]=127;
-  cbi->node_rgb[3]=38;
-  cbi->node_rgb[4]=0;
-  cbi->node_rgb[5]=0;
-
-  cbi->node_index[2]=128;
-  cbi->node_rgb[6]=219;
-  cbi->node_rgb[7]=68;
-  cbi->node_rgb[8]=21;
-
-  cbi->node_index[3]=160;
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=125;
-  cbi->node_rgb[11]=36;
-
-  cbi->node_index[4]=183;
-  cbi->node_rgb[12]=255;
-  cbi->node_rgb[13]=157;
-  cbi->node_rgb[14]=52;
-
-  cbi->node_index[5]=198;
-  cbi->node_rgb[15]=255;
-  cbi->node_rgb[16]=170;
-  cbi->node_rgb[17]=63;
-
-  cbi->node_index[6]=214;
-  cbi->node_rgb[18]=255;
-  cbi->node_rgb[19]=198;
-  cbi->node_rgb[20]=93;
-
-  cbi->node_index[7]=229;
-  cbi->node_rgb[21]=255;
-  cbi->node_rgb[22]=208;
-  cbi->node_rgb[23]=109;
-
-  cbi->node_index[8]=244;
-  cbi->node_rgb[24]=255;
-  cbi->node_rgb[25]=234;
-  cbi->node_rgb[26]=161;
-
-  cbi->node_index[9]=255;
-  cbi->node_rgb[27]=255;
-  cbi->node_rgb[28]=255;
-  cbi->node_rgb[29]=238;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // fire 3
-
-  strcpy(cbi->menu_label, "fire 3");
-
-  cbi->nnodes = 4;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_rgb[0] = 0;
-  cbi->node_rgb[1] = 0;
-  cbi->node_rgb[2] = 0;
-
-  cbi->node_index[1] = 108;
-  cbi->node_rgb[3] = 255;
-  cbi->node_rgb[4] = 127;
-  cbi->node_rgb[5] = 0;
-
-  cbi->node_index[2] = 156;
-  cbi->node_rgb[6] = 255;
-  cbi->node_rgb[7] = 255;
-  cbi->node_rgb[8] = 0;
-
-  cbi->node_index[3] = 255;
-  cbi->node_rgb[9] = 255;
-  cbi->node_rgb[10] = 255;
-  cbi->node_rgb[11] = 255;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // cool
-
-  strcpy(cbi->menu_label, "cool");
-
-  cbi->nnodes = 7;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_rgb[0] = 0;
-  cbi->node_rgb[1] = 0;
-  cbi->node_rgb[2] = 0;
-
-  cbi->node_index[1] = 90;
-  cbi->node_rgb[3] = 64;
-  cbi->node_rgb[4] = 64;
-  cbi->node_rgb[5] = 255;
-
-  cbi->node_index[2] = 110;
-  cbi->node_rgb[6] = 155;
-  cbi->node_rgb[7] = 35;
-  cbi->node_rgb[8] = 33;
-
-  cbi->node_index[3] = 120;
-  cbi->node_rgb[9] = 108;
-  cbi->node_rgb[10] = 19;
-  cbi->node_rgb[11] = 43;
-
-  cbi->node_index[4] = 130;
-  cbi->node_rgb[12] = 208;
-  cbi->node_rgb[13] = 93;
-  cbi->node_rgb[14] = 40;
-
-  cbi->node_index[5] = 160;
-  cbi->node_rgb[15] = 255;
-  cbi->node_rgb[16] = 178;
-  cbi->node_rgb[17] = 0;
-
-  cbi->node_index[6] = 255;
-  cbi->node_rgb[18] = 255;
-  cbi->node_rgb[19] = 255;
-  cbi->node_rgb[20] = 255;
-  strcpy(cbi->colorbar_type, "deprecated");
-  cbi++;
-
-  // fire line (level set)
-
-  strcpy(cbi->menu_label,"fire line (level set)");
-
-  cbi->nnodes=6;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=1;
-  cbi->node_rgb[2]=2;
-
-  cbi->node_index[1]=120;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=1;
-  cbi->node_rgb[5]=2;
-
-  cbi->node_index[2]=120;
-  cbi->node_rgb[6]=255;
-  cbi->node_rgb[7]=0;
-  cbi->node_rgb[8]=0;
-
-  cbi->node_index[3]=136;
-  cbi->node_rgb[9]=255;
-  cbi->node_rgb[10]=0;
-  cbi->node_rgb[11]=0;
-
-  cbi->node_index[4]=136;
-  cbi->node_rgb[12]=64;
-  cbi->node_rgb[13]=64;
-  cbi->node_rgb[14]=64;
-
-  cbi->node_index[5]=255;
-  cbi->node_rgb[15]=64;
-  cbi->node_rgb[16]=64;
-  cbi->node_rgb[17]=64;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // fire line (wall thickness)
-
-  wallthickness_colorbar=cbi-colorbarinfo;
-  strcpy(cbi->menu_label,"fire line (wall thickness)");
-
-  cbi->nnodes=4;
-  cbi->nodehilight=0;
-
-  cbi->node_index[0]=0;
-  cbi->node_rgb[0]=0;
-  cbi->node_rgb[1]=0;
-  cbi->node_rgb[2]=0;
-
-  cbi->node_index[1]=32;
-  cbi->node_rgb[3]=0;
-  cbi->node_rgb[4]=0;
-  cbi->node_rgb[5]=0;
-
-  cbi->node_index[2]=32;
-  cbi->node_rgb[6]=253;
-  cbi->node_rgb[7]=254;
-  cbi->node_rgb[8]=255;
-
-  cbi->node_index[3]=255;
-  cbi->node_rgb[9]=253;
-  cbi->node_rgb[10]=254;
-  cbi->node_rgb[11]=255;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // split
-
-  strcpy(cbi->menu_label, "split");
-
-  cbi->nnodes = 4;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_index[1] = 127;
-  cbi->node_index[2] = 128;
-  cbi->node_index[3] = 255;
-  for(i = 0; i < 12; i++){
-    cbi->node_rgb[i] = colorsplit[i];
-  }
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // Methanol
-
-  strcpy(cbi->menu_label, "Methanol");
-
-  cbi->nnodes = 4;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_rgb[0] = 9;
-  cbi->node_rgb[1] = 190;
-  cbi->node_rgb[2] = 255;
-
-  cbi->node_index[1] = 192;
-  cbi->node_rgb[3] = 9;
-  cbi->node_rgb[4] = 190;
-  cbi->node_rgb[5] = 255;
-
-  cbi->node_index[2] = 200;
-  cbi->node_rgb[6] = 9;
-  cbi->node_rgb[7] = 190;
-  cbi->node_rgb[8] = 255;
-
-  cbi->node_index[3] = 255;
-  cbi->node_rgb[9] = 9;
-  cbi->node_rgb[10] = 190;
-  cbi->node_rgb[11] = 255;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // Propane
-
-  strcpy(cbi->menu_label, "Propane");
-
-  cbi->nnodes = 5;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_rgb[0] = 0;
-  cbi->node_rgb[1] = 0;
-  cbi->node_rgb[2] = 0;
-
-  cbi->node_index[1] = 140;
-  cbi->node_rgb[3] = 235;
-  cbi->node_rgb[4] = 120;
-  cbi->node_rgb[5] = 0;
-
-  cbi->node_index[2] = 160;
-  cbi->node_rgb[6] = 250;
-  cbi->node_rgb[7] = 180;
-  cbi->node_rgb[8] = 0;
-
-  cbi->node_index[3] = 190;
-  cbi->node_rgb[9] = 252;
-  cbi->node_rgb[10] = 248;
-  cbi->node_rgb[11] = 70;
-
-  cbi->node_index[4] = 255;
-  cbi->node_rgb[12] = 255;
-  cbi->node_rgb[13] = 255;
-  cbi->node_rgb[14] = 255;
-
-  cbi->can_adjust = 0;
-  strcpy(cbi->colorbar_type, "original");
-  cbi++;
-
-  // CO2
-
-  strcpy(cbi->menu_label, "CO2");
-
-  cbi->nnodes = 3;
-  cbi->nodehilight = 0;
-
-  cbi->node_index[0] = 0;
-  cbi->node_rgb[0] = 0;
-  cbi->node_rgb[1] = 0;
-  cbi->node_rgb[2] = 255;
-
-  cbi->node_index[1] = 192;
-  cbi->node_rgb[3] = 0;
-  cbi->node_rgb[4] = 0;
-  cbi->node_rgb[5] = 255;
-
-  cbi->node_index[2] = 255;
-  cbi->node_rgb[6] = 255;
-  cbi->node_rgb[7] = 255;
-  cbi->node_rgb[8] = 255;
-  strcpy(cbi->colorbar_type, "original");
-  cbi->can_adjust = 0;
-  cbi++;
-
-  for(i = 0;i < nlinear_filelist;i++){
-    ReadCSVColorbar(cbi, colorbars_linear_dir,  linear_filelist[i].file,      "linear",    CB_LINEAR);
-    cbi->can_adjust = 1;
-    cbi++;
-  }
-  for(i = 0;i < ncircular_filelist;i++){
-    ReadCSVColorbar(cbi, colorbars_circular_dir,  circular_filelist[i].file,  "circular",  CB_CIRCULAR);
-    cbi->can_adjust = 1;
-    cbi++;
-  }
-  for(i = 0;i < nrainbow_filelist;i++){
-    ReadCSVColorbar(cbi, colorbars_rainbow_dir,  rainbow_filelist[i].file,    "rainbow",   CB_RAINBOW);
-    cbi->can_adjust = 1;
-    cbi++;
-  }
-  for(i = 0;i < ndivergent_filelist;i++){
-    ReadCSVColorbar(cbi, colorbars_divergent_dir, divergent_filelist[i].file, "divergent", CB_DIVERGENT);
-    cbi->can_adjust = 1;
-    cbi++;
-  }
-  for(i = 0;i < nuser_filelist;i++){
-    ReadCSVColorbar(cbi, colorbars_user_dir, user_filelist[i].file,           "user defined",      CB_USER);
-    cbi++;
-  }
-
-  // construct colormaps from color node info
-
-  for(i=0;i<ndefaultcolorbars;i++){
-    cbi = colorbarinfo + i;
-
-    if(cbi->can_adjust==1){
-      cbi->interp = INTERP_LAB;
-    }
-    else{
-      cbi->interp = INTERP_RGB;
-    }
-    RemapColorbar(cbi);
-    memcpy(cbi->node_rgb_orig, cbi->node_rgb, 3 * cbi->nnodes * sizeof(unsigned char));
-  }
-  UpdateColorbarDialogs();
-
-  for(i = 0;i < ncolorbars;i++){
-    cbi = colorbarinfo + i;
-    cbi->interp = INTERP_LAB;
-    if(cbi->can_adjust==1){
-      AdjustColorBar(cbi);
-    }
-  }
-  memcpy(colorbarcopyinfo, colorbarinfo, ncolorbars * sizeof(colorbardata));
 }
 
 /* ------------------ DrawHorizontalColorbarReg ------------------------ */
@@ -2113,13 +815,13 @@ void DrawVerticalColorbarReg(void){
 
 /* ------------------ UpdateShowSliceColorbar ------------------------ */
 
-void UpdateShowColorbar(int *showcfast_arg, int *show_slice_colorbar_arg, 
+void UpdateShowColorbar(int *showcfast_arg, int *show_slice_colorbar_arg,
   int *show_hvacduct_colorbar_arg, int *show_hvacnode_colorbar_arg){
   int showcfast_local = 0;
   int show_slice_colorbar_local = 0;
 
-  if(hvacductvar_index >= 0)*show_hvacduct_colorbar_arg = 1;
-  if(hvacnodevar_index >= 0)*show_hvacnode_colorbar_arg = 1;
+  if(global_scase.hvaccoll.hvacductvar_index >= 0)*show_hvacduct_colorbar_arg = 1;
+  if(global_scase.hvaccoll.hvacnodevar_index >= 0)*show_hvacnode_colorbar_arg = 1;
   if(showzone==1&&zonecolortype==ZONETEMP_COLOR)showcfast_local = 1;
   if(showslice==1||(showcfast_local==0&&showvslice==1&&vslicecolorbarflag==1))show_slice_colorbar_local = 1;
   if(show_slice_colorbar_local==1&&showcfast_local==1&&strcmp(slicebounds[slicefile_labelindex].label->shortlabel, "TEMP")==0)show_slice_colorbar_local=0;
@@ -2137,7 +839,7 @@ int CountColorbars(void){
   int show_hvacduct_colorbar_local = 0;
   int show_hvacnode_colorbar_local = 0;
 
-  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local, 
+  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
     &show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
 
   for(i=0;i< N_COLORBARS;i++){
@@ -2187,7 +889,7 @@ void DrawHorizontalColorbars(void){
   int show_hvacduct_colorbar_local = 0;
   int show_hvacnode_colorbar_local = 0;
 
-  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local, 
+  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
     & show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
 
   CountColorbars();
@@ -2227,17 +929,17 @@ void DrawHorizontalColorbars(void){
     int i;
     float right_hat;
 
-    right_hat = hcolorbar_right_pos*(float)(nrgb - 3) / (float)(nrgb - 2)+hcolorbar_left_pos/(float)(nrgb-2);
+    right_hat = hcolorbar_right_pos*(float)(global_scase.nrgb - 3) / (float)(global_scase.nrgb - 2)+hcolorbar_left_pos/(float)(global_scase.nrgb-2);
 
     glBegin(GL_QUADS);
-    for(i = 0; i < nrgb - 2; i++){
+    for(i = 0; i < global_scase.nrgb - 2; i++){
       float *rgb_plot3d_local;
       float xleft, xright;
 
       rgb_plot3d_local = rgb_plot3d_contour[i];
 
-      xleft = MIX2(i, nrgb - 3, right_hat, hcolorbar_left_pos);
-      xright = MIX2(i + 1, nrgb - 3, right_hat, hcolorbar_left_pos);
+      xleft = MIX2(i, global_scase.nrgb - 3, right_hat, hcolorbar_left_pos);
+      xright = MIX2(i + 1, global_scase.nrgb - 3, right_hat, hcolorbar_left_pos);
 
       if(rgb_plot3d_local[3] != 0.0){
         glColor4fv(rgb_plot3d_local);
@@ -2253,11 +955,11 @@ void DrawHorizontalColorbars(void){
       float *rgb_plot3d_local;
       float xleft, xright;
 
-      rgb_plot3d_local = rgb_plot3d_contour[nrgb - 2];
+      rgb_plot3d_local = rgb_plot3d_contour[global_scase.nrgb - 2];
       barmid = (hcolorbar_down_pos + hcolorbar_top_pos) / 2.0;
       i = -1;
-      xright = MIX2(i + 0.5, nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
-      xleft  = MIX2(i + 1, nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
+      xright = MIX2(i + 0.5, global_scase.nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
+      xleft  = MIX2(i + 1, global_scase.nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
 
       if(have_extreme_mindata == 1 || have_extreme_maxdata == 1)glEnable(GL_POLYGON_SMOOTH);
 
@@ -2271,11 +973,11 @@ void DrawHorizontalColorbars(void){
         glEnd();
       }
 
-      i = nrgb - 2;
-      xleft = MIX2(i, nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
-      xright = MIX2(i + 0.5, nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
+      i = global_scase.nrgb - 2;
+      xleft = MIX2(i, global_scase.nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
+      xright = MIX2(i + 0.5, global_scase.nrgb - 3, hcolorbar_right_pos, hcolorbar_left_pos);
 
-      rgb_plot3d_local = rgb_plot3d_contour[nrgb - 1];
+      rgb_plot3d_local = rgb_plot3d_contour[global_scase.nrgb - 1];
       if(show_extreme_maxdata == 1 && have_extreme_maxdata == 1 && rgb_plot3d_local[3] != 0.0){
         glBegin(GL_TRIANGLES);
         glColor4fv(rgb_plot3d_local);
@@ -2331,7 +1033,7 @@ void DrawVerticalColorbars(void){
   int show_hvacduct_colorbar_local = 0;
   int show_hvacnode_colorbar_local = 0;
 
-  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local, 
+  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
     &show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
 
   // -------------- compute columns where left labels will occur ------------
@@ -2350,16 +1052,16 @@ void DrawVerticalColorbars(void){
     if(showplot3d==1&&contour_type==STEPPED_CONTOURS){
       float top_hat;
 
-      top_hat = vcolorbar_top_pos*(float)(nrgb - 3) / (float)(nrgb - 2)+vcolorbar_down_pos/(float)(nrgb-2);
+      top_hat = vcolorbar_top_pos*(float)(global_scase.nrgb - 3) / (float)(global_scase.nrgb - 2)+vcolorbar_down_pos/(float)(global_scase.nrgb-2);
 
       glBegin(GL_QUADS);
-      for(i = 0; i < nrgb-2; i++){
+      for(i = 0; i < global_scase.nrgb-2; i++){
         float *rgb_plot3d_local;
         float ybot, ytop;
 
         rgb_plot3d_local = rgb_plot3d_contour[i];
-        ybot = MIX2(  i,nrgb-3,top_hat,vcolorbar_down_pos);
-        ytop = MIX2(i+1,nrgb-3,top_hat,vcolorbar_down_pos);
+        ybot = MIX2(  i,global_scase.nrgb-3,top_hat,vcolorbar_down_pos);
+        ytop = MIX2(i+1,global_scase.nrgb-3,top_hat,vcolorbar_down_pos);
 
         if(rgb_plot3d_local[3]!=0.0){
           glColor4fv(rgb_plot3d_local);
@@ -2376,11 +1078,11 @@ void DrawVerticalColorbars(void){
         float *rgb_plot3d_local;
         float ybot, ytop;
 
-        rgb_plot3d_local = rgb_plot3d_contour[nrgb-2];
+        rgb_plot3d_local = rgb_plot3d_contour[global_scase.nrgb-2];
         barmid = (vcolorbar_left_pos+vcolorbar_right_pos)/2.0;
         i=-1;
-        ytop = MIX2(i+0.5,nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
-        ybot = MIX2(i+1,nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
+        ytop = MIX2(i+0.5,global_scase.nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
+        ybot = MIX2(i+1,global_scase.nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
 
         if(have_extreme_mindata==1||have_extreme_maxdata==1)glEnable(GL_POLYGON_SMOOTH);
 
@@ -2394,11 +1096,11 @@ void DrawVerticalColorbars(void){
           glEnd();
         }
 
-        i=nrgb-2;
-        ybot = MIX2(i,nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
-        ytop = MIX2(i+0.5,nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
+        i=global_scase.nrgb-2;
+        ybot = MIX2(i,global_scase.nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
+        ytop = MIX2(i+0.5,global_scase.nrgb-3,vcolorbar_top_pos,vcolorbar_down_pos);
 
-        rgb_plot3d_local = rgb_plot3d_contour[nrgb-1];
+        rgb_plot3d_local = rgb_plot3d_contour[global_scase.nrgb-1];
         if(show_extreme_maxdata==1&&have_extreme_maxdata==1&&rgb_plot3d_local[3]!=0.0){
           glBegin(GL_TRIANGLES);
           glColor4fv(rgb_plot3d_local);
@@ -2475,8 +1177,6 @@ void DrawHorizontalColorbarRegLabels(void){
   int type_label_left, type_label_down;
   int axis_label_left, axis_label_down;
 
-  int fed_slice = 0;
-
   GLfloat *foreground_color, *red_color;
 
   int showcfast_local = 0;
@@ -2484,7 +1184,7 @@ void DrawHorizontalColorbarRegLabels(void){
   int show_hvacduct_colorbar_local = 0;
   int show_hvacnode_colorbar_local = 0;
 
-  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local, 
+  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
     &show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
 
   foreground_color = &(foregroundcolor[0]);
@@ -2494,28 +1194,6 @@ void DrawHorizontalColorbarRegLabels(void){
   type_label_down = 1.5*VP_vcolorbar.text_height;
   axis_label_left = -colorbar_label_width/4;
   axis_label_down = hcolorbar_down_pos-(VP_vcolorbar.text_height + v_space);
-
-  if(showiso_colorbar==1||
-    (showsmoke == 1 && parttype != 0) || show_slice_colorbar_local == 1 ||
-    (showpatch == 1 && wall_cell_color_flag == 0) ||
-    showcfast_local==1 || showplot3d == 1){
-
-    SNIFF_ERRORS("before colorbar");
-    CheckMemory;
-    if(show_slice_colorbar_local==1){
-      boundsdata *sb;
-
-      sb = slicebounds + slicefile_labelindex;
-
-      if(strcmp(sb->label->shortlabel, "FED") ==  0&& current_colorbar != NULL){
-        strcpy(default_fed_colorbar, current_colorbar->menu_label);
-        if(strcmp(current_colorbar->menu_label, "FED") == 0){
-          fed_slice = 1;
-          if(strcmp(sb->colorlabels[1], "0.00") != 0 || strcmp(sb->colorlabels[nrgb - 1], "3.00") != 0)fed_slice = 0;
-        }
-      }
-    }
-  }
 
   // -------------- particle file top labels ------------
 
@@ -2610,7 +1288,7 @@ void DrawHorizontalColorbarRegLabels(void){
     patchdata *patchi;
     int patchunitclass, patchunittype;
 
-    patchi = patchinfo + boundarytypes[iboundarytype];
+    patchi = global_scase.patchinfo + global_scase.boundarytypes[iboundarytype];
     strcpy(unitlabel, patchi->label.unit);
     GetUnitInfo(patchi->label.unit, &patchunitclass, &patchunittype);
     if(patchunitclass >= 0 && patchunitclass < nunitclasses){
@@ -2637,7 +1315,7 @@ void DrawHorizontalColorbarRegLabels(void){
     char unitlabel[256];
     int plot3dunitclass, plot3dunittype;
 
-    up3label = plot3dinfo[0].label[plotn - 1].unit;
+    up3label = global_scase.plot3dinfo[0].label[plotn - 1].unit;
     strcpy(unitlabel, up3label);
     GetUnitInfo(up3label, &plot3dunitclass, &plot3dunittype);
     if(plot3dunitclass >= 0 && plot3dunitclass < nunitclasses){
@@ -2647,7 +1325,7 @@ void DrawHorizontalColorbarRegLabels(void){
         strcpy(unitlabel, unitclasses[plot3dunitclass].units[plot3dunittype].unit);
       }
     }
-    p3label = plot3dinfo[0].label[plotn - 1].shortlabel;
+    p3label = global_scase.plot3dinfo[0].label[plotn - 1].shortlabel;
     glPushMatrix();
     glTranslatef(type_label_left, type_label_down, 0.0);
     OutputBarText(0.0, 3 * (VP_vcolorbar.text_height + v_space), foreground_color, "Plot3D");
@@ -2710,24 +1388,22 @@ void DrawHorizontalColorbarRegLabels(void){
 
       tttval = sb->levels256[valindex];
       Num2String(isolabel, tttval);
-      isocolorlabel_ptr = isolabel;
       ScaleFloat2String(tttval, isocolorlabel, isofactor);
       isocolorlabel_ptr = isocolorlabel;
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(horiz_position, 0.0, red_color, isocolorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float horiz_position;
       char isocolorlabel[256];
       char *isocolorlabel_ptr = NULL;
       float val;
 
-      horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+      horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
       if(iposition == i)continue;
-      isocolorlabel_ptr = &(sb->colorlabels[i + 1][0]);
 
-      val = tttmin + i*isorange / (nrgb - 2);
+      val = tttmin + i*isorange / (global_scase.nrgb - 2);
       ScaleFloat2String(val, isocolorlabel, isofactor);
       isocolorlabel_ptr = isocolorlabel;
       OutputBarText(horiz_position, 0.0, foreground_color, isocolorlabel_ptr);
@@ -2764,15 +1440,15 @@ void DrawHorizontalColorbarRegLabels(void){
         partcolorlabel_ptr = partcolorlabel;
       }
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(horiz_position, 0.0, red_color, partcolorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float horiz_position;
       char partcolorlabel[256];
       char *partcolorlabel_ptr = NULL;
 
-      horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+      horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
       if(iposition == i)continue;
       if(global_prop_index>= 0 &&global_prop_index < npart5prop){
         float val;
@@ -2793,7 +1469,7 @@ void DrawHorizontalColorbarRegLabels(void){
         float val;
 
         partcolorlabel_ptr = partcolorlabel;
-        val = tttmin + i*partrange / (nrgb - 2);
+        val = tttmin + i*partrange / (global_scase.nrgb - 2);
         val = ScaleFloat2Float(val, partfactor);
         Float2String(partcolorlabel_ptr, val, ncolorlabel_digits, force_fixedpoint);
       }
@@ -2829,39 +1505,21 @@ void DrawHorizontalColorbarRegLabels(void){
         slicecolorlabel_ptr = slicecolorlabel;
       }
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(horiz_position, 0.0, red_color, slicecolorlabel_ptr);
     }
-    if(fed_slice == 1){
-      for(i = 0; i < nrgb - 1; i++){
-        float horiz_position;
-
-        horiz_position = MIX2(0.0, 3.0, hcolorbar_right_pos, hcolorbar_left_pos);
-        OutputBarText(horiz_position, 0.0, foreground_color, "0.00");
-
-        horiz_position = MIX2(0.3, 3.0, hcolorbar_right_pos, hcolorbar_left_pos);
-        OutputBarText(horiz_position, 0.0, foreground_color, "0.30");
-
-        horiz_position = MIX2(1.0, 3.0, hcolorbar_right_pos, hcolorbar_left_pos);
-        OutputBarText(horiz_position, 0.0, foreground_color, "1.00");
-
-        horiz_position = MIX2(3.0, 3.0, hcolorbar_right_pos, hcolorbar_left_pos);
-        OutputBarText(horiz_position, 0.0, foreground_color, "3.00");
-      }
-    }
-    else{
-      for(i = 0; i < nrgb - 1; i++){
+    {
+      for(i = 0; i < global_scase.nrgb - 1; i++){
         float horiz_position;
         char slicecolorlabel[256];
         char *slicecolorlabel_ptr = NULL;
 
-        horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+        horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
         if(iposition == i)continue;
-        slicecolorlabel_ptr = &(sb->colorlabels[i + 1][0]);
         if(sliceflag == 1){
           float val;
 
-          val = tttmin + i*slicerange / (nrgb - 2);
+          val = tttmin + i*slicerange / (global_scase.nrgb - 2);
           ScaleFloat2String(val, slicecolorlabel, slicefactor);
           slicecolorlabel_ptr = slicecolorlabel;
           Float2String(slicecolorlabel_ptr, val, ncolorlabel_digits, force_fixedpoint);
@@ -2900,20 +1558,20 @@ void DrawHorizontalColorbarRegLabels(void){
         boundary_colorlabel_ptr = boundary_colorlabel;
       }
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0,horiz_position, red_color, boundary_colorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       char boundary_colorlabel[256];
       char *boundary_colorlabel_ptr = NULL;
       float horiz_position;
       float val;
 
-      horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+      horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
 
       if(iposition == i)continue;
       if(patchflag == 1){
-        val = tttmin + i*patchrange / (nrgb - 2);
+        val = tttmin + i*patchrange / (global_scase.nrgb - 2);
       }
       else{
         val = colorvaluespatch[i+1];
@@ -2949,21 +1607,21 @@ void DrawHorizontalColorbarRegLabels(void){
         zonecolorlabel_ptr = zonecolorlabel;
       }
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(horiz_position, 0.0, red_color, zonecolorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float horiz_position;
       char zonecolorlabel[256];
       char *zonecolorlabel_ptr = NULL;
 
-      horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+      horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
       if(iposition == i)continue;
-      zonecolorlabel_ptr = &colorlabelzone[i + 1][0];
+      zonecolorlabel_ptr = &global_scase.colorlabelzone[i + 1][0];
       if(zoneflag == 1){
         float val;
 
-        val = tttmin + (i - 1)*zonerange / (nrgb - 2);
+        val = tttmin + (i - 1)*zonerange / (global_scase.nrgb - 2);
         ScaleFloat2String(val, zonecolorlabel, zonefactor);
         zonecolorlabel_ptr = zonecolorlabel;
       }
@@ -2998,21 +1656,21 @@ void DrawHorizontalColorbarRegLabels(void){
         plot3dcolorlabel_ptr = plot3dcolorlabel;
       }
       horiz_position = MIX2(global_colorbar_index, 255, hcolorbar_right_pos, hcolorbar_left_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(horiz_position, 0.0, red_color, plot3dcolorlabel_ptr);
     }
     if(visiso == 0){
       float horiz_position;
 
-      for(i = 0; i < nrgb - 1; i++){
+      for(i = 0; i < global_scase.nrgb - 1; i++){
         char plot3dcolorlabel[256];
         char *plot3dcolorlabel_ptr = NULL;
         float val;
 
-        horiz_position = MIX2(i, nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
+        horiz_position = MIX2(i, global_scase.nrgb - 2, hcolorbar_right_pos, hcolorbar_left_pos);
         if(iposition == i)continue;
         if(plot3dflag == 1){
-          val = tttmin + i*plot3drange / (nrgb - 2);
+          val = tttmin + i*plot3drange / (global_scase.nrgb - 2);
         }
         else{
           val = colorvaluesp3[plotn - 1][i];
@@ -3027,19 +1685,19 @@ void DrawHorizontalColorbarRegLabels(void){
       float horiz_position;
       float right_hat;
 
-      right_hat = hcolorbar_right_pos*(float)(nrgb - 3) / (float)(nrgb - 2)+hcolorbar_left_pos/(float)(nrgb-2);
-      for(i = 0; i < nrgb - 2; i++){
+      right_hat = hcolorbar_right_pos*(float)(global_scase.nrgb - 3) / (float)(global_scase.nrgb - 2)+hcolorbar_left_pos/(float)(global_scase.nrgb-2);
+      for(i = 0; i < global_scase.nrgb - 2; i++){
         char plot3dcolorlabel[256];
         char *plot3dcolorlabel_ptr = NULL;
 
-        horiz_position = MIX2(i, nrgb - 2, right_hat, hcolorbar_left_pos);
+        horiz_position = MIX2(i, global_scase.nrgb - 2, right_hat, hcolorbar_left_pos);
 
         if(iposition == i)continue;
         plot3dcolorlabel_ptr = &colorlabeliso[plotn - 1][i][0];
         if(plot3dflag == 1){
           float val;
 
-          val = tttmin + (i - 1)*plot3drange / (nrgb - 2);
+          val = tttmin + (i - 1)*plot3drange / (global_scase.nrgb - 2);
           ScaleFloat2String(val, plot3dcolorlabel, plot3dfactor);
           plot3dcolorlabel_ptr = plot3dcolorlabel;
         }
@@ -3066,12 +1724,10 @@ void DrawVerticalColorbarRegLabels(void){
 
   int sliceflag = 0;
   float *slicefactor = NULL;
-  float slicefactor2[2];
   float *isofactor = NULL;
 
   int plot3dflag = 0;
   float *plot3dfactor = NULL;
-  float plot3dfactor2[2];
   float plot3drange;
 
   int patchflag = 0;
@@ -3085,9 +1741,6 @@ void DrawVerticalColorbarRegLabels(void){
   float *partfactor = NULL;
   int dohist = 0;
 
-  int fed_slice = 0;
-  float colorbar_max, colorbar_eps;
-
   GLfloat *foreground_color, *red_color;
 
   int showcfast_local = 0;
@@ -3098,10 +1751,8 @@ void DrawVerticalColorbarRegLabels(void){
 
   max_colorbar_label_width = GetStringWidth("123456");
 
-  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local, 
+  UpdateShowColorbar(&showcfast_local, &show_slice_colorbar_local,
     &show_hvacduct_colorbar_local, &show_hvacnode_colorbar_local);
-
-  colorbar_eps = pow(10.0, -ncolorlabel_digits);
 
   // -------------- compute columns where left labels will occur ------------
 
@@ -3124,30 +1775,6 @@ void DrawVerticalColorbarRegLabels(void){
 
   foreground_color = &(foregroundcolor[0]);
   red_color = &(redcolor[0]);
-  if(showiso_colorbar == 1 ||
-    (showsmoke == 1 && parttype != 0) || show_slice_colorbar_local == 1 ||
-    (showpatch == 1 && wall_cell_color_flag == 0) ||
-    showcfast_local==1 ||
-    showplot3d == 1){
-
-    SNIFF_ERRORS("before colorbar");
-    CheckMemory;
-    if(show_slice_colorbar_local==1){
-      boundsdata *sb;
-
-      sb = slicebounds + slicefile_labelindex;
-
-      if(strcmp(sb->label->shortlabel, "FED") == 0){
-        if(current_colorbar != NULL){
-          strcpy(default_fed_colorbar, current_colorbar->menu_label);
-          if(strcmp(current_colorbar->menu_label, "FED") == 0){
-            fed_slice = 1;
-            if(strcmp(sb->colorlabels[1], "0.00") != 0 || strcmp(sb->colorlabels[nrgb - 1], "3.00") != 0)fed_slice = 0;
-          }
-        }
-      }
-    }
-  }
 
   // -------------- isosurface left labels ------------
 
@@ -3177,24 +1804,22 @@ void DrawVerticalColorbarRegLabels(void){
 
       tttval = sb->levels256[valindex];
       Num2String(isolabel, tttval);
-      isocolorlabel_ptr = isolabel;
       ScaleFloat2String(tttval, isocolorlabel, isofactor);
       isocolorlabel_ptr = isocolorlabel;
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, isocolorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
       char isocolorlabel[256];
       char *isocolorlabel_ptr = NULL;
       float val;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
       if(iposition == i)continue;
-      isocolorlabel_ptr = &(sb->colorlabels[i + 1][0]);
 
-      val = tttmin + i*isorange / (nrgb - 2);
+      val = tttmin + i*isorange / (global_scase.nrgb - 2);
       ScaleFloat2String(val, isocolorlabel, isofactor);
       isocolorlabel_ptr = isocolorlabel;
       OutputBarText(0.0, vert_position, foreground_color, isocolorlabel_ptr);
@@ -3257,10 +1882,10 @@ void DrawVerticalColorbarRegLabels(void){
         partcolorlabel_ptr = partcolorlabel;
       }
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, partcolorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float val;
 
       if(iposition == i)continue;
@@ -3268,12 +1893,12 @@ void DrawVerticalColorbarRegLabels(void){
       val = ScaleFloat2Float(val, partfactor);
       colorbar_vals[i] = val;
     }
-    Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+    Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
     max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
       if(iposition == i)continue;
       OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
       max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(colorbar_labels[i]));
@@ -3317,8 +1942,6 @@ void DrawVerticalColorbarRegLabels(void){
       GetUnitInfo(partunitlabel, &partunitclass, &partunittype);
       if(partunitclass >= 0 && partunitclass < nunitclasses){
         if(partunittype >= 0){
-          partflag = 1;
-          partfactor = unitclasses[partunitclass].units[partunittype].scale;
           strcpy(partunitlabel2, unitclasses[partunitclass].units[partunittype].unit);
         }
       }
@@ -3375,27 +1998,10 @@ void DrawVerticalColorbarRegLabels(void){
         slicecolorlabel_ptr = slicecolorlabel;
       }
       vert_position = MIX2(shifted_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(shifted_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(shifted_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, slicecolorlabel_ptr);
     }
-    if(fed_slice == 1){
-      for(i = 0; i < nrgb - 1; i++){
-        float vert_position;
-
-        vert_position = MIX2(0.0, 3.0, vcolorbar_top_pos, vcolorbar_down_pos);
-        OutputBarText(0.0, vert_position, foreground_color, "0.00");
-
-        vert_position = MIX2(0.3, 3.0, vcolorbar_top_pos, vcolorbar_down_pos);
-        OutputBarText(0.0, vert_position, foreground_color, "0.30");
-
-        vert_position = MIX2(1.0, 3.0, vcolorbar_top_pos, vcolorbar_down_pos);
-        OutputBarText(0.0, vert_position, foreground_color, "1.00");
-
-        vert_position = MIX2(3.0, 3.0, vcolorbar_top_pos, vcolorbar_down_pos);
-        OutputBarText(0.0, vert_position, foreground_color, "3.00");
-      }
-    }
-    else{
+    {
       float valmin, valmax;
 
 
@@ -3411,18 +2017,16 @@ void DrawVerticalColorbarRegLabels(void){
         valmax = tttmax;
       }
       else{
-        valmax = sb->colorvalues[nrgb-1];
+        valmax = sb->colorvalues[global_scase.nrgb-1];
       }
       valmax = ScaleFloat2Float(valmax, slicefactor);
-      colorbar_max = MAX(ABS(valmax), ABS(valmin));
-      colorbar_max = MAX(colorbar_max, colorbar_eps);
 
-      for(i = 0; i<nrgb-1; i++){
+      for(i = 0; i<global_scase.nrgb-1; i++){
         float val;
 
         if(iposition==i)continue;
         if(sliceflag==1){
-          val = tttmin+i*slicerange/(nrgb-2);
+          val = tttmin+i*slicerange/(global_scase.nrgb-2);
         }
         else{
           val = sb->colorvalues[i+1];
@@ -3433,12 +2037,12 @@ void DrawVerticalColorbarRegLabels(void){
         }
         colorbar_vals[i] = val;
       }
-      Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+      Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
       max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-      for(i = 0; i < nrgb - 1; i++){
+      for(i = 0; i < global_scase.nrgb - 1; i++){
         float vert_position;
 
-        vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+        vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
         if(iposition == i)continue;
         OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
         max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(colorbar_labels[i]));
@@ -3459,8 +2063,6 @@ void DrawVerticalColorbarRegLabels(void){
     GetUnitInfo(sb->label->unit, &sliceunitclass, &sliceunittype);
     if(sliceunitclass >= 0 && sliceunitclass < nunitclasses){
       if(sliceunittype > 0){
-        sliceflag = 1;
-        slicefactor = unitclasses[sliceunitclass].units[sliceunittype].scale;
         strcpy(unitlabel, unitclasses[sliceunitclass].units[sliceunittype].unit);
       }
     }
@@ -3474,22 +2076,17 @@ void DrawVerticalColorbarRegLabels(void){
     OutputBarText(0.0, 2 * (VP_vcolorbar.text_height + v_space), foreground_color, sb->label->shortlabel);
     OutputBarText(0.0,     (VP_vcolorbar.text_height + v_space), foreground_color, unitlabel);
     OutputBarText(0.0, 0                                       , foreground_color, exp_factor_label);
-    if(strcmp(unitlabel, "ppm") == 0 && slicefactor != NULL){
-      slicefactor2[0] = *slicefactor;
-      slicefactor2[1] = 0.0;
-      slicefactor = slicefactor2;
-    }
     glPopMatrix();
   }
 
   // -------------- HVAC node left labels ------------
 
-  if(show_hvacnode_colorbar_local==1 && hvacnodevar_index>=0){
+  if(show_hvacnode_colorbar_local==1 && global_scase.hvaccoll.hvacnodevar_index>=0){
     hvacvaldata *hi;
     float tttval, tttmin, tttmax;
     float hvacrange;
 
-    hi = hvacnodevalsinfo->node_vars + hvacnodevar_index;
+    hi = global_scase.hvaccoll.hvacnodevalsinfo->node_vars + global_scase.hvaccoll.hvacnodevar_index;
     iposition = -1;
     tttmin = hi->levels256[0];
     tttmax = hi->levels256[255];
@@ -3506,23 +2103,23 @@ void DrawVerticalColorbarRegLabels(void){
       Num2String(hvaclabel, tttval);
       hvac_colorlabel_ptr = &(hvaclabel[0]);
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, hvac_colorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float val;
 
       if(iposition == i)continue;
-      val = tttmin + i * hvacrange / (nrgb - 2);
+      val = tttmin + i * hvacrange / (global_scase.nrgb - 2);
       colorbar_vals[i] = val;
       GetMantissaExponent(ABS(val), colorbar_exponents + i);
     }
-    Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+    Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
     max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
 
       if(iposition == i)continue;
       OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
@@ -3533,12 +2130,12 @@ void DrawVerticalColorbarRegLabels(void){
 
   // -------------- HVAC duct left labels ------------
 
-  if(show_hvacduct_colorbar_local==1 && hvacductvar_index>=0){
+  if(show_hvacduct_colorbar_local==1 && global_scase.hvaccoll.hvacductvar_index>=0){
     hvacvaldata *hi;
     float tttval, tttmin, tttmax;
     float hvacrange;
 
-    hi = hvacductvalsinfo->duct_vars + hvacductvar_index;
+    hi = global_scase.hvaccoll.hvacductvalsinfo->duct_vars + global_scase.hvaccoll.hvacductvar_index;
     iposition = -1;
     tttmin = hi->levels256[0];
     tttmax = hi->levels256[255];
@@ -3555,23 +2152,23 @@ void DrawVerticalColorbarRegLabels(void){
       Num2String(hvaclabel, tttval);
       hvac_colorlabel_ptr = &(hvaclabel[0]);
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, hvac_colorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float val;
 
       if(iposition == i)continue;
-      val = tttmin + i * hvacrange / (nrgb - 2);
+      val = tttmin + i * hvacrange / (global_scase.nrgb - 2);
       colorbar_vals[i] = val;
       GetMantissaExponent(ABS(val), colorbar_exponents + i);
     }
-    Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+    Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
     max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
 
       if(iposition == i)continue;
       OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
@@ -3582,11 +2179,11 @@ void DrawVerticalColorbarRegLabels(void){
 
   // -------------- HVAC file node top labels ------------
 
-  if(show_hvacnode_colorbar_local==1 && hvacnodevar_index>=0){
+  if(show_hvacnode_colorbar_local==1 && global_scase.hvaccoll.hvacnodevar_index>=0){
     char *slabel, *unitlabel;
     hvacvaldata *hi;
 
-    hi = hvacnodevalsinfo->node_vars + hvacnodevar_index;
+    hi = global_scase.hvaccoll.hvacnodevalsinfo->node_vars + global_scase.hvaccoll.hvacnodevar_index;
     slabel = hi->label.shortlabel;
     unitlabel = hi->label.unit;
 
@@ -3606,11 +2203,11 @@ void DrawVerticalColorbarRegLabels(void){
 
   // -------------- HVAC file duct top labels ------------
 
-  if(show_hvacduct_colorbar_local==1 && hvacductvar_index >=0){
+  if(show_hvacduct_colorbar_local==1 && global_scase.hvaccoll.hvacductvar_index >=0){
     char *slabel, *unitlabel;
     hvacvaldata *hi;
 
-    hi = hvacductvalsinfo->duct_vars + hvacductvar_index;
+    hi = global_scase.hvaccoll.hvacductvalsinfo->duct_vars + global_scase.hvaccoll.hvacductvar_index;
     slabel = hi->label.shortlabel;
     unitlabel = hi->label.unit;
 
@@ -3637,7 +2234,7 @@ void DrawVerticalColorbarRegLabels(void){
     patchdata *patchi;
     int patchunitclass, patchunittype;
 
-    patchi = patchinfo + boundarytypes[iboundarytype];
+    patchi = global_scase.patchinfo + global_scase.boundarytypes[iboundarytype];
     strcpy(unitlabel, patchi->label.unit);
     GetUnitInfo(patchi->label.unit, &patchunitclass, &patchunittype);
     if(patchunitclass >= 0 && patchunitclass < nunitclasses){
@@ -3669,15 +2266,15 @@ void DrawVerticalColorbarRegLabels(void){
         boundary_colorlabel_ptr = boundary_colorlabel;
       }
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, boundary_colorlabel_ptr);
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float val;
 
       if(iposition == i)continue;
       if(patchflag==1){
-        val = tttmin+i*patchrange/(nrgb-2);
+        val = tttmin+i*patchrange/(global_scase.nrgb-2);
       }
       else{
         val = colorvaluespatch[i+1];
@@ -3686,12 +2283,12 @@ void DrawVerticalColorbarRegLabels(void){
       colorbar_vals[i] = val;
       GetMantissaExponent(ABS(val), colorbar_exponents + i);
     }
-    Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+    Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
     max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
 
       if(iposition == i)continue;
       OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
@@ -3707,13 +2304,11 @@ void DrawVerticalColorbarRegLabels(void){
     patchdata *patchi;
     int patchunitclass, patchunittype;
 
-    patchi = patchinfo + boundarytypes[iboundarytype];
+    patchi = global_scase.patchinfo + global_scase.boundarytypes[iboundarytype];
     strcpy(unitlabel, patchi->label.unit);
     GetUnitInfo(patchi->label.unit, &patchunitclass, &patchunittype);
     if(patchunitclass >= 0 && patchunitclass < nunitclasses){
       if(patchunittype > 0){
-        patchflag = 1;
-        patchfactor = unitclasses[patchunitclass].units[patchunittype].scale;
         strcpy(unitlabel, unitclasses[patchunitclass].units[patchunittype].unit);
       }
     }
@@ -3769,20 +2364,20 @@ void DrawVerticalColorbarRegLabels(void){
         zonecolorlabel_ptr = zonecolorlabel;
       }
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, zonecolorlabel_ptr);
       max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(zonecolorlabel_ptr));
     }
-    for(i = 0; i < nrgb - 1; i++){
+    for(i = 0; i < global_scase.nrgb - 1; i++){
       float vert_position;
       char zonecolorlabel[256];
       char *zonecolorlabel_ptr = NULL;
       float val;
 
-      vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
       if(iposition == i)continue;
       if(zoneflag == 1){
-        val = tttmin + i*zonerange / (nrgb - 2);
+        val = tttmin + i*zonerange / (global_scase.nrgb - 2);
       }
       else{
         val = colorvalueszone[i+1];
@@ -3808,8 +2403,6 @@ void DrawVerticalColorbarRegLabels(void){
     GetUnitInfo(unitlabel, &zoneunitclass, &zoneunittype);
     if(zoneunitclass >= 0 && zoneunitclass < nunitclasses){
       if(zoneunittype > 0){
-        zoneflag = 1;
-        zonefactor = unitclasses[zoneunitclass].units[zoneunittype].scale;
         strcpy(unitlabel, unitclasses[zoneunitclass].units[zoneunittype].unit);
       }
     }
@@ -3834,7 +2427,7 @@ void DrawVerticalColorbarRegLabels(void){
     char unitlabel[256];
     int plot3dunitclass, plot3dunittype;
 
-    up3label = plot3dinfo[0].label[plotn-1].unit;
+    up3label = global_scase.plot3dinfo[0].label[plotn-1].unit;
     strcpy(unitlabel, up3label);
     GetUnitInfo(up3label, &plot3dunitclass, &plot3dunittype);
     if(plot3dunitclass>=0&&plot3dunitclass<nunitclasses){
@@ -3864,16 +2457,16 @@ void DrawVerticalColorbarRegLabels(void){
         plot3dcolorlabel_ptr = plot3dcolorlabel;
       }
       vert_position = MIX2(global_colorbar_index, 255, vcolorbar_top_pos, vcolorbar_down_pos);
-      iposition = MIX2(global_colorbar_index, 255, nrgb - 1, 0);
+      iposition = MIX2(global_colorbar_index, 255, global_scase.nrgb - 1, 0);
       OutputBarText(0.0, vert_position, red_color, plot3dcolorlabel_ptr);
     }
     if(visiso == 0){
-      for(i = 0; i < nrgb - 1; i++){
+      for(i = 0; i < global_scase.nrgb - 1; i++){
         float val;
 
         if(iposition == i)continue;
         if(plot3dflag == 1){
-          val = tttmin + i*plot3drange / (nrgb - 2);
+          val = tttmin + i*plot3drange / (global_scase.nrgb - 2);
         }
         else{
           val = colorvaluesp3[plotn - 1][i];
@@ -3882,12 +2475,12 @@ void DrawVerticalColorbarRegLabels(void){
         colorbar_vals[i] = val;
         GetMantissaExponent(ABS(val), colorbar_exponents + i);
       }
-      Floats2Strings(colorbar_labels, colorbar_vals, nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+      Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-1, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
       max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-      for(i = 0; i < nrgb - 1; i++){
+      for(i = 0; i < global_scase.nrgb - 1; i++){
         float vert_position;
 
-        vert_position = MIX2(i, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+        vert_position = MIX2(i, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
 
         if(iposition == i)continue;
         OutputBarText(0.0, vert_position, foreground_color, colorbar_labels[i]);
@@ -3897,16 +2490,16 @@ void DrawVerticalColorbarRegLabels(void){
     else{
       float vert_position;
 
-      for(i = 0; i < nrgb - 2; i++){
+      for(i = 0; i < global_scase.nrgb - 2; i++){
         float val;
 
-        val = tttmin + (float)(i +0.5)*plot3drange / (nrgb - 2);
+        val = tttmin + (float)(i +0.5)*plot3drange / (global_scase.nrgb - 2);
         colorbar_vals[i] = val;
       }
-      Floats2Strings(colorbar_labels, colorbar_vals, nrgb-2, ncolorlabel_digits, force_fixedpoint, force_exponential, exp_factor_label);
+      Floats2Strings(colorbar_labels, colorbar_vals, global_scase.nrgb-2, ncolorlabel_digits, force_fixedpoint, force_exponential, force_decimal, force_zero_pad, exp_factor_label);
       max_colorbar_label_width = MAX(max_colorbar_label_width, GetStringWidth(exp_factor_label));
-      for(i = 0; i < nrgb - 2; i++){
-        vert_position = MIX2(i+0.5, nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
+      for(i = 0; i < global_scase.nrgb - 2; i++){
+        vert_position = MIX2(i+0.5, global_scase.nrgb - 2, vcolorbar_top_pos, vcolorbar_down_pos);
         if(iposition == i)continue;
         if(isolevelindex == i || isolevelindex2 == i){
           OutputBarText(0.0, vert_position, red_color, colorbar_labels[i]);
@@ -3926,17 +2519,15 @@ void DrawVerticalColorbarRegLabels(void){
     char unitlabel[256];
     int plot3dunitclass, plot3dunittype;
 
-    up3label = plot3dinfo[0].label[plotn - 1].unit;
+    up3label = global_scase.plot3dinfo[0].label[plotn - 1].unit;
     strcpy(unitlabel, up3label);
     GetUnitInfo(up3label, &plot3dunitclass, &plot3dunittype);
     if(plot3dunitclass >= 0 && plot3dunitclass < nunitclasses){
       if(plot3dunittype > 0){
-        plot3dflag = 1;
-        plot3dfactor = unitclasses[plot3dunitclass].units[plot3dunittype].scale;
         strcpy(unitlabel, unitclasses[plot3dunitclass].units[plot3dunittype].unit);
       }
     }
-    p3label = plot3dinfo[0].label[plotn - 1].shortlabel;
+    p3label = global_scase.plot3dinfo[0].label[plotn - 1].shortlabel;
     glPushMatrix();
     glTranslatef(
       vcolorbar_left_pos - colorbar_label_width,
@@ -3946,12 +2537,6 @@ void DrawVerticalColorbarRegLabels(void){
     OutputBarText(0.0, 2 * (VP_vcolorbar.text_height + v_space), foreground_color, p3label);
     OutputBarText(0.0,     (VP_vcolorbar.text_height + v_space), foreground_color, unitlabel);
     OutputBarText(0.0, 0                                       , foreground_color, exp_factor_label);
-    if(strcmp(unitlabel, "ppm") == 0 && plot3dfactor != NULL){
-      plot3dfactor2[0] = *plot3dfactor;
-      plot3dfactor2[1] = 0.0;
-      plot3dfactor = plot3dfactor2;
-    }
     glPopMatrix();
   }
 }
-

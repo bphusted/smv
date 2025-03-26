@@ -26,22 +26,12 @@ else
 endif
 GITINFO=-Dpp_GITHASH=\"$(GIT_HASH)\" -Dpp_GITDATE=\""$(GIT_DATE)\""
 
-ifeq ($(shell echo "check_quotes"),"check_quotes")
-  INTEL_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\intel_compversion)
-  GNU_COMPVERSION := $(shell ..\..\..\Utilities\Scripts\gnu_compversion)
-else
-  INTEL_COMPVERSION := $(shell ../../../Utilities/Scripts/intel_compversion.sh)
-  GNU_COMPVERSION := $(shell ../../../Utilities/Scripts/gnu_compversion.sh)
-endif
-INTEL_COMPINFO=-Dpp_COMPVER=\"$(INTEL_COMPVERSION)\"
-GNU_COMPINFO=-Dpp_COMPVER=\"$(GNU_COMPVERSION)\"
-
 # Definition of the object variables
 
 obj =    CNV3dsmoke.o CNVboundary.o CNVpart.o CNVslice.o  \
          compress.o dmalloc.o file_util.o getdata.o \
          isobox.o main.o md5.o readfiles.o sha1.o sha256.o stdio_buffer.o \
-         string_util.o threader.o utilities.o
+         string_util.o threaderzip.o threader.o utilities.o
 
 objwin = $(obj:.o=.obj)
 
@@ -145,27 +135,6 @@ intel_linux_64 : exe       = smokezip_linux_64
 
 intel_linux_64 : $(obj)
 	$(CC) -o $(bin)/$(exe) $(obj) $(LFLAGS)
-
-# ------------- intel osx 64 ----------------
-
-intel_osx_64 : CFLAGS    = -O2 -m64 -D pp_OSX $(GITINFO) $(INTEL_COMPINFO)  $(SMV_TESTFLAG)  -mmacosx-version-min=10.9
-intel_osx_64 : LFLAGS    = -m64 -static-intel -mmacosx-version-min=10.9 -L $(LIB_DIR)/intel_osx_64 -lz -lpthread
-intel_osx_64 : CC        = icc
-intel_osx_64 : exe       = smokezip_osx_64
-
-intel_osx_64 : $(obj)
-	$(CC) -o $(bin)/$(exe) $(obj) $(LFLAGS)
-
-# ------------- intel osx 64 db ----------------
-
-intel_osx_64_db : CFLAGS    = -O0 -g -m64 -static-intel -D _DEBUG -D pp_OSX -mmacosx-version-min=10.9 $(SMV_TESTFLAG) -Wall -Wextra -check=stack,uninit -fp-stack-check -fp-trap-all=divzero,invalid,overflow -ftrapuv -Wuninitialized -Wunused-function -Wunused-variable $(GITINFO) $(INTEL_COMPINFO)
-intel_osx_64_db : LFLAGS    = -m64 -static-intel -mmacosx-version-min=10.9 -L $(LIB_DIR)/intel_osx_64 -lz -lpthread
-intel_osx_64_db : CC        = icc
-intel_osx_64_db : exe       = smokezip_osx_64_db
-
-intel_osx_64_db : $(obj)
-	$(CC) -o $(bin)/$(exe) $(obj) $(LFLAGS)
-
 
 #-------------- compile sring_util.c so revision strings are updated -----------
 

@@ -22,7 +22,7 @@
 #else
 #include <dirent.h>
 #endif
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "datadefs.h"
 #include "file_util.h"
 #include "string_util.h"
@@ -35,9 +35,25 @@
 
 unsigned int *random_ints, nrandom_ints;
 
+/* ------------------ GetCharPtr ------------------------ */
+
+char *GetCharPtr(char *label) {
+  char *labelptr, labelcopy[256], *labelcopyptr;
+  int lenlabel;
+
+  if (label == NULL || strlen(label) == 0) return NULL;
+  strcpy(labelcopy, label);
+  labelcopyptr = TrimFrontBack(labelcopy);
+  lenlabel = strlen(labelcopyptr);
+  if (lenlabel == 0) return NULL;
+  NewMemory((void **)&labelptr, lenlabel + 1);
+  strcpy(labelptr, labelcopyptr);
+  return labelptr;
+}
+
 /* ----------------------- AppendString ----------------------------- */
 
-char *AppendString(char *S1, char *S2) {
+char *AppendString(char *S1, char *S2){
   strcpy(append_string, S1);
   strcat(append_string, S2);
   return append_string;
@@ -370,11 +386,19 @@ char *TrimFrontZeros(char *line){
   return line;
 }
 
+/* ------------------ Val2String ------------------------ */
+
+char *Val2String(float val, char *string){
+  sprintf(string, "%f", val);
+  TrimZeros(string);
+  return string;
+}
+
 /* ------------------ TrimMZeros ------------------------ */
 
 void TrimMZeros(char *line){
 
-//  removes trailing zeros in each floating point number found in line
+//  removes trailing zeros in each floating point number found in line separated by spaces
 
   char linecopy[1024];
   char *token;
@@ -397,7 +421,7 @@ int STRCMP(const char *s1, const char *s2){
 
 //  same as the standard function, strcmp, but ignores case
 
-  while (toupper(*s1) == toupper(*s2++)){
+  while(toupper(*s1) == toupper(*s2++)){
     if(*s1++ == 0)return (0);
   }
   return (toupper(*(const unsigned char *)s1) - toupper(*(const unsigned char *)(s2 - 1)));
@@ -503,7 +527,7 @@ void RoundDecimalPos(float val, char *cval, int decimalpos){
     sprintf(label+1, "%.12f", val);
   }
   else{
-    sprintf(label, "%.12f", val);
+    sprintf(label, "%.25f", val);
   }
   period = strchr(label, '.');
   if(period==NULL){
@@ -542,7 +566,7 @@ void RoundDecimal(float val, char *cval, int ndigits){
     strcpy(cval, "0.0");
   }
   else{
-    char label[30];
+    char label[256];
     int signval;
 
     signval = SIGN(val);
@@ -647,11 +671,17 @@ void Truncate(float val, char *cval, int ndigits){
 
 void ShiftDecimal(char *cval, int nshift){
   int i, ii, iperiod;
-  char *period, cvalcopy[100], cvalcopy2[100], *trim;
+  char cvalcopy[100], cvalcopy2[100], *trim;
 
-  period = strchr(cval, '.');
-  if(period==NULL)strcat(cval, ".");
+  memset(cvalcopy, 0, 100);
+  {
+    char *period;
 
+    period = strchr(cval, '.');
+    if(period == NULL)strcat(cval, ".");
+    period = strchr(cval, '.');
+    iperiod = period - cval;
+  }
   ii = 0;
   if(nshift<0){
     for(i = 0; i<ABS(nshift); i++){
@@ -673,7 +703,6 @@ void ShiftDecimal(char *cval, int nshift){
   cvalcopy[ii] = 0;
   if(nshift>0)iperiod += nshift;
 
-  ii = 0;
   for(i = 0; i<iperiod; i++){
     cvalcopy2[i] = cvalcopy[i];
   }
@@ -688,26 +717,43 @@ void ShiftDecimal(char *cval, int nshift){
   strcpy(cval, trim);
 }
 
+/* ------------------ OnlyZeros ------------------------ */
+
+int OnlyZeros(char *label){
+  int i;
+
+  if(label == NULL)return 1;
+  for(i = 1;i < strlen(label);i++){
+    if(label[i] != '0')return 0;
+  }
+  return 1;
+}
+
 /* ------------------ Floats2Strings ------------------------ */
 
-void Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixedpoint_labels, int exponential_labels, char *exp_offset_label){
+void Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixedpoint_labels, int exponential_labels, int force_decimal_label, int zero_pad, char *exp_offset_label){
   int exponent, exponent_min, exponent_max, exponent_val;
   int i;
   float valmax;
   int exp_offset;
   int doit;
+  int ndecimals;
+  int max_index;
+
+  max_index = 0;
+  if(ABS(vals[nvals - 1]) > ABS(vals[0]))max_index = nvals - 1;
 
   valmax = MAX(ABS(vals[0]), ABS(vals[nvals-1]));
 
   GetMantissaExponent(valmax, &exponent_max);
+  ndecimals = ndigits-1-exponent_max;
+  if(ndecimals<=0)ndecimals--;
+
   for(i=0; i<nvals; i++){
     float val;
-    int ndecimals;
 
     val = vals[i];
     GetMantissaExponent(val, &exponent_val);
-    ndecimals = ndigits-1-exponent_max;
-    if(ndecimals<=0)ndecimals--;
     RoundDecimal(val, c_vals[i], ndecimals);
   }
 
@@ -767,6 +813,51 @@ void Floats2Strings(char **c_vals, float *vals, int nvals, int ndigits, int fixe
       }
       else{
         sprintf(c_vals[i], "%sE%i ", c_mantissa, exponent);
+      }
+    }
+  }
+  if(force_decimal_label == 0){
+    int only_zero = 1;
+
+    for(i = 0;i < nvals;i++){
+      char *decimal, *Epos;
+
+      decimal = strchr(c_vals[i], '.');
+      Epos    = strchr(c_vals[i], 'E');
+      if(Epos != NULL || OnlyZeros(decimal) == 0){
+        only_zero = 0;
+        break;
+      }
+    }
+    if(only_zero == 1){
+      for(i = 0;i < nvals;i++){
+        char *decimal;
+
+        decimal = strchr(c_vals[i], '.');
+        if(decimal != NULL)decimal[0] = 0;
+      }
+    }
+  }
+//  if(zero_pad == 1 && strlen(exp_offset_label)==0){
+  if(zero_pad == 1){
+    char *decimal, cmaxlabel[256];
+
+    strcpy(cmaxlabel, c_vals[max_index]);
+    decimal = strchr(cmaxlabel, '.');
+    if(decimal!=NULL)decimal[0] = 0;
+    ndecimals = ndigits - strlen(cmaxlabel);
+    if(decimal != NULL && ndecimals>=0){
+      for(i = 0;i < nvals;i++){
+        char *dec, *Epos;
+        int npad, len_dec;
+
+        Epos = strchr(c_vals[i], 'E');
+        dec = strchr(c_vals[i], '.');
+        if(Epos != NULL || dec == NULL)continue;
+        strcat(c_vals[i], "00000000");
+        len_dec = strlen(dec);
+        npad = MIN(ndecimals + 1, len_dec);
+        dec[npad] = 0;
       }
     }
   }
@@ -949,7 +1040,7 @@ int LogBase2(float xx){
   unsigned int x;
 
   x=xx;
-  while( (x >> r) != 0){
+  while((x >> r) != 0){
     r++;
   }
   return r-1; // returns -1 for x==0, floor(log2(x)) otherwise
@@ -1064,6 +1155,23 @@ char *GetString(char *buffer){
   begin = TrimFront(begin);
   if(strlen(begin)>0)return begin;
   return NULL;
+}
+
+  /* ------------------ Time2RenderLabel ------------------------ */
+
+char *Time2RenderLabel(float sv_time, float dt, float maxtime, char *timelabel){
+  char *timelabelptr, format[32], percen[2], period[2];
+  int ndigits_right, ndigits_left, total_digits;
+
+  strcpy(percen, "%");
+  strcpy(period, ".");
+  ndigits_right = MAX(-log10(dt), 0) + 2;
+  ndigits_left = MAX(1, log10(maxtime)+1);
+  total_digits = 1 + ndigits_left + ndigits_right;
+  sprintf(format, "%s0%i%s%if", percen, total_digits, period, ndigits_right);
+  sprintf(timelabel, format, sv_time);
+  timelabelptr=TrimFront(timelabel);
+  return timelabelptr;
 }
 
   /* ------------------ Time2TimeLabel ------------------------ */
@@ -1237,12 +1345,6 @@ char *RemoveComment(char *buffer){
   return TrimFront(buffer);
 }
 
-/* ------------------ GetProgVersion ------------------------ */
-
-void GetProgVersion(char *PROGversion){
-  strcpy(PROGversion,PROGVERSION);
-}
-
 /* ------------------ SetLabelsIso ------------------------ */
 
 int SetLabelsIso(flowlabels *flowlabel, char *longlabel, char *shortlabel, char *unit, float *levels, int nlevels){
@@ -1299,7 +1401,7 @@ int SetLabels(flowlabels *flowlabel, char *longlabel, char *shortlabel, char *un
     strcpy(buffer,longlabel);
   }
   len=strlen(buffer);
-  if(NewMemory((void **)&flowlabel->longlabel,(unsigned int)(len+1))==0)return LABEL_ERR;
+  if(NEWMEM(flowlabel->longlabel,(unsigned int)(len+1))==0)return LABEL_ERR;
   STRCPY(flowlabel->longlabel,buffer);
 
   if(shortlabel==NULL){
@@ -1309,7 +1411,7 @@ int SetLabels(flowlabels *flowlabel, char *longlabel, char *shortlabel, char *un
     strcpy(buffer,shortlabel);
   }
   len=strlen(buffer);
-  if(NewMemory((void **)&flowlabel->shortlabel,(unsigned int)(len+1))==0)return LABEL_ERR;
+  if(NEWMEM(flowlabel->shortlabel,(unsigned int)(len+1))==0)return LABEL_ERR;
   STRCPY(flowlabel->shortlabel,buffer);
 
   if(unit==NULL){
@@ -1319,7 +1421,7 @@ int SetLabels(flowlabels *flowlabel, char *longlabel, char *shortlabel, char *un
     strcpy(buffer,unit);
   }
   len=strlen(buffer);
-  if(NewMemory((void **)&flowlabel->unit,(unsigned int)(len+1))==0)return LABEL_ERR;
+  if(NEWMEM(flowlabel->unit,(unsigned int)(len+1))==0)return LABEL_ERR;
   STRCPY(flowlabel->unit,buffer);
 
   return LABEL_OK;
@@ -1361,7 +1463,6 @@ int ReadLabelsBNDS(flowlabels *flowlabel, BFILE *stream, char *bufferD, char *bu
     strcpy(buffer2, bufferD);
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer);
@@ -1380,7 +1481,6 @@ int ReadLabelsBNDS(flowlabels *flowlabel, BFILE *stream, char *bufferD, char *bu
     strcpy(buffer2, bufferE);
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer);
@@ -1397,7 +1497,6 @@ int ReadLabelsBNDS(flowlabels *flowlabel, BFILE *stream, char *bufferD, char *bu
     strcpy(buffer2, bufferF);
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer) + 1;// allow room for deg C symbol in case it is present
@@ -1420,7 +1519,6 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
     return_val = LABEL_ERR;
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer);
@@ -1436,7 +1534,6 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
     return_val = LABEL_ERR;
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer);
@@ -1450,7 +1547,6 @@ int ReadLabels(flowlabels *flowlabel, BFILE *stream, char *suffix_label){
     return_val = LABEL_ERR;
   }
 
-  len = strlen(buffer2);
   buffer = TrimFront(buffer2);
   TrimBack(buffer);
   len = strlen(buffer)+1;// allow room for deg C symbol in case it is present
@@ -1646,7 +1742,6 @@ unsigned int DiffDate(char *token, char *tokenbase){
 /* ------------------ GetBaseTitle ------------------------ */
 
 void GetBaseTitle(char *progname, char *title_base){
-  char version[100];
   char git_version[100];
   char git_date[100];
 
@@ -1655,13 +1750,7 @@ void GetBaseTitle(char *progname, char *title_base){
   // construct string of the form:
   //   5.x.y_#
 
-  GetProgVersion(version);
-
   strcpy(title_base, progname);
-
-  strcat(title_base, " ");
-  strcat(title_base, version);
-
   strcat(title_base, " - ");
 }
 
@@ -1674,10 +1763,8 @@ void GetTitle(char *progname, char *fulltitle){
 
   STRCPY(fulltitle, title_base);
   STRCAT(fulltitle, __DATE__);
-#ifdef pp_BETA
   STRCAT(fulltitle, " - ");
   STRCAT(fulltitle, __TIME__);
-#endif
 }
 
 #ifdef pp_HASH
@@ -1696,7 +1783,7 @@ unsigned char *GetHashSHA1(char *file){
   if(stream==NULL){
     char *pathentry, fullpath[1024];
 
-    pathentry = Which(file);
+    pathentry = Which(file, NULL);
     if(pathentry==NULL){
       strcpy(fullpath,".");
       strcat(fullpath,dirseparator);
@@ -1759,7 +1846,7 @@ unsigned char *GetHashMD5(char *file){
   if(stream == NULL){
     char *pathentry, fullpath[1024];
 
-    pathentry = Which(file);
+    pathentry = Which(file, NULL);
     if(pathentry==NULL){
       strcpy(fullpath,".");
       strcat(fullpath,dirseparator);
@@ -1813,7 +1900,7 @@ unsigned char *GetHashSHA256(char *file){
   if(stream==NULL){
     char *pathentry, fullpath[1024];
 
-    pathentry = Which(file);
+    pathentry = Which(file, NULL);
     if(pathentry==NULL){
       strcpy(fullpath,".");
       strcat(fullpath,dirseparator);
@@ -1931,30 +2018,23 @@ int ParseCommonOptions(int argc, char **argv){
 /* ------------------ version ------------------------ */
 
 #ifdef pp_HASH
-void PRINTversion(char *progname, char *progfullpath, int option){
+void PRINTversion(char *progname, int option){
 #else
 void PRINTversion(char *progname){
 #endif
-  char version[256];
+  char *progfullpath = GetBinPath();
   char githash[256];
   char gitdate[256];
   char releasetitle[1024];
 
-  GetProgVersion(version);
   GetGitInfo(githash, gitdate);    // get githash
   GetTitle(progname, releasetitle);
 
   PRINTF("\n");
   PRINTF("%s\n\n", releasetitle);
-  if(strcmp(version, "") != 0){
-    PRINTF("Version          : %s\n", version);
-  }
   PRINTF("Revision         : %s\n", githash);
   PRINTF("Revision Date    : %s\n", gitdate);
   PRINTF("Compilation Date : %s %s\n", __DATE__, __TIME__);
-#ifndef pp_COMPVER
-#define pp_COMPVER "unknown"
-#endif
   PRINTF("Compiler         : %s\n", pp_COMPVER);
 #ifdef pp_SANITIZE
   PRINTF("Sanitize checks  : enabled\n");
@@ -1991,13 +2071,10 @@ void PRINTversion(char *progname){
   PRINTF("\n");
 #endif
 #ifdef pp_OSX
-#ifdef pp_QUARTZ
-  PRINTF("Platform         : OSX64/QUARTZ\n");
-#else
   PRINTF("Platform         : OSX64\n");
-#endif
 #endif
 #ifdef pp_LINUX
   PRINTF("Platform         : LINUX64\n");
 #endif
+  FREEMEMORY(progfullpath);
 }

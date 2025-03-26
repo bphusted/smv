@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #ifdef pp_MEMDEBUG
 static int checkmemoryflag=1;
 #endif
@@ -99,7 +99,7 @@ void PrintMemoryError(size_t size, const char *varname, const char *file, int li
     if(file2 != NULL)file = file2+1;
     fprintf(stderr," at %s(%i)\n",file,linenumber);
   }
-  printf("\n");
+  fprintf(stderr, "\n");
   assert(1==0); // force smokeview to abort when in debug mode
 }
 
@@ -134,7 +134,7 @@ mallocflag _NewMemoryNOTHREAD(void **ppv, size_t size, int memory_id){
   //  float total, maxmem;
   //  total = MMtotalmemory/1000000000.0;
   //  maxmem = MMmaxmemory / 1000000000.0;
-  //  printf("memory allocated: %f GB out of %f GB\n",total,maxmem);
+  //  fprintf(stderr, "memory allocated: %f GB out of %f GB\n",total,maxmem);
   if(MMmaxmemory == 0 || MMtotalmemory + size <= MMmaxmemory){
     this_ptr = (void *)malloc(infoblocksize + size + sizeofDebugByte);
   }
@@ -363,6 +363,9 @@ mallocflag __NewMemory(void **ppv, size_t size, int memory_id, const char *varna
   char dirsep='/';
 #endif
 
+#ifdef pp_MEM_DEBUG_PRINT
+  fprintf(stderr, "file: %s line: %i\n", file, linenumber);
+#endif
   LOCK_MEM;
   return_code=_NewMemoryNOTHREAD(ppb,size,memory_id);
   if(return_code != 1){
@@ -476,17 +479,17 @@ void _PrintAllMemoryInfo(void){
   blockinfo *pbi;
   int n=0,size=0;
 
-  printf("\n\n");
-  printf("********************************************\n");
-  printf("********************************************\n");
-  printf("********************************************\n");
+  fprintf(stderr, "\n\n");
+  fprintf(stderr, "********************************************\n");
+  fprintf(stderr, "********************************************\n");
+  fprintf(stderr, "********************************************\n");
   for(pbi = pbiHead; pbi != NULL; pbi = pbi->pbiNext)
   {
     n++;
     size += pbi->size;
-    printf("%s allocated in %s at line %i\n",pbi->varname,pbi->filename,pbi->linenumber);
+    fprintf(stderr, "%s allocated in %s at line %i\n",pbi->varname,pbi->filename,pbi->linenumber);
   }
-  printf("nblocks=%i sizeblocks=%i\n",n,size);
+  fprintf(stderr, "nblocks=%i sizeblocks=%i\n",n,size);
 }
 
 /* ------------------ GetBlockInfo_nofail ------------------------ */

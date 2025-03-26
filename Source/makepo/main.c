@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "string_util.h"
-#include "MALLOCC.h"
+#include "dmalloc.h"
 
 int add_msgstring=0;
 int add_comments=0;
@@ -51,7 +51,7 @@ int main(int argc, char **argv){
     return 1;
   }
   if(show_version==1){
-    PRINTVERSION("makepo",argv[0]);
+    PRINTVERSION("makepo");
     return 1;
   }
   for(ii=1;ii<argc;ii++){
@@ -114,7 +114,7 @@ int main(int argc, char **argv){
       }
       end=strstr(beg+1,"\"");
       if(end!=NULL){
-        int i,len;
+        int len;
 
         end[0]=0;
         TrimBack(beg2);

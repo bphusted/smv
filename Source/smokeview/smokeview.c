@@ -8,6 +8,8 @@
 #include GLUT_H
 
 #include "smokeviewvars.h"
+#include "glui_motion.h"
+#include "IOscript.h"
 
 #ifdef WIN32
 #include <direct.h>
@@ -71,22 +73,6 @@ void UpdateLights(float *pos1, float *pos2){
   }
   else{
     glDisable(GL_LIGHT1);
-  }
-}
-
-/* ------------------ AntiAliasSurface ------------------------ */
-
-void AntiAliasSurface(int flag){
-  if(antialiasflag==ON&&1==0){ // disable this routine for now
-    if(flag==ON){
-//      glBlendFunc( GL_SRC_ALPHA_SATURATE, GL_ONE );
-      glEnable( GL_BLEND );
-      glEnable( GL_POLYGON_SMOOTH );
-    }
-    if(flag==OFF){
-      glDisable(GL_BLEND);
-      glDisable( GL_POLYGON_SMOOTH );
-    }
   }
 }
 
@@ -192,9 +178,9 @@ void InitVolrenderScript(char *prefix, char *tour_label, int startframe, int ski
   if(volrender_scriptname==NULL){
     int len;
 
-    len = strlen(fdsprefix)+strlen("_volrender.ssf")+1;
+    len = strlen(global_scase.fdsprefix)+strlen("_volrender.ssf")+1;
     NewMemory((void **)&volrender_scriptname,(unsigned int)(len));
-    STRCPY(volrender_scriptname,fdsprefix);
+    STRCPY(volrender_scriptname,global_scase.fdsprefix);
     STRCAT(volrender_scriptname,"_volrender.ssf");
   }
 
@@ -219,22 +205,69 @@ void InitVolrenderScript(char *prefix, char *tour_label, int startframe, int ski
 /* ------------------ DisplayVersionInfo ------------------------ */
 
 void DisplayVersionInfo(char *progname){
-  PRINTVERSION(progname,prog_fullpath);
-  if(fds_version!=NULL){
-    PRINTF("FDS Build        : %s\n",fds_githash);
+  PRINTVERSION(progname);
+  if(global_scase.fds_version!=NULL){
+    PRINTF("FDS Build        : %s\n",global_scase.fds_githash);
   }
-  PRINTF("Smokeview path   : %s\n",smokeview_progname);
+  char *smv_progname = GetBinPath();
+  PRINTF("Smokeview path   : %s\n",smv_progname);
+  FREEMEMORY(smv_progname);
 #ifdef pp_COMPRESS
   if(smokezippath!=NULL){
     if(verbose_output==1)PRINTF("Smokezip         : %s\n",smokezippath);
   }
 #endif
-  if(texturedir!=NULL){
-    if(verbose_output==1)PRINTF("Texture directory: %s\n",texturedir);
+  if(global_scase.texturedir!=NULL){
+    if(verbose_output==1)PRINTF("Texture directory: %s\n",global_scase.texturedir);
   }
-  if(smokeview_bindir != NULL){
-    PRINTF("Bin directory    : %s\n", smokeview_bindir);
+  char *smv_bindir = GetSmvRootDir();
+  if(smv_bindir){
+    PRINTF("Root directory   : %s\n", smv_bindir);
   }
+  char *global_ini_path = GetSystemIniPath();
+  if(global_ini_path != NULL && FileExistsOrig(global_ini_path) == 1){
+    PRINTF("Global ini       : %s\n", global_ini_path);
+  }
+  else{
+    PRINTF("Global ini       : not found\n");
+  }
+  FREEMEMORY(global_ini_path);
+  char *user_ini_path = GetUserIniPath();
+  if(user_ini_path != NULL && FileExistsOrig(user_ini_path) == 1){
+    PRINTF("User ini         : %s\n", user_ini_path);
+  }
+  else{
+    PRINTF("User ini         : not found\n");
+  }
+  FREEMEMORY(user_ini_path);
+  char fullini_filename[256];
+  strcpy(fullini_filename, "");
+  char *smokeview_scratchdir = GetUserConfigDir();
+  if(global_scase.paths.caseini_filename != NULL){
+    if(FileExistsOrig(global_scase.paths.caseini_filename) == 1){
+      char cwdpath[1000];
+      GETCWD(cwdpath, 1000);
+      strcpy(fullini_filename, cwdpath);
+      strcat(fullini_filename, dirseparator);
+      strcat(fullini_filename, global_scase.paths.caseini_filename);
+    }
+    else if(smokeview_scratchdir!=NULL){
+      strcpy(fullini_filename, smokeview_scratchdir);
+      strcat(fullini_filename, global_scase.paths.caseini_filename);
+      if(FileExistsOrig(fullini_filename)==0)strcpy(fullini_filename, "");
+    }
+  }
+  FREEMEMORY(smokeview_scratchdir);
+  if(smv_filename != NULL || show_version == 0){
+    if(strlen(fullini_filename) > 0){
+      PRINTF("Casename ini     : %s\n", fullini_filename);
+    }
+    else{
+      PRINTF("Casename ini     : not found\n");
+    }
+  }
+  FREEMEMORY(smv_progname);
+  FREEMEMORY(smv_bindir);
 }
 
 /* ------------------ IsFDSRunning ------------------------ */
@@ -242,7 +275,7 @@ void DisplayVersionInfo(char *progname){
 int IsFDSRunning(FILE_SIZE *last_size){
   FILE_SIZE file_size;
 
-  file_size = GetFileSizeSMV(stepcsv_filename);
+  file_size = GetFileSizeSMV(global_scase.paths.stepcsv_filename);
   if(file_size != *last_size){
     *last_size = file_size;
     return 1;
@@ -253,18 +286,18 @@ int IsFDSRunning(FILE_SIZE *last_size){
 /* ------------------ BuildGbndFile ------------------------ */
 
 int BuildGbndFile(int file_type){
-  switch (file_type){
+  switch(file_type){
     case BOUND_SLICE:
       if(FileExistsOrig(slice_gbnd_filename)==0)return 1;
-      if(IsFileNewer(stepcsv_filename, slice_gbnd_filename)==1)return 1;
+      if(IsFileNewer(global_scase.paths.stepcsv_filename, slice_gbnd_filename)==1)return 1;
       break;
     case BOUND_PATCH:
       if(FileExistsOrig(patch_gbnd_filename)==0)return 1;
-      if(IsFileNewer(stepcsv_filename, patch_gbnd_filename)==1)return 1;
+      if(IsFileNewer(global_scase.paths.stepcsv_filename, patch_gbnd_filename)==1)return 1;
       break;
     case BOUND_PLOT3D:
       if(FileExistsOrig(plot3d_gbnd_filename)==0)return 1;
-      if(IsFileNewer(stepcsv_filename, plot3d_gbnd_filename)==1)return 1;
+      if(IsFileNewer(global_scase.paths.stepcsv_filename, plot3d_gbnd_filename)==1)return 1;
       break;
     default:
       assert(FFALSE);

@@ -1,4 +1,5 @@
 #include "options.h"
+#define IN_FILE_UTIL
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -25,12 +26,16 @@
 #include <io.h>
 #include <direct.h>
 #include <dirent_win.h>
+#include <shlwapi.h>
+#pragma comment(lib, "shlwapi.lib")
 #else
 #include <dirent.h>
+#include <libgen.h>
 #endif
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "string_util.h"
 #include "file_util.h"
+#include "threader.h"
 
 FILE *alt_stdout=NULL;
 
@@ -41,7 +46,7 @@ void TestWrite(char *scratchdir, char **fileptr){
 
   if(Writable(".")==1||fileptr==NULL||scratchdir==NULL)return;
   strcpy(filecopy, *fileptr);
-  FREEMEMORY(*fileptr);
+  //FREEMEMORY(*fileptr); possible memory leak if commented but line was causing crash
 
   strcpy(newfile, scratchdir);
   strcat(newfile, dirseparator);
@@ -66,7 +71,7 @@ int FFLUSH(void){
 
 /* ------------------ PRINTF ------------------------ */
 
-int PRINTF(const char * format, ...){
+int PRINTF(const char *format, ...){
   va_list args;
   int return_val=0;
 
@@ -121,7 +126,7 @@ void CopyFILE(char *destdir, char *file_in, char *file_out, int mode){
     fclose(streamin);
     return;
   }
-  PRINTF("  Copying %s to %s\n",file_in,file_out);
+  fprintf(stderr, "  Copying %s to %s\n",file_in,file_out);
   for(;;){
     int end_of_file;
 
@@ -184,7 +189,7 @@ char *SetDir(char *argdir){
 
 /* ------------------ GetBaseFileName ------------------------ */
 
-char *GetBaseFileName(char *buffer,char *file){
+char *GetBaseFileName(char *buffer, const char *file){
   char *filebase,*ext;
 
   strcpy(buffer,file);
@@ -262,6 +267,14 @@ unsigned int StreamCopy(FILE *stream_in, FILE *stream_out, int flag){
     nchars++;
   }
   return nchars;
+}
+
+/* ------------------ FileErase ------------------------ */
+
+void FileErase(char *file){
+  if(FileExistsOrig(file) == 1){
+    UNLINK(file);
+  }
 }
 
 /* ------------------ FileCopy ------------------------ */
@@ -478,6 +491,281 @@ FILE_SIZE GetFileSizeSMV(const char *filename){
   return return_val;
 }
 
+/* ------------------ fread_mt ------------------------ */
+
+void *fread_mt(void *mtfileinfo){
+  FILE_SIZE file_beg, buffer_beg, file_end, buffer_size, file_size;
+  FILE *stream;
+  int i, nthreads;
+  char *file;
+  unsigned char *buffer;
+  mtfiledata *mtf;
+  FILE_SIZE file_offset, nchars;
+
+  mtf = (mtfiledata *)mtfileinfo;
+
+  i              = mtf->i;
+  nthreads       = mtf->nthreads;
+  file           = mtf->file;
+  buffer         = mtf->buffer;
+  file_size      = mtf->file_size;
+  file_offset    = mtf->file_offset;
+  nchars         = mtf->nchars;
+
+  buffer_size = nchars/nthreads;
+  buffer_beg  = i*buffer_size;
+  file_beg    = file_offset + buffer_beg;
+  file_end    = file_beg + buffer_size - 1;
+  if(i == nthreads - 1||file_end>file_size-1){
+    file_end    = file_size - 1;
+    buffer_size = file_end + 1 - file_beg;
+  }
+  stream = fopen(file, "rb");
+  if(stream == NULL){
+#ifdef pp_THREAD
+    if(nthreads>1)pthread_exit(NULL);
+#endif
+    return NULL;
+  }
+  FSEEK(stream, file_beg, SEEK_SET);
+  mtf->chars_read = fread(buffer + buffer_beg, 1, buffer_size, stream);
+  fclose(stream);
+
+#ifdef pp_THREAD
+  if(nthreads>1)pthread_exit(NULL);
+#endif
+  return NULL;
+}
+
+/* ------------------ SetMtFileInfo ------------------------ */
+
+mtfiledata *SetMtFileInfo(char *file, unsigned char *buffer, FILE_SIZE file_offset, FILE_SIZE nchars, int nthreads){
+  mtfiledata *mtfileinfo;
+  int i;
+
+  NewMemory((void **)&mtfileinfo,nthreads*sizeof(mtfiledata));
+
+  for(i=0;i<nthreads;i++){
+    mtfiledata *mti;
+
+    mti = mtfileinfo + i;
+    mti->i               = i;
+    mti->nthreads        = nthreads;
+    mti->file            = file;
+    mti->buffer          = buffer;
+    mti->file_size       = nchars;
+    mti->file_offset     = file_offset;
+    mti->nchars          = nchars;
+    mti->chars_read      = 0;
+  }
+  return mtfileinfo;
+}
+
+/* ------------------ MakeFile ------------------------ */
+
+#define BUFFERSIZE 1000000
+int MakeFile(char *file, int size){
+  unsigned char *buffer;
+  FILE *stream;
+  int i;
+
+  if(file == NULL || strlen(file) == 0)return 0;
+  stream = fopen(file, "w");
+  if(stream == NULL)return 0;
+
+  NewMemory((void **)&buffer, BUFFERSIZE);
+  for(i = 0; i < BUFFERSIZE; i++){
+    buffer[i] = i % 255;
+  }
+  for(i = 0; i < size; i++){
+    fwrite(buffer, 1, BUFFERSIZE, stream);
+  }
+  fclose(stream);
+
+  FREEMEMORY(buffer);
+  return 1;
+}
+
+/* ------------------ fread_p ------------------------ */
+
+FILE_SIZE fread_p(char *file, unsigned char *buffer, FILE_SIZE offset, FILE_SIZE nchars, int nthreads){
+  FILE_SIZE chars_read;
+  mtfiledata *mtfileinfo;
+
+  mtfileinfo = SetMtFileInfo(file, buffer, offset, nchars, nthreads);
+  if(nthreads == 1){
+    FILE *stream;
+
+    stream = fopen(file, "rb");
+    if(stream == NULL)return 0;
+    chars_read = fread(buffer, 1, mtfileinfo->file_size, stream);
+    fclose(stream);
+  }
+#ifdef pp_THREAD
+  else{
+    threaderdata *read_threads;
+    int use_read_threads, i;
+
+    use_read_threads = 1;
+    read_threads = THREADinit(&nthreads, &use_read_threads, fread_mt);
+    THREADruni(read_threads, (unsigned char *)mtfileinfo, sizeof(mtfiledata));
+    THREADcontrol(read_threads, THREAD_JOIN);
+    chars_read = 0;
+    for(i = 0;i < nthreads;i++){
+      chars_read += mtfileinfo[i].chars_read;
+    }
+  }
+#else
+  else{
+    int i;
+
+    chars_read = 0;
+    for(i = 0;i < nthreads;i++){
+      mtfiledata *mti;
+
+      mti = mtfileinfo + i;
+      fread_mt(mti);
+      chars_read += mti->chars_read;
+    }
+  }
+#endif
+  return chars_read;
+}
+
+
+/* ------------------ PrintTime ------------------------ */
+
+void PrintTime(const char *filepath, int line, float *timer, const char *label, int stop_flag){
+  char *file;
+
+  if(show_timings == 0)return;
+  file = strrchr(filepath, '\\');
+  if(file == NULL)file = strrchr(filepath, '/');
+  if(file == NULL){
+    file = (char *)filepath;
+  }
+  else{
+    file++;
+  }
+  if(label != NULL){
+    if(stop_flag == 1)STOP_TIMER(*timer);
+    if(*timer > 0.1)fprintf(stderr, "%s/%i/%s %.1f s\n", file, line, label, *timer);
+  }
+  START_TIMER(*timer);
+}
+
+/* ------------------ InitBufferData ------------------------ */
+
+bufferdata *InitBufferData(char *file, char *size_file, int *options){
+  bufferdata *buffinfo = NULL;
+  unsigned char *buffer = NULL;
+  FILE_SIZE nbuffer = 0;
+
+  NewMemory((void **)&buffinfo, sizeof(bufferdata));
+  buffinfo->file = file;
+  buffinfo->size_file = size_file;
+  buffinfo->options = options;
+  if(options != NULL && options[0]>0){
+    int *optionsptr;
+
+    NewMemory((void **)&optionsptr, (options[0]+1)*sizeof(int));
+    memcpy(optionsptr, options, (options[0]+1)*sizeof(int));
+    buffinfo->options = optionsptr;
+  }
+  nbuffer = GetFileSizeSMV(file);
+  NewMemory((void **)&buffer, nbuffer);
+  buffinfo->buffer   = buffer;
+  buffinfo->nbuffer  = nbuffer;
+  buffinfo->nfile    = 0;
+  return buffinfo;
+}
+
+/* ------------------ FreeBufferInfo ------------------------ */
+
+void FreeBufferInfo(bufferdata *bufferinfo){
+  if(bufferinfo == NULL)return;
+  FREEMEMORY(bufferinfo->buffer);
+  FREEMEMORY(bufferinfo->options);
+  FREEMEMORY(bufferinfo);
+}
+
+/* ------------------ File2Buffer ------------------------ */
+
+bufferdata *File2Buffer(char *file, char *size_file, int *options, bufferdata *bufferinfo,  FILE_SIZE *nreadptr){
+  FILE_SIZE nfile=0, offset_buffer = 0, offset_file = 0, nread_actual, nread_try;
+
+  *nreadptr = 0;
+  if(file==NULL || strlen(file)==0 || FileExistsOrig(file) == 0)return NULL;
+
+  INIT_PRINT_TIMER(timer_file2buffer);
+  if(bufferinfo == NULL){ // read entire file
+    bufferinfo     = InitBufferData(file, size_file, options);
+    offset_file    = 0;
+    offset_buffer  = 0;
+    nread_try      = bufferinfo->nbuffer;
+  }
+  else{ // read in part of file that was not read in previously
+    unsigned char *buffer;
+
+    buffer  = bufferinfo->buffer;
+    nfile   = GetFileSizeSMV(file);
+    if(nfile == 0){
+      FreeBufferInfo(bufferinfo);
+      *nreadptr = 0;
+      return NULL;
+    }
+    if(buffer!=NULL&&nfile == bufferinfo->nfile){ // file hasn't changed so nothing more to read in
+      PRINT_TIMER(timer_file2buffer, "File2Buffer");
+      *nreadptr = 0;
+      return bufferinfo;
+    }
+    if(buffer == NULL){
+      NewMemory((void **)&buffer, nfile*sizeof(unsigned char));
+      offset_file   = 0;
+      offset_buffer = 0;
+    }
+    else{
+      ResizeMemory((void **)&buffer, nfile);
+      offset_file   = bufferinfo->nfile;
+      offset_buffer = bufferinfo->nfile;
+    }
+    bufferinfo->buffer  = buffer;
+    nread_try           = nfile - offset_file;
+    bufferinfo->nbuffer = nfile;
+  }
+//  nread = fread_p(file, buffer, offset, delta, nthreads);
+
+//#define XXX
+#ifdef XXX
+  FILE *stream;
+#ifdef WIN32
+  stream = _fsopen(file, "rb", _SH_DENYNO);
+#else
+  stream = fopen(file, "rb");
+#endif
+#endif
+
+#ifndef XXX
+  FILE *stream;
+  stream = fopen(file, "rb");
+#endif
+  if(stream == NULL){
+    FreeBufferInfo(bufferinfo);
+    return NULL;
+  }
+  if(offset_file!=0)fseek(stream, offset_file, SEEK_SET);
+  nread_actual = fread(bufferinfo->buffer+offset_buffer, 1, nread_try, stream);
+  fclose(stream);
+  if(nread_actual != nread_try){
+    FreeBufferInfo(bufferinfo);
+    return NULL;
+  }
+  bufferinfo->nfile = nfile;
+  PRINT_TIMER(timer_file2buffer, "File2Buffer");
+  *nreadptr = nread_actual;
+  return bufferinfo;
+}
+
 /* ------------------ FileExistsOrig ------------------------ */
 
 int FileExistsOrig(char *filename){
@@ -532,7 +820,7 @@ int GetFileListSize(const char *path, char *filter, int mode){
   if(dp == NULL)return 0;
   d_type = DT_REG;
   if(mode==DIR_MODE)d_type = DT_DIR;
-  while( (entry = readdir(dp))!=NULL ){
+  while((entry = readdir(dp))!=NULL){
     if(((entry->d_type==d_type||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1)){
       if(strcmp(entry->d_name,".")==0||strcmp(entry->d_name,"..")==0)continue;
       maxfiles++;
@@ -572,6 +860,13 @@ FILE *fopen_indir(char *dir, char *file, char *mode){
     FREEMEMORY(filebuffer);
   }
   return stream;
+}
+
+FILE *fopen_2dir_scratch(char *file, char *mode) {
+  char *smokeview_scratchdir = GetUserConfigDir();
+  FILE *f = fopen_2dir(file, mode, smokeview_scratchdir);
+  FREEMEMORY(smokeview_scratchdir);
+  return f;
 }
 
 /* ------------------ fopen_2dir ------------------------ */
@@ -633,7 +928,7 @@ int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, f
   // DT_DIR - is a directory
   // DT_REG - is a regular file
 
-  if (maxfiles == 0||path==NULL||filter==NULL) {
+  if(maxfiles == 0||path==NULL||filter==NULL){
     *filelist = NULL;
     return 0;
   }
@@ -643,7 +938,7 @@ int MakeFileList(const char *path, char *filter, int maxfiles, int sort_files, f
   NewMemory((void **)&flist,maxfiles*sizeof(filelistdata));
   d_type = DT_REG;
   if(mode==DIR_MODE)d_type = DT_DIR;
-  while( (entry = readdir(dp))!=NULL&&nfiles<maxfiles ){
+  while((entry = readdir(dp))!=NULL&&nfiles<maxfiles){
     if((entry->d_type==d_type||entry->d_type==DT_UNKNOWN)&&MatchWild(entry->d_name,filter)==1){
       char *file;
       filelistdata *flisti;
@@ -765,48 +1060,270 @@ char *GetFloatFileSizeLabel(float size, char *sizelabel){
   return sizelabel;
 }
 
-/* ------------------ GetProgDir ------------------------ */
+// Only allows something from NEWMEMORY
+char *JoinPath(const char *path, const char *segment) {
+  // TODO: replace with platform-specific functions
+  char *new_path;
+  if (path == NULL) {
+    if (segment == NULL) return NULL;
+    NEWMEMORY(new_path, (strlen(segment) + 1) * sizeof(char));
+    STRCPY(new_path, segment);
+    return new_path;
+  };
+  if (segment == NULL) {
+    NEWMEMORY(new_path, (strlen(path) + 1) * sizeof(char));
+    STRCPY(new_path, path);
+    return new_path;
+  };
+  int path_len = strlen(path);
+  int newlen = path_len + strlen(dirseparator) + strlen(segment) + 1;
+  NEWMEMORY(new_path, (newlen + 1) * sizeof(char));
+  strcpy(new_path, path);
+  strcat(new_path, dirseparator);
+  strcat(new_path, segment);
+  return new_path;
+}
 
-char *GetProgDir(char *progname, char **svpath){
+#ifdef _WIN32
 
-// returns the directory containing the file progname
+/* ------------------ GetBinPath - windows ------------------------ */
 
-  char *progpath, *lastsep, *smokeviewpath2;
-
-  lastsep=strrchr(progname,dirseparator[0]);
-  if(lastsep==NULL){
-    char *dir;
-
-    dir = Which(progname);
-    if(dir==NULL){
-      NewMemory((void **)&progpath,(unsigned int)3);
-      strcpy(progpath,".");
-      strcat(progpath,dirseparator);
+char *GetBinPath(){
+  size_t MAX_BUFFER_SIZE = MAX_PATH * 20;
+  char *buffer;
+  size_t buffer_size = MAX_PATH * sizeof(char);
+  NEWMEMORY(buffer, buffer_size);
+  for(;;){
+    GetModuleFileNameA(NULL, buffer, buffer_size);
+    DWORD dw = GetLastError();
+    if(dw == ERROR_SUCCESS){
+      return buffer;
+    }
+    else if(dw == ERROR_INSUFFICIENT_BUFFER && buffer_size < MAX_BUFFER_SIZE){
+      // increase buffer size by a factor of 2
+      buffer_size *= 2;
+      RESIZEMEMORY(buffer, buffer_size);
     }
     else{
-      int lendir;
-
-      lendir=strlen(dir);
-      NewMemory((void **)&progpath,(unsigned int)(lendir+2));
-      strcpy(progpath,dir);
-      if(progpath[lendir-1]!=dirseparator[0])strcat(progpath,dirseparator);
+      FREEMEMORY(buffer);
+      return NULL;
     }
-    NewMemory((void **)&smokeviewpath2,(unsigned int)(strlen(progpath)+strlen(progname)+1));
-    strcpy(smokeviewpath2,progpath);
+  }
+}
+
+/* ------------------ GetBinDir - windows ------------------------ */
+
+char *GetBinDir(){
+  char *buffer = GetBinPath();
+  // NB: This uses on older function in order to support "char *".
+  // PathCchRemoveFileSpec would be better but requires switching to "wchar *".
+  PathRemoveFileSpecA(buffer);
+  PathAddBackslashA(buffer);
+  return buffer;
+}
+#elif __linux__
+
+/* ------------------ GetBinPath - linux ------------------------ */
+
+char *GetBinPath(){
+  size_t MAX_BUFFER_SIZE = 2048 * 20;
+  char *buffer;
+  size_t buffer_size = 256 * sizeof(char);
+  NEWMEMORY(buffer, buffer_size);
+  for(;;){
+    int ret = readlink("/proc/self/exe", buffer, buffer_size);
+    if(ret < buffer_size){
+      buffer[ret] = '\0';
+      return buffer;
+    }
+    else if(ret == buffer_size && buffer_size < MAX_BUFFER_SIZE){
+      // increase buffer size by a factor of 2
+      buffer_size *= 2;
+      RESIZEMEMORY(buffer, buffer_size);
+    }
+    else{
+      FREEMEMORY(buffer);
+      return NULL;
+    }
+  }
+}
+
+/* ------------------ GetBinDir - linux ------------------------ */
+
+char *GetBinDir(){
+  char *buffer = GetBinPath();
+  dirname(buffer);
+  int pathlen = strlen(buffer);
+  RESIZEMEMORY(buffer, pathlen + 2);
+  buffer[pathlen] = '/';
+  buffer[pathlen + 1] = '\0';
+  return buffer;
+}
+#else
+
+/* ------------------ GetBinPath - osx ------------------------ */
+
+char *GetBinPath(){
+  uint32_t  MAX_BUFFER_SIZE = 2048 * 20;
+  char *buffer;
+  uint32_t buffer_size = 256 * sizeof(char);
+  NEWMEMORY(buffer, buffer_size);
+  for(;;){
+    int ret = _NSGetExecutablePath(buffer, &buffer_size);
+    if(ret == 0){
+      return buffer;
+    }
+    else if(ret == -1 && buffer_size < MAX_BUFFER_SIZE){
+      // buffer_size has been set to the required buffer size by
+      // _NSGetExecutablePath
+      RESIZEMEMORY(buffer, buffer_size);
+    }
+    else{
+      FREEMEMORY(buffer);
+      return NULL;
+    }
+  }
+}
+
+/* ------------------ GetBinDir - osx ------------------------ */
+
+char *GetBinDir(){
+  char *buffer = GetBinPath();
+  // The BSD and OSX version of dirname uses an internal buffer, therefore we
+  // need to copy the string out.
+  char *dir_buffer = dirname(buffer);
+  int pathlen = strlen(buffer);
+  RESIZEMEMORY(buffer, (pathlen + 2) * sizeof(char));
+  STRCPY(buffer, dir_buffer);
+  buffer[pathlen] = '/';
+  buffer[pathlen + 1] = '\0';
+  return buffer;
+}
+#endif
+
+/// @brief Stored the value of the -bindir commandline option. NULL if that
+/// options is not used. Only referenced by @ref SetSmvRootOverride and @ref
+/// GetSmvRootDir.
+char *smv_root_override = NULL;
+
+/* ------------------ SetSmvRootOverride ------------------------ */
+
+void SetSmvRootOverride(const char *path){
+  FREEMEMORY(smv_root_override);
+  if(path == NULL) return;
+  size_t len = strlen(path);
+  NEWMEMORY(smv_root_override, (len + 2) * sizeof(char));
+  STRCPY(smv_root_override, path);
+  if(path[len - 1] != dirseparator[0]){
+    STRCAT(smv_root_override, dirseparator);
+  }
+}
+
+/* ------------------ GetSmvRootDir ------------------------ */
+
+char *GetSmvRootDir(){
+  char *envar_path = getenv("SMV_ROOT_OVERRIDE");
+  if(smv_root_override != NULL){
+    // Take the SMV_ROOT as defined on the command line
+    char *buffer;
+    int len = strlen(smv_root_override);
+    NEWMEMORY(buffer, (len + 1) * sizeof(char));
+    STRCPY(buffer, smv_root_override);
+    buffer[len] = '\0';
+    return buffer;
+  }
+  else if(envar_path != NULL){
+    // Take the SMV_ROOT as defined by the SMV_ROOT_OVERRIDE environment
+    // variable
+    char *buffer;
+    int len = strlen(envar_path);
+    NEWMEMORY(buffer, (len + 1) * sizeof(char));
+    STRCPY(buffer, envar_path);
+    buffer[len] = '\0';
+    return buffer;
   }
   else{
-    int lendir;
-
-    lendir=lastsep-progname+1;
-    NewMemory((void **)&progpath,(unsigned int)(lendir+1));
-    strncpy(progpath,progname,lendir);
-    progpath[lendir]=0;
-    NewMemory((void **)&smokeviewpath2,(unsigned int)(strlen(progname)+1));
-    strcpy(smokeviewpath2,"");
+#ifdef SMV_ROOT_OVERRIDE
+    // Take the SMV_ROOT as defined by the SMV_ROOT_OVERRIDE macro
+    char *buffer;
+    int len = strlen(SMV_ROOT_OVERRIDE);
+    NEWMEMORY(buffer, (len + 1) * sizeof(char));
+    STRCPY(buffer, SMV_ROOT_OVERRIDE);
+    buffer[len] = '\0';
+    return buffer;
+#else
+    // Otherwise simply return the directory of the running executable (using
+    // the platform-dependent code).
+    return GetBinDir();
+#endif
   }
-  strcat(smokeviewpath2,progname);
-  *svpath=smokeviewpath2;
-  return progpath;
+}
+
+char *GetSmvRootSubPath(const char *subdir) {
+  char *root_dir = GetSmvRootDir();
+  if (root_dir == NULL || subdir == NULL) return NULL;
+  return JoinPath(root_dir,subdir);
+}
+
+/* ------------------ GetHomeDir ------------------------ */
+
+char *GetHomeDir() {
+#ifdef WIN32
+  char *homedir = getenv("userprofile");
+#else
+  char *homedir = getenv("HOME");
+#endif
+  if (homedir == NULL) return ".";
+  return homedir;
+}
+
+/* ------------------ GetUserConfigDir ------------------------ */
+
+char *GetUserConfigDir() {
+  char *homedir = GetHomeDir();
+  if (homedir == NULL) return NULL;
+
+  char *config_path;
+  NEWMEMORY(config_path,
+            strlen(homedir) + strlen(dirseparator) + strlen(".smokeview") + 1);
+  strcpy(config_path, homedir);
+  strcat(config_path, dirseparator);
+  strcat(config_path, ".smokeview");
+  return config_path;
+}
+
+/* ------------------ GetUserConfigSubPath ------------------------ */
+
+char *GetUserConfigSubPath(const char *subdir) {
+  char *config_dir = GetUserConfigDir();
+  if (config_dir == NULL || subdir == NULL) return NULL;
+  return JoinPath(config_dir,subdir);
+}
+
+char *GetSystemIniPath() {
+  return GetSmvRootSubPath("smokeview.ini");
+}
+
+char *GetUserIniPath() {
+  return GetUserConfigSubPath("smokeview.ini");
+}
+
+char *GetUserColorbarDirPath() {
+  return GetUserConfigSubPath("colorbars");
+}
+
+char *GetSmokeviewHtmlPath() {
+  return GetSmvRootSubPath("smokeview.html");
+}
+
+// TODO: This is currently unused
+char *GetSmokeviewHtmlVrPath() {
+  return GetSmvRootSubPath("smokeview_vr.html");
+}
+
+// TODO: This is currently unused
+char *GetSmvScreenIni() {
+  return GetSmvRootSubPath("smv_screen.ini");
 }
 
 /* ------------------ IsSootFile ------------------------ */
@@ -818,24 +1335,6 @@ int IsSootFile(char *shortlabel, char *longlabel){
   if(strlen(longlabel)>=12&&strncmp(longlabel, "SOOT DENSITY",12)==0)return 1;
   return 0;
 }
-
-/* ------------------ getprogdirabs ------------------------ */
-
-#ifdef pp_LUA
-char *getprogdirabs(char *progname, char **svpath){
-
-// returns the absolute path of the directory containing the file progname
-  char *progpath;
-#ifdef WIN32
-  NewMemory((void **)&progpath,_MAX_PATH);
-  _fullpath(progpath,GetProgDir(progname,svpath),_MAX_PATH);
-#else
-  NewMemory((void **)&progpath,PATH_MAX);
-  realpath(GetProgDir(progname,svpath),progpath);
-#endif
-  return progpath;
-}
-#endif
 
 /* ------------------ LastName ------------------------ */
 
@@ -910,41 +1409,9 @@ time_t FileModtime(char *filename){
   return return_val;
 }
 
-/* ------------------ GetProgFullPath ------------------------ */
-
-void GetProgFullPath(char *progexe, int maxlen_progexe){
-  char *end, savedir[1024], tempdir[1024], *tempexe;
-
-  strcpy(tempdir, progexe);
-  end = strrchr(tempdir, dirseparator[0]);
-  if(end == NULL){
-    char *progpath;
-
-    progpath = Which(progexe);
-    if(progpath != NULL){
-      char copy[1024];
-
-      strcpy(copy, progexe);
-      strcpy(progexe, progpath);
-      if(progexe[strlen(progexe) - 1] != dirseparator[0])strcat(progexe, dirseparator);
-      strcat(progexe, copy);
-    }
-  }
-  else{
-    end[0] = 0;
-    tempexe = end + 1;
-    GETCWD(savedir, 1024);
-    CHDIR(tempdir);
-    GETCWD(progexe, maxlen_progexe);
-    if(progexe[strlen(progexe) - 1] != dirseparator[0])strcat(progexe, dirseparator);
-    strcat(progexe, tempexe);
-    CHDIR(savedir);
-  }
-}
-
 /* ------------------ Which ------------------------ */
 
-char *Which(char *progname){
+char *Which(char *progname, char **fullprognameptr){
 
 // returns the PATH directory containing the file progname
 
@@ -974,7 +1441,7 @@ char *Which(char *progname){
     const char *ext;
 
     ext = prognamecopy+strlen(progname)-4;
-    if(strlen(progname)<=4||STRCMP(ext,".exe")!=0)strcat(prognamecopy, ".exe");
+    if(strlen(progname)<=4|| (STRCMP(ext,".exe")!=0 && STRCMP(ext, ".bat") != 0))strcat(prognamecopy, ".exe");
   }
 #endif
 
@@ -990,7 +1457,12 @@ char *Which(char *progname){
       strcpy(pathentry,dir);
       strcat(pathentry,dirsep);
       FREEMEMORY(pathlistcopy);
-      FREEMEMORY(fullprogname);
+      if(fullprognameptr != NULL){
+        *fullprognameptr = fullprogname;
+      }
+      else{
+        FREEMEMORY(fullprogname);
+      }
       FREEMEMORY(prognamecopy);
       return pathentry;
     }

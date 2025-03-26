@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "MALLOCC.h"
+#include "dmalloc.h"
 #include "translate.h"
 #include "string_util.h"
 
@@ -47,7 +47,7 @@ int main(int argc, char **argv){
     return 1;
   }
   if(show_version==1){
-    PRINTVERSION("makepo",argv[0]);
+    PRINTVERSION("makepo");
     return 1;
   }
   for(i=1;i<argc;i++){
